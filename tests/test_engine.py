@@ -183,15 +183,34 @@ class TestAvailability:
 
     def test_more_reserves_higher_availability(self):
         """N+2 should have higher availability than N+1."""
-        avail_1, _ = calculate_availability_weibull(51, 50, 50000, 20)
-        avail_2, _ = calculate_availability_weibull(52, 50, 50000, 20)
+        avail_1, _ = calculate_availability_weibull(51, 50, 0.93, 20)
+        avail_2, _ = calculate_availability_weibull(52, 50, 0.93, 20)
         assert avail_2 > avail_1
 
-    def test_availability_over_time_decreases(self):
-        """Availability should generally decrease over time due to aging."""
-        _, timeline = calculate_availability_weibull(52, 50, 50000, 20)
+    def test_availability_flat_over_time(self):
+        """Availability should be constant (no aging model)."""
+        _, timeline = calculate_availability_weibull(52, 50, 0.93, 20)
         assert len(timeline) == 20
-        assert timeline[0] >= timeline[-1]
+        assert timeline[0] == timeline[-1]
+
+    def test_fleet_availability_realistic_range(self):
+        """At 93% unit avail, N+1 for 10 units gives ~82% — not unrealistically high.
+        The old MTBF model gave >99% unit avail → 99.999% fleet avail for N+1.
+        With 93% unit avail, more reserves (N+3, N+4, etc.) are needed to reach 99.99%."""
+        avail_n1, _ = calculate_availability_weibull(11, 10, 0.93, 20)
+        # N+1 at 93% is ~82% — realistic, not inflated
+        assert avail_n1 < 0.90, f"N+1 fleet availability {avail_n1} too high for 93% unit avail"
+
+        # Verify that adding more reserves increases availability toward 99.99%
+        avail_n5, _ = calculate_availability_weibull(15, 10, 0.93, 20)
+        assert avail_n5 > avail_n1, "More reserves should increase fleet availability"
+        assert avail_n5 > 0.99, f"N+5 should be above 99%, got {avail_n5}"
+
+    def test_unit_availability_from_library(self):
+        """Each generator should have a unit_availability field."""
+        for model, data in GENERATOR_LIBRARY.items():
+            assert "unit_availability" in data, f"{model} missing unit_availability"
+            assert 0.70 <= data["unit_availability"] <= 0.99, f"{model} availability out of range"
 
 
 # ==============================================================================
@@ -220,12 +239,12 @@ class TestFleetOptimization:
 
 class TestGeneratorLibrary:
 
-    def test_library_has_8_models(self):
-        assert len(GENERATOR_LIBRARY) == 8
+    def test_library_has_10_models(self):
+        assert len(GENERATOR_LIBRARY) == 10
 
     def test_all_models_have_required_fields(self):
         required = ['iso_rating_mw', 'electrical_efficiency', 'type',
-                     'mtbf_hours', 'step_load_pct']
+                     'unit_availability', 'step_load_pct']
         for model, data in GENERATOR_LIBRARY.items():
             for field in required:
                 assert field in data, f"{model} missing {field}"
@@ -265,27 +284,119 @@ class TestNoise:
 # ==============================================================================
 
 class TestSiteDerating:
+    """Tests for CAT official table-based derating with bilinear interpolation."""
+
+    def test_returns_dict_with_all_fields(self):
+        """Result should contain all derating breakdown fields."""
+        result = calculate_site_derate(25, 0, 80)
+        assert "derate_factor" in result
+        assert "methane_deration" in result
+        assert "altitude_deration" in result
+        assert "achrf" in result
+        assert "methane_warning" in result
 
     def test_iso_conditions_no_derate(self):
-        """ISO standard conditions → no derating."""
-        factor = calculate_site_derate(25, 300, 80)
-        assert factor == 1.0
+        """At 25°C, 0m altitude, MN=80 → all factors are 1.0."""
+        result = calculate_site_derate(25, 0, 80)
+        assert result["derate_factor"] == 1.0
+        assert result["methane_deration"] == 1.0
+        assert result["altitude_deration"] == 1.0
+        assert result["achrf"] == 1.0
+        assert result["methane_warning"] is None
+
+    def test_25c_300m_still_no_derate(self):
+        """At 25°C, 300m — ADF table still gives 1.0."""
+        result = calculate_site_derate(25, 300, 80)
+        assert result["altitude_deration"] == 1.0
+        assert result["derate_factor"] == 1.0
 
     def test_hot_site_derates(self):
-        factor = calculate_site_derate(45, 300, 80)
-        assert factor < 1.0
+        """45°C at 1000m → ADF = 0.91 (from CAT table)."""
+        result = calculate_site_derate(45, 1000, 80)
+        assert result["altitude_deration"] == 0.91
+        assert result["derate_factor"] == 0.91
+        assert result["methane_deration"] == 1.0
 
     def test_high_altitude_derates(self):
-        factor = calculate_site_derate(25, 1500, 80)
-        assert factor < 1.0
+        """25°C at 1500m → ADF table gives 0.98."""
+        result = calculate_site_derate(25, 1500, 80)
+        assert result["altitude_deration"] == 0.98
+        assert result["derate_factor"] == 0.98
 
     def test_poor_fuel_derates(self):
-        factor = calculate_site_derate(25, 300, 60)
-        assert factor < 1.0
+        """MN=50 → methane deration = 0.84 (from CAT table)."""
+        result = calculate_site_derate(25, 0, 50)
+        assert result["methane_deration"] == 0.84
+        assert result["derate_factor"] == 0.84
+
+    def test_methane_below_32_zero(self):
+        """MN < 32 → cannot operate, derate = 0."""
+        result = calculate_site_derate(25, 0, 30)
+        assert result["methane_deration"] == 0.0
+        assert result["derate_factor"] == 0.0
+        assert result["methane_warning"] is not None
+        assert "not suitable" in result["methane_warning"]
+
+    def test_methane_below_60_warns(self):
+        """MN < 60 but >= 32 → warns about low quality."""
+        result = calculate_site_derate(25, 0, 50)
+        assert result["methane_warning"] is not None
+        assert "below 60" in result["methane_warning"]
+
+    def test_methane_60_plus_no_warning(self):
+        """MN >= 60 → no warning."""
+        result = calculate_site_derate(25, 0, 60)
+        assert result["methane_deration"] == 1.0
+        assert result["methane_warning"] is None
 
     def test_combined_derating(self):
-        factor = calculate_site_derate(45, 1500, 60)
-        assert factor < 0.85  # Significant combined derating
+        """45°C, 1500m, MN=50 → combined < 0.85."""
+        result = calculate_site_derate(45, 1500, 50)
+        assert result["derate_factor"] < 0.85
+
+    def test_exact_table_point_50c_3000m(self):
+        """Exact table corner: 50°C, 3000m → ADF = 0.55."""
+        result = calculate_site_derate(50, 3000, 80)
+        assert result["altitude_deration"] == 0.55
+
+    def test_exact_table_point_45c_1000m(self):
+        """Exact table point: 45°C, 1000m → ADF = 0.91."""
+        result = calculate_site_derate(45, 1000, 80)
+        assert result["altitude_deration"] == 0.91
+
+    def test_exact_mn_32(self):
+        """MN=32 is the minimum operable → factor = 0.70."""
+        result = calculate_site_derate(25, 0, 32)
+        assert result["methane_deration"] == 0.70
+
+    def test_bilinear_interpolation_between_points(self):
+        """37.5°C, 625m should interpolate between grid points."""
+        result = calculate_site_derate(37.5, 625, 80)
+        # Between 35°C and 40°C, between 500m and 750m
+        # All four ADF corners are 1.0, so result should be 1.0
+        assert result["altitude_deration"] == 1.0
+
+    def test_achrf_hot_high(self):
+        """ACHRF > 1.0 at hot, high-altitude conditions."""
+        result = calculate_site_derate(50, 3000, 80)
+        assert result["achrf"] == 1.38
+
+    def test_achrf_cool_low(self):
+        """ACHRF = 1.0 at cool, low-altitude conditions."""
+        result = calculate_site_derate(10, 0, 80)
+        assert result["achrf"] == 1.0
+
+    def test_clamping_temp_above_max(self):
+        """Temp > 50°C should clamp to 50°C table row."""
+        result_60 = calculate_site_derate(60, 0, 80)
+        result_50 = calculate_site_derate(50, 0, 80)
+        assert result_60["altitude_deration"] == result_50["altitude_deration"]
+
+    def test_clamping_alt_above_max(self):
+        """Alt > 3000m should clamp to 3000m column."""
+        result_4000 = calculate_site_derate(25, 4000, 80)
+        result_3000 = calculate_site_derate(25, 3000, 80)
+        assert result_4000["altitude_deration"] == result_3000["altitude_deration"]
 
 
 # ==============================================================================

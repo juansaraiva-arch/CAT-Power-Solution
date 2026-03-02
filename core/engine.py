@@ -17,6 +17,167 @@ import math
 import numpy as np
 from copy import deepcopy
 
+
+# ==============================================================================
+# OFFICIAL CAT DERATING REFERENCE TABLES
+# ==============================================================================
+# Source: Caterpillar Fuel Usage Guide & Altitude Deration Factors (Oct 2025)
+# These tables are the single source of truth for site derating calculations.
+# ==============================================================================
+
+# ── Methane Number Deration (1D) ──
+# CAT Methane Number → Power Deration Factor
+# MN < 32: gas not suitable for operation (factor = 0)
+_MN_XS = [32, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 100]
+_MN_YS = [0.70, 0.72, 0.74, 0.77, 0.84, 0.90, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+
+# ── Altitude Deration Factor (2D) ──
+# Rows: Inlet Air Temperature (°C), ascending
+# Cols: Altitude (meters above sea level)
+_ADF_TEMPS = [10, 15, 20, 25, 30, 35, 40, 45, 50]
+_ADF_ALTS = [0, 250, 500, 750, 1000, 1250, 1500, 1750, 2000, 2250, 2500, 2750, 3000]
+_ADF_TABLE = [
+    # 10°C
+    [1, 1, 1, 1, 1, 1, 0.98, 0.97, 0.93, 0.89, 0.86, 0.82, 0.82],
+    # 15°C
+    [1, 1, 1, 1, 1, 1, 0.98, 0.95, 0.92, 0.88, 0.85, 0.82, 0.82],
+    # 20°C
+    [1, 1, 1, 1, 1, 1, 0.97, 0.94, 0.90, 0.87, 0.84, 0.81, 0.81],
+    # 25°C
+    [1, 1, 1, 1, 1, 1, 0.98, 0.95, 0.92, 0.89, 0.86, 0.83, 0.80],
+    # 30°C
+    [1, 1, 1, 1, 1, 0.99, 0.96, 0.93, 0.90, 0.87, 0.84, 0.81, 0.78],
+    # 35°C
+    [1, 1, 1, 1, 1, 0.97, 0.94, 0.91, 0.88, 0.85, 0.82, 0.79, 0.76],
+    # 40°C
+    [1, 1, 1, 1, 1, 0.96, 0.91, 0.86, 0.81, 0.76, 0.71, 0.67, 0.63],
+    # 45°C
+    [1, 1, 1, 0.96, 0.91, 0.85, 0.80, 0.75, 0.71, 0.68, 0.64, 0.61, 0.57],
+    # 50°C
+    [1, 0.95, 0.91, 0.86, 0.81, 0.77, 0.73, 0.70, 0.67, 0.64, 0.61, 0.58, 0.55],
+]
+
+# ── Aftercooler Heat Rejection Factor (2D) ──
+# Same row/col structure as ADF table
+_ACHRF_TABLE = [
+    # 10°C
+    [1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00],
+    # 15°C
+    [1.00, 1.00, 1.00, 1.00, 1.00, 1.03, 1.03, 1.03, 1.03, 1.03, 1.03, 1.03, 1.03],
+    # 20°C
+    [1.00, 1.00, 1.00, 1.02, 1.05, 1.08, 1.08, 1.08, 1.08, 1.08, 1.08, 1.08, 1.08],
+    # 25°C
+    [1.00, 1.01, 1.04, 1.07, 1.10, 1.13, 1.13, 1.13, 1.13, 1.13, 1.13, 1.13, 1.13],
+    # 30°C
+    [1.03, 1.06, 1.09, 1.12, 1.15, 1.18, 1.18, 1.18, 1.18, 1.18, 1.18, 1.18, 1.18],
+    # 35°C
+    [1.08, 1.11, 1.14, 1.17, 1.20, 1.23, 1.23, 1.23, 1.23, 1.23, 1.23, 1.23, 1.23],
+    # 40°C
+    [1.13, 1.15, 1.18, 1.21, 1.25, 1.28, 1.28, 1.28, 1.28, 1.28, 1.28, 1.28, 1.28],
+    # 45°C
+    [1.17, 1.20, 1.23, 1.26, 1.29, 1.33, 1.33, 1.33, 1.33, 1.33, 1.33, 1.33, 1.33],
+    # 50°C
+    [1.22, 1.25, 1.28, 1.31, 1.34, 1.38, 1.38, 1.38, 1.38, 1.38, 1.38, 1.38, 1.38],
+]
+
+
+# ==============================================================================
+# INTERPOLATION UTILITIES
+# ==============================================================================
+
+def _interp_1d(x: float, xs: list, ys: list) -> float:
+    """
+    1D linear interpolation with clamping to table bounds.
+
+    Parameters
+    ----------
+    x : float
+        Input value to look up.
+    xs : list[float]
+        Sorted breakpoints (ascending).
+    ys : list[float]
+        Corresponding output values.
+
+    Returns
+    -------
+    float
+        Interpolated value, clamped to [ys[0], ys[-1]] range.
+    """
+    if x <= xs[0]:
+        return ys[0]
+    if x >= xs[-1]:
+        return ys[-1]
+    for i in range(len(xs) - 1):
+        if xs[i] <= x <= xs[i + 1]:
+            t = (x - xs[i]) / (xs[i + 1] - xs[i])
+            return ys[i] + t * (ys[i + 1] - ys[i])
+    return ys[-1]
+
+
+def _interp_2d(temp: float, alt: float,
+               temps: list, alts: list, table: list) -> float:
+    """
+    Bilinear interpolation on a 2D lookup table with clamping.
+
+    Parameters
+    ----------
+    temp : float
+        Inlet air temperature (°C). Clamped to table range.
+    alt : float
+        Altitude (m above sea level). Clamped to table range.
+    temps : list[float]
+        Row breakpoints (ascending temperature values).
+    alts : list[float]
+        Column breakpoints (ascending altitude values).
+    table : list[list[float]]
+        2D array of values, table[row_idx][col_idx].
+
+    Returns
+    -------
+    float
+        Bilinearly interpolated value.
+    """
+    # Clamp inputs to table bounds
+    temp = max(temps[0], min(temps[-1], temp))
+    alt = max(alts[0], min(alts[-1], alt))
+
+    # Find row indices (temperature)
+    r = 0
+    for i in range(len(temps) - 1):
+        if temps[i] <= temp <= temps[i + 1]:
+            r = i
+            break
+    else:
+        r = len(temps) - 2
+
+    # Find col indices (altitude)
+    c = 0
+    for i in range(len(alts) - 1):
+        if alts[i] <= alt <= alts[i + 1]:
+            c = i
+            break
+    else:
+        c = len(alts) - 2
+
+    # Bilinear interpolation weights
+    t_range = temps[r + 1] - temps[r]
+    a_range = alts[c + 1] - alts[c]
+    t_frac = (temp - temps[r]) / t_range if t_range > 0 else 0.0
+    a_frac = (alt - alts[c]) / a_range if a_range > 0 else 0.0
+
+    # Four corner values
+    v00 = table[r][c]
+    v01 = table[r][c + 1]
+    v10 = table[r + 1][c]
+    v11 = table[r + 1][c + 1]
+
+    # Bilinear formula
+    return (v00 * (1 - t_frac) * (1 - a_frac)
+            + v01 * (1 - t_frac) * a_frac
+            + v10 * t_frac * (1 - a_frac)
+            + v11 * t_frac * a_frac)
+
+
 # ==============================================================================
 # 1. PART-LOAD EFFICIENCY MODEL
 # ==============================================================================
@@ -67,12 +228,16 @@ def transient_stability_check(xd_pu: float, num_units: int,
     """
     Critical voltage sag check for AI workloads.
 
+    Note: Voltage sag results are screening values. For projects with tight
+    margins, validate with a full dynamic simulation (e.g., ETAP).
+
     Returns
     -------
     tuple(bool, float)
         (passes, voltage_sag_percent)
     """
-    equiv_xd = xd_pu / math.sqrt(num_units)
+    # Parallel generators: equivalent impedance = X"d / N (not sqrt(N))
+    equiv_xd = xd_pu / num_units
     voltage_sag = (step_load_pct / 100) * equiv_xd * 100
     return (voltage_sag <= 10), voltage_sag
 
@@ -85,16 +250,32 @@ def frequency_screening(n_running: int, unit_cap_mw: float,
                         p_avg_mw: float, step_mw: float,
                         gen_data: dict,
                         bess_mw: float = 0, bess_enabled: bool = False,
-                        freq_hz: int = 60) -> dict:
+                        freq_hz: int = 60,
+                        rocof_threshold: float = 2.0,
+                        h_bess: float = 0.0) -> dict:
     """
-    Analytical frequency nadir and ROCOF screening.
-    Uses simplified swing equation — NOT a substitute for full ODE simulation.
+    Frequency nadir and ROCOF screening per IEEE 1547-2018.
+
+    ROCOF uses the deviation-based formulation with a 500 ms measurement
+    window (IEEE Std 1547-2018, Section 6.5.2).
+
+    Frequency stability results are screening values per IEEE 1547.
+    These are not a substitute for a full dynamic simulation. For Tier III/IV
+    projects or tight ROCOF margins, validate with ETAP or equivalent.
+
+    Parameters
+    ----------
+    rocof_threshold : float
+        IEEE 1547 ROCOF limit in Hz/s. Default 2.0 for islanded systems.
+        Configurable per project requirements.
+    h_bess : float
+        Virtual inertia constant contributed by BESS (seconds). Default 0.
 
     Returns
     -------
     dict
         nadir_hz, rocof_hz_s, nadir_ok, rocof_ok, nadir_limit,
-        rocof_limit, H_total, P_step_pu, notes
+        rocof_limit, H_total, P_step_pu, rocof_pass_fail, notes
     """
     pf_gen = 0.85
     S_gen_mva = unit_cap_mw / pf_gen
@@ -102,10 +283,14 @@ def frequency_screening(n_running: int, unit_cap_mw: float,
 
     # Inertia
     H_mech = gen_data.get('inertia_h', 1.0)
-    H_bess = 0.0
-    if bess_enabled and bess_mw > 0:
-        bess_ratio = bess_mw / S_total_mva
+    # BESS virtual inertia: use explicit h_bess if provided, else estimate
+    if h_bess > 0:
+        H_bess = h_bess
+    elif bess_enabled and bess_mw > 0:
+        bess_ratio = bess_mw / S_total_mva if S_total_mva > 0 else 0
         H_bess = 4.0 * min(1.0, bess_ratio / 0.2)
+    else:
+        H_bess = 0.0
     H_total = H_mech + H_bess
 
     # Per-unit step
@@ -116,46 +301,64 @@ def frequency_screening(n_running: int, unit_cap_mw: float,
     D = 2.0       # Data center PE load damping
     T_gov = 0.5   # Governor time constant (s)
 
-    # ROCOF
-    rocof_initial = (P_step_pu * freq_hz) / (2 * H_total) if H_total > 0 else 99
+    # IEEE 1547 ROCOF window: 500ms measurement period
+    # Reference: IEEE Std 1547-2018, Section 6.5.2
+    t_window = 0.500  # seconds
 
+    # Frequency deviation from swing equation:
+    # delta_f = (delta_P_loss / (2 * H * S_base)) * f_nominal * t
+    # At t = t_window:
+    delta_f_step = (step_mw / (2 * H_total * S_total_mva)) * freq_hz * t_window if (H_total > 0 and S_total_mva > 0) else freq_hz
+
+    # BESS power injection reduces effective step loss
     if bess_enabled and bess_mw > 0:
         bess_coverage = min(bess_mw / step_mw, 1.0) if step_mw > 0 else 0
-        rocof_initial *= (1 - bess_coverage * 0.7)
+        delta_f_step *= (1 - bess_coverage * 0.7)
 
-    # Nadir
+    # ROCOF = frequency deviation / measurement window
+    rocof_calculated = delta_f_step / t_window
+
+    # Nadir (unchanged analytical approach)
     delta_f_ss = (P_step_pu / (D + 1 / R)) * freq_hz
     overshoot = 1.0 + math.sqrt(T_gov / (4 * max(H_total, 0.5)))
     delta_f_nadir = delta_f_ss * overshoot
 
     if bess_enabled and bess_mw > 0:
-        bess_pu = min(bess_mw / S_total_mva, P_step_pu)
-        delta_f_nadir *= max(0.3, 1 - bess_pu / P_step_pu * 0.6)
+        bess_pu = min(bess_mw / S_total_mva, P_step_pu) if S_total_mva > 0 else 0
+        delta_f_nadir *= max(0.3, 1 - bess_pu / P_step_pu * 0.6) if P_step_pu > 0 else 1.0
 
     nadir_hz = max(freq_hz - delta_f_nadir, freq_hz - 5.0)
 
     nadir_limit = 59.5 if freq_hz == 60 else 49.5
-    rocof_limit = 1.0
+    rocof_limit = rocof_threshold
 
     nadir_ok = nadir_hz >= nadir_limit
-    rocof_ok = rocof_initial <= rocof_limit
+    rocof_ok = rocof_calculated <= rocof_limit
+
+    rocof_pass_fail = "PASS" if rocof_ok else "FAIL"
 
     notes = []
     if not nadir_ok:
         notes.append(f"Nadir {nadir_hz:.2f} Hz < {nadir_limit} Hz — add inertia or BESS")
     if not rocof_ok:
-        notes.append(f"ROCOF {rocof_initial:.2f} Hz/s > {rocof_limit} Hz/s — add virtual inertia")
+        notes.append(f"ROCOF {rocof_calculated:.2f} Hz/s > {rocof_limit} Hz/s — add virtual inertia")
     if nadir_ok and rocof_ok:
-        notes.append("Screening PASS — confirm with detailed ODE simulation")
+        notes.append("Screening PASS — confirm with detailed dynamic simulation")
+    notes.append(
+        "Frequency stability results are screening values per IEEE 1547. "
+        "For Tier III/IV projects or tight ROCOF margins, validate with ETAP or equivalent."
+    )
 
     return {
         'nadir_hz': nadir_hz,
-        'rocof_hz_s': rocof_initial,
+        'rocof_hz_s': rocof_calculated,
         'nadir_ok': nadir_ok,
         'rocof_ok': rocof_ok,
+        'rocof_pass_fail': rocof_pass_fail,
         'nadir_limit': nadir_limit,
         'rocof_limit': rocof_limit,
         'H_total': H_total,
+        'H_bess': H_bess,
         'P_step_pu': P_step_pu,
         'notes': notes,
     }
@@ -346,51 +549,43 @@ def calculate_bess_reliability_credit(
 def calculate_availability_weibull(
     n_total: int,
     n_running: int,
-    mtbf_hours: float,
-    project_years: int,
-    maintenance_interval_hrs: float = 1000,
-    maintenance_duration_hrs: float = 48,
+    unit_availability: float = 0.93,
+    project_years: int = 20,
 ) -> tuple:
     """
-    Reliability model using industry standard availability formula
-    INCLUDING planned maintenance.
+    Fleet availability using binomial N+X model with fixed unit availability.
 
-    Availability = MTBF / (MTBF + MTTR + Planned_Maintenance_Time)
+    Industry standard for prime power generators: ~93% unit availability
+    (4% scheduled maintenance + 3% unplanned failures).
+
+    Parameters
+    ----------
+    n_total : int
+        Total number of units in fleet (running + reserve).
+    n_running : int
+        Minimum number of units required to serve load.
+    unit_availability : float
+        Single-unit availability as decimal (e.g. 0.93).
+        Default 0.93 per industry standard for prime power.
+    project_years : int
+        Project duration in years (used for timeline output).
 
     Returns
     -------
     tuple(float, list[float])
-        (system_availability_year1, availability_over_time)
+        (system_availability, availability_over_time)
+        availability_over_time is constant (no aging degradation).
     """
-    mttr_hours_val = 48  # Average repair time
-
-    annual_maintenance_hrs = (8760 / maintenance_interval_hrs) * maintenance_duration_hrs
-    total_unavailable_hrs = mttr_hours_val + annual_maintenance_hrs
-
-    unit_availability = mtbf_hours / (mtbf_hours + total_unavailable_hrs)
-
     # System availability — binomial N+X
-    sys_avail = 0
+    # P(system up) = sum of P(k or more units available) for k >= n_running
+    sys_avail = 0.0
     for k in range(n_running, n_total + 1):
         comb = math.comb(n_total, k)
         prob = comb * (unit_availability ** k) * ((1 - unit_availability) ** (n_total - k))
         sys_avail += prob
 
-    # Availability over project life with aging
-    availability_over_time = []
-    for year in range(1, project_years + 1):
-        aging_factor = max(0.95, 1.0 - year * 0.001)
-        aged_unit_availability = unit_availability * aging_factor
-
-        sys_avail_year = 0
-        for k in range(n_running, n_total + 1):
-            comb = math.comb(n_total, k)
-            prob = (comb
-                    * (aged_unit_availability ** k)
-                    * ((1 - aged_unit_availability) ** (n_total - k)))
-            sys_avail_year += prob
-
-        availability_over_time.append(sys_avail_year)
+    # Flat availability over project life (no aging model)
+    availability_over_time = [sys_avail] * project_years
 
     return sys_avail, availability_over_time
 
@@ -535,39 +730,75 @@ def noise_setback_distance(combined_db: float, noise_limit_db: float) -> float:
 # ==============================================================================
 
 def calculate_site_derate(site_temp_c: float, site_alt_m: float,
-                          methane_number: int = 80) -> float:
+                          methane_number: int = 80) -> dict:
     """
-    Auto-calculate generator derating factor from site conditions.
+    Calculate generator derating using official Caterpillar lookup tables
+    with bilinear interpolation.
 
-    Factors:
-      - Temperature: >25°C reduces output ~1% per 5.5°C
-      - Altitude: >300m reduces output ~3.5% per 300m
-      - Fuel quality: MN < 80 adds further derating
+    Uses three reference tables from the CAT Fuel Usage Guide:
+      1. Methane Number → Power Deration Factor (1D interpolation)
+      2. Temperature × Altitude → Altitude Deration Factor (bilinear)
+      3. Temperature × Altitude → Aftercooler Heat Rejection Factor (bilinear)
+
+    Combined derate = Methane Deration × Altitude Deration Factor.
+    Derated Power = ISO Rating × Combined Derate Factor.
+    Adjusted Aftercooler Heat Rejection = Nominal × ACHRF.
+
+    Parameters
+    ----------
+    site_temp_c : float
+        Inlet air temperature in °C. Clamped to [10, 50].
+    site_alt_m : float
+        Site altitude in meters above sea level. Clamped to [0, 3000].
+    methane_number : int
+        CAT Methane Number of the fuel gas. MN < 32 → cannot operate.
 
     Returns
     -------
-    float
-        Derate factor (0.0 – 1.0), e.g. 0.92 = 92% of ISO rating.
+    dict
+        derate_factor : float — Combined factor (0.0–1.0)
+        methane_deration : float — From MN table
+        altitude_deration : float — From ADF table
+        achrf : float — Aftercooler Heat Rejection Factor (≥ 1.0)
+        methane_warning : str | None — Warning if MN < 32 or MN < 60
     """
-    # Temperature derate
-    if site_temp_c > 25:
-        temp_derate = 1 - ((site_temp_c - 25) / 5.5) * 0.01
+    # ── Methane Number deration (1D) ──
+    methane_warning = None
+    if methane_number < 32:
+        methane_deration = 0.0
+        methane_warning = (
+            "CAT Methane Number < 32: gas is not suitable for operation. "
+            "Engine cannot run on this fuel quality."
+        )
+    elif methane_number < 60:
+        methane_deration = _interp_1d(float(methane_number), _MN_XS, _MN_YS)
+        methane_warning = (
+            f"CAT Methane Number {methane_number} is below 60: "
+            "significant power derating applied. Consider fuel conditioning."
+        )
     else:
-        temp_derate = 1.0
+        methane_deration = _interp_1d(float(methane_number), _MN_XS, _MN_YS)
 
-    # Altitude derate
-    if site_alt_m > 300:
-        alt_derate = 1 - ((site_alt_m - 300) / 300) * 0.035
-    else:
-        alt_derate = 1.0
+    # ── Altitude Deration Factor (bilinear) ──
+    altitude_deration = _interp_2d(
+        site_temp_c, site_alt_m, _ADF_TEMPS, _ADF_ALTS, _ADF_TABLE
+    )
 
-    # Fuel quality derate
-    if methane_number < 80:
-        fuel_derate = 1 - ((80 - methane_number) / 100) * 0.15
-    else:
-        fuel_derate = 1.0
+    # ── Aftercooler Heat Rejection Factor (bilinear) ──
+    achrf = _interp_2d(
+        site_temp_c, site_alt_m, _ADF_TEMPS, _ADF_ALTS, _ACHRF_TABLE
+    )
 
-    return max(0.50, temp_derate * alt_derate * fuel_derate)
+    # ── Combined derate factor ──
+    derate_factor = methane_deration * altitude_deration
+
+    return {
+        "derate_factor": round(derate_factor, 6),
+        "methane_deration": round(methane_deration, 6),
+        "altitude_deration": round(altitude_deration, 6),
+        "achrf": round(achrf, 6),
+        "methane_warning": methane_warning,
+    }
 
 
 # ==============================================================================
@@ -690,17 +921,29 @@ def calculate_lcoe(
     wacc: float,
     project_years: int,
     carbon_cost_annual: float = 0,
+    pipeline_cost_usd: float = 0,
+    permitting_cost_usd: float = 0,
+    commissioning_cost_usd: float = 0,
 ) -> dict:
     """
     Levelized Cost of Energy and NPV calculation.
 
+    Pipeline, permits, and commissioning costs are optional. If left at zero,
+    they are assumed included in the BOP/installation multiplier.
+
     Returns
     -------
     dict
-        lcoe, npv, simple_payback_years, annual_total_cost
+        lcoe, npv, simple_payback_years, annual_total_cost, infrastructure_capex
     """
     if annual_energy_mwh <= 0 or project_years <= 0:
-        return {'lcoe': 0, 'npv': 0, 'simple_payback_years': 0, 'annual_total_cost': 0}
+        return {'lcoe': 0, 'npv': 0, 'simple_payback_years': 0, 'annual_total_cost': 0,
+                'annualized_capex': 0, 'crf': 0, 'infrastructure_capex': 0,
+                'pipeline_cost_usd': 0, 'permitting_cost_usd': 0, 'commissioning_cost_usd': 0}
+
+    # Infrastructure line items (amortized over project life alongside other CAPEX)
+    infrastructure_capex = pipeline_cost_usd + permitting_cost_usd + commissioning_cost_usd
+    total_capex_with_infra = total_capex + infrastructure_capex
 
     annual_total_cost = annual_om + annual_fuel_cost + carbon_cost_annual
 
@@ -710,18 +953,17 @@ def calculate_lcoe(
     else:
         crf = 1 / project_years
 
-    annualized_capex = total_capex * crf
+    annualized_capex = total_capex_with_infra * crf
 
     lcoe = (annualized_capex + annual_total_cost) / annual_energy_mwh
 
-    # NPV of revenue (at LCOE price)
-    npv_costs = total_capex
+    # NPV of costs
+    npv_costs = total_capex_with_infra
     for yr in range(1, project_years + 1):
         npv_costs += annual_total_cost / ((1 + wacc) ** yr)
 
     # Simple payback
-    annual_savings = annual_energy_mwh * lcoe - annual_total_cost  # placeholder
-    simple_payback = total_capex / annual_total_cost if annual_total_cost > 0 else project_years
+    simple_payback = total_capex_with_infra / annual_total_cost if annual_total_cost > 0 else project_years
 
     return {
         'lcoe': lcoe,
@@ -730,4 +972,8 @@ def calculate_lcoe(
         'annual_total_cost': annual_total_cost,
         'annualized_capex': annualized_capex,
         'crf': crf,
+        'infrastructure_capex': infrastructure_capex,
+        'pipeline_cost_usd': pipeline_cost_usd,
+        'permitting_cost_usd': permitting_cost_usd,
+        'commissioning_cost_usd': commissioning_cost_usd,
     }

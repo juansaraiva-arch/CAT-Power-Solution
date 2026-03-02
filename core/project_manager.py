@@ -93,9 +93,6 @@ INPUT_DEFAULTS = {
     "gen_iso_mw_override": None,
     "gen_voltage_kv": 13.8,
     "gen_aux_pct": 2.0,
-    "gen_mtbf_override": None,
-    "gen_maint_interval_override": None,
-    "gen_maint_duration_override": None,
     "gen_eff_override": None,
     "gen_step_load_override": None,
     "gen_ramp_rate_override": None,
@@ -114,6 +111,11 @@ INPUT_DEFAULTS = {
     "bess_om_kw_yr": 5.0,
     "bess_life_batt": 10,
     "bess_life_inv": 15,
+
+    # Infrastructure costs (optional — if 0, assumed in BOP/install multiplier)
+    "pipeline_cost_usd": 0,
+    "permitting_cost_usd": 0,
+    "commissioning_cost_usd": 0,
 
     # Fuel Infrastructure
     "fuel_infra_mult": 1.0,

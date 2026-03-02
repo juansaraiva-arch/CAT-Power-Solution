@@ -19,9 +19,13 @@ class GeneratorSpec(BaseModel):
     ramp_rate_mw_s: float
     emissions_nox: float
     emissions_co: float
-    mtbf_hours: float
-    maintenance_interval_hrs: float
-    maintenance_duration_hrs: float
+    unit_availability: float = Field(
+        0.93,
+        description=(
+            "Unit availability (maintenance + failures). "
+            "Industry standard for prime power generators: ~93%."
+        ),
+    )
     default_for: float
     default_maint: float
     est_cost_kw: float

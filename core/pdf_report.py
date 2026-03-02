@@ -242,16 +242,35 @@ def generate_comprehensive_pdf(data: dict) -> bytes:
         ['Type', gen_data.get('type', 'N/A')],
         ['ISO Rating', f"{gen_data.get('iso_rating_mw', 0):.2f} MW"],
         ['Site Rating (Derated)', f"{g('unit_site_cap', 0):.2f} MW"],
-        ['Derate Factor', f"{g('derate_factor', 1.0) * 100:.1f}%"],
+        ['Combined Derate Factor', f"{g('derate_factor', 1.0) * 100:.1f}%"],
+        ['  Methane Deration', f"{g('methane_deration', 1.0) * 100:.1f}%"],
+        ['  Altitude Deration (ADF)', f"{g('altitude_deration', 1.0) * 100:.1f}%"],
+        ['Aftercooler HRF (ACHRF)', f"{g('achrf', 1.0):.2f}"],
         ['Electrical Efficiency', f"{gen_data.get('electrical_efficiency', 0) * 100:.1f}%"],
         ['Heat Rate (LHV)', f"{gen_data.get('heat_rate_lhv', 0):,.0f} BTU/kWh"],
         ['Step Load Capability', f"{gen_data.get('step_load_pct', 0):.0f}%"],
         ['Ramp Rate', f"{gen_data.get('ramp_rate_mw_s', 0):.1f} MW/s"],
-        ['MTBF', f"{gen_data.get('mtbf_hours', 0):,} hours"],
+        ['Unit Availability', f"{gen_data.get('unit_availability', 0.93) * 100:.1f}%"],
     ]
     t = Table(gen_table_data, colWidths=[3 * inch, 3.3 * inch])
     t.setStyle(ts)
     story.append(t)
+
+    # Methane warning if applicable
+    mn_warning = g('methane_warning', None)
+    if mn_warning:
+        story.append(Spacer(1, 0.1 * inch))
+        story.append(Paragraph(
+            f"<b>WARNING:</b> {mn_warning}",
+            styles['Disclaimer']
+        ))
+
+    story.append(Spacer(1, 0.15 * inch))
+    story.append(Paragraph(
+        "<i>Derating factors from official Caterpillar Fuel Usage Guide and "
+        "Altitude Deration Tables. Values calculated using bilinear interpolation.</i>",
+        styles['Disclaimer']
+    ))
     story.append(Spacer(1, 0.25 * inch))
 
     # =====================================================================
@@ -367,6 +386,11 @@ def generate_comprehensive_pdf(data: dict) -> bytes:
     t = Table(elec_data, colWidths=[3 * inch, 3.3 * inch])
     t.setStyle(ts)
     story.append(t)
+    story.append(Paragraph(
+        "<i>Voltage sag results are screening values. For projects with tight margins, "
+        "validate with a full dynamic simulation (e.g., ETAP).</i>",
+        styles['CustomBody'],
+    ))
     story.append(Spacer(1, 0.25 * inch))
 
     # =====================================================================
@@ -447,6 +471,15 @@ def generate_comprehensive_pdf(data: dict) -> bytes:
     capex_rows = [['Item', 'Cost (M USD)']]
     for item_name, cost_val in capex_items:
         capex_rows.append([item_name, f"${cost_val:.2f}M"])
+
+    # Infrastructure line items (always shown, even if zero)
+    pipeline_cost = g('pipeline_cost_usd', 0)
+    permitting_cost = g('permitting_cost_usd', 0)
+    commissioning_cost = g('commissioning_cost_usd', 0)
+    capex_rows.append(['Pipeline Infrastructure', f"${pipeline_cost / 1e6:.2f}M"])
+    capex_rows.append(['Environmental Permits', f"${permitting_cost / 1e6:.2f}M"])
+    capex_rows.append(['Commissioning', f"${commissioning_cost / 1e6:.2f}M"])
+
     capex_rows.append(['TOTAL', f"${g('initial_capex_sum', 0):.2f}M"])
 
     t = Table(capex_rows, colWidths=[4 * inch, 2.3 * inch])
@@ -462,6 +495,18 @@ def generate_comprehensive_pdf(data: dict) -> bytes:
         ('ROWBACKGROUNDS', (0, 1), (-1, -2), [white, HexColor('#f8f8f8')]),
     ]))
     story.append(t)
+    story.append(Paragraph(
+        "<i>Pipeline, permits, and commissioning costs are optional. If left at zero, "
+        "they are assumed included in the BOP/installation multiplier. For greenfield "
+        "AI data center projects, these can represent 15-25% of total CAPEX.</i>",
+        styles['CustomBody'],
+    ))
+    story.append(Paragraph(
+        "<i>LCOE is best used for internal sizing and preliminary client discussions. "
+        "Infrastructure costs (pipeline, permits, commissioning) should be confirmed "
+        "before presenting to clients as a formal figure.</i>",
+        styles['CustomBody'],
+    ))
     story.append(Spacer(1, 0.4 * inch))
 
     # =====================================================================

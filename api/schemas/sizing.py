@@ -52,6 +52,20 @@ class SizingInput(BaseModel):
     carbon_price_per_ton: float = Field(0.0, ge=0)
     enable_depreciation: bool = True
 
+    # ── Infrastructure (optional — if 0, assumed in BOP/install multiplier) ──
+    pipeline_cost_usd: float = Field(
+        0.0, ge=0,
+        description="Pipeline infrastructure cost ($). Optional.",
+    )
+    permitting_cost_usd: float = Field(
+        0.0, ge=0,
+        description="Environmental permits cost ($). Optional.",
+    )
+    commissioning_cost_usd: float = Field(
+        0.0, ge=0,
+        description="Commissioning cost ($). Optional.",
+    )
+
     # ── BESS Economics ──
     bess_cost_kw: float = Field(250.0, ge=0)
     bess_cost_kwh: float = Field(400.0, ge=0)
@@ -129,6 +143,10 @@ class SizingResult(BaseModel):
     unit_iso_cap: float
     unit_site_cap: float
     derate_factor: float
+    methane_deration: float = 1.0
+    altitude_deration: float = 1.0
+    achrf: float = 1.0
+    methane_warning: Optional[str] = None
 
     # ── Fleet ──
     n_running: int
@@ -179,6 +197,9 @@ class SizingResult(BaseModel):
     annual_fuel_cost: float
     annual_om_cost: float
     simple_payback_years: float
+    pipeline_cost_usd: float = 0.0
+    permitting_cost_usd: float = 0.0
+    commissioning_cost_usd: float = 0.0
 
 
 class QuickSizingInput(BaseModel):

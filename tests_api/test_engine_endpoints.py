@@ -106,7 +106,7 @@ class TestAvailability:
 
     def test_basic_availability(self, client):
         resp = client.post("/api/v1/engine/availability", json={
-            "n_total": 52, "n_running": 50, "mtbf_hours": 50000, "project_years": 20,
+            "n_total": 52, "n_running": 50, "unit_availability": 0.93, "project_years": 20,
         })
         assert resp.status_code == 200
         data = resp.json()
@@ -165,17 +165,35 @@ class TestSiteDerate:
 
     def test_iso_conditions(self, client):
         resp = client.post("/api/v1/engine/site-derate", json={
-            "site_temp_c": 25, "site_alt_m": 300,
+            "site_temp_c": 25, "site_alt_m": 0,
         })
         assert resp.status_code == 200
-        assert resp.json()["derate_factor"] == 1.0
+        data = resp.json()
+        assert data["derate_factor"] == 1.0
+        assert data["methane_deration"] == 1.0
+        assert data["altitude_deration"] == 1.0
+        assert data["achrf"] == 1.0
+        assert data["methane_warning"] is None
 
     def test_hot_site(self, client):
         resp = client.post("/api/v1/engine/site-derate", json={
-            "site_temp_c": 45, "site_alt_m": 300,
+            "site_temp_c": 45, "site_alt_m": 1000,
         })
         assert resp.status_code == 200
-        assert resp.json()["derate_factor"] < 1.0
+        data = resp.json()
+        assert data["derate_factor"] == 0.91
+        assert data["altitude_deration"] == 0.91
+        assert data["achrf"] == 1.29
+
+    def test_methane_below_32(self, client):
+        resp = client.post("/api/v1/engine/site-derate", json={
+            "site_temp_c": 25, "site_alt_m": 0, "methane_number": 30,
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["derate_factor"] == 0.0
+        assert data["methane_deration"] == 0.0
+        assert data["methane_warning"] is not None
 
 
 class TestEmissions:

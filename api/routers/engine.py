@@ -81,11 +81,12 @@ def api_transient_stability(req: TransientStabilityRequest):
 
 @router.post("/frequency-screening", response_model=FrequencyScreeningResponse)
 def api_frequency_screening(req: FrequencyScreeningRequest):
-    """Screen frequency nadir and ROCOF for step load events (Swing Equation)."""
+    """Screen frequency nadir and ROCOF per IEEE 1547-2018 (500ms window)."""
     gen_data = resolve_generator_or_404(req.generator)
     result = frequency_screening(
         req.n_running, req.unit_cap_mw, req.p_avg_mw, req.step_mw,
         gen_data, req.bess_mw, req.bess_enabled, req.freq_hz,
+        req.rocof_threshold, req.h_bess,
     )
     return FrequencyScreeningResponse(**result)
 
@@ -143,11 +144,10 @@ def api_bess_reliability_credit(req: BessReliabilityCreditRequest):
 
 @router.post("/availability", response_model=AvailabilityResponse)
 def api_availability(req: AvailabilityRequest):
-    """Calculate system availability using Weibull/Binomial N+X model."""
+    """Calculate system availability using Binomial N+X model with fixed unit availability."""
     avail_y1, timeline = calculate_availability_weibull(
-        req.n_total, req.n_running, req.mtbf_hours,
-        req.project_years, req.maintenance_interval_hrs,
-        req.maintenance_duration_hrs,
+        req.n_total, req.n_running, req.unit_availability,
+        req.project_years,
     )
     return AvailabilityResponse(
         system_availability=avail_y1,
@@ -227,9 +227,9 @@ def api_noise_setback(req: NoiseSetbackRequest):
 
 @router.post("/site-derate", response_model=SiteDerateResponse)
 def api_site_derate(req: SiteDerateRequest):
-    """Calculate site derating factor for temperature, altitude, and fuel quality."""
-    factor = calculate_site_derate(req.site_temp_c, req.site_alt_m, req.methane_number)
-    return SiteDerateResponse(derate_factor=factor)
+    """Calculate site derating using official CAT lookup tables with bilinear interpolation."""
+    result = calculate_site_derate(req.site_temp_c, req.site_alt_m, req.methane_number)
+    return SiteDerateResponse(**result)
 
 
 # ==============================================================================
@@ -275,5 +275,6 @@ def api_lcoe(req: LcoeRequest):
         req.total_capex, req.annual_om, req.annual_fuel_cost,
         req.annual_energy_mwh, req.wacc, req.project_years,
         req.carbon_cost_annual,
+        req.pipeline_cost_usd, req.permitting_cost_usd, req.commissioning_cost_usd,
     )
     return LcoeResponse(**result)

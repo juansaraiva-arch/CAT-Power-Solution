@@ -54,6 +54,14 @@ class FrequencyScreeningRequest(BaseModel):
     bess_mw: float = Field(0.0, ge=0, description="BESS power in MW")
     bess_enabled: bool = False
     freq_hz: int = Field(60, description="Grid frequency (50 or 60 Hz)")
+    rocof_threshold: float = Field(
+        2.0, gt=0,
+        description="IEEE 1547 ROCOF threshold in Hz/s. Default 2.0 for islanded systems.",
+    )
+    h_bess: float = Field(
+        0.0, ge=0,
+        description="Virtual inertia constant from BESS (seconds). Default 0.",
+    )
 
 
 class FrequencyScreeningResponse(BaseModel):
@@ -61,9 +69,11 @@ class FrequencyScreeningResponse(BaseModel):
     rocof_hz_s: float
     nadir_ok: bool
     rocof_ok: bool
+    rocof_pass_fail: str
     nadir_limit: float
     rocof_limit: float
     H_total: float
+    H_bess: float
     P_step_pu: float
     notes: list[str]
 
@@ -150,10 +160,16 @@ class BessReliabilityCreditResponse(BaseModel):
 class AvailabilityRequest(BaseModel):
     n_total: int = Field(..., ge=1, description="Total number of units")
     n_running: int = Field(..., ge=1, description="Number of running units")
-    mtbf_hours: float = Field(..., gt=0, description="Mean time between failures")
-    project_years: int = Field(..., ge=1, le=40, description="Project duration in years")
-    maintenance_interval_hrs: float = Field(1000.0, gt=0)
-    maintenance_duration_hrs: float = Field(48.0, gt=0)
+    unit_availability: float = Field(
+        0.93, ge=0.70, le=0.99,
+        description=(
+            "Unit availability (maintenance + failures). "
+            "Industry standard for prime power generators: ~93% "
+            "(4% scheduled maintenance + 3% unplanned failures). "
+            "Adjust only if manufacturer data or site history justifies a different value."
+        ),
+    )
+    project_years: int = Field(20, ge=1, le=40, description="Project duration in years")
 
 
 class AvailabilityResponse(BaseModel):
@@ -236,13 +252,17 @@ class NoiseSetbackResponse(BaseModel):
 # ==============================================================================
 
 class SiteDerateRequest(BaseModel):
-    site_temp_c: float = Field(..., description="Site temperature in Celsius")
-    site_alt_m: float = Field(..., ge=0, description="Site altitude in meters")
-    methane_number: int = Field(80, ge=0, le=100, description="Fuel methane number")
+    site_temp_c: float = Field(..., description="Inlet air temperature in Celsius (clamped 10–50)")
+    site_alt_m: float = Field(..., ge=0, description="Site altitude in meters (clamped 0–3000)")
+    methane_number: int = Field(80, ge=0, le=100, description="CAT Methane Number of fuel gas")
 
 
 class SiteDerateResponse(BaseModel):
-    derate_factor: float
+    derate_factor: float = Field(..., description="Combined derate = methane × altitude")
+    methane_deration: float = Field(..., description="Methane Number deration factor")
+    altitude_deration: float = Field(..., description="Altitude Deration Factor from CAT table")
+    achrf: float = Field(..., description="Aftercooler Heat Rejection Factor")
+    methane_warning: Optional[str] = Field(None, description="Warning if MN < 32 or < 60")
 
 
 # ==============================================================================
@@ -306,6 +326,18 @@ class LcoeRequest(BaseModel):
     wacc: float = Field(..., gt=0, lt=1, description="Weighted average cost of capital")
     project_years: int = Field(..., ge=1, description="Project duration in years")
     carbon_cost_annual: float = Field(0.0, ge=0, description="Annual carbon cost ($)")
+    pipeline_cost_usd: float = Field(
+        0.0, ge=0,
+        description="Pipeline infrastructure cost ($). Optional — if 0, assumed in BOP/installation multiplier.",
+    )
+    permitting_cost_usd: float = Field(
+        0.0, ge=0,
+        description="Environmental permits cost ($). Optional — if 0, assumed in BOP/installation multiplier.",
+    )
+    commissioning_cost_usd: float = Field(
+        0.0, ge=0,
+        description="Commissioning cost ($). Optional — if 0, assumed in BOP/installation multiplier.",
+    )
 
 
 class LcoeResponse(BaseModel):
@@ -315,3 +347,7 @@ class LcoeResponse(BaseModel):
     annual_total_cost: float
     annualized_capex: float
     crf: float
+    infrastructure_capex: float
+    pipeline_cost_usd: float
+    permitting_cost_usd: float
+    commissioning_cost_usd: float

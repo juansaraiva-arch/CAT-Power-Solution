@@ -10,7 +10,7 @@ class TestGenerators:
         resp = client.get("/api/v1/generators")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["count"] == 8
+        assert data["count"] == 10
         assert "G3516H" in data["generators"]
 
     def test_list_generator_names(self, client):
@@ -19,7 +19,7 @@ class TestGenerators:
         names = resp.json()
         assert isinstance(names, list)
         assert "G3516H" in names
-        assert len(names) == 8
+        assert len(names) == 10
 
     def test_get_specific_generator(self, client):
         resp = client.get("/api/v1/generators/G3516H")
@@ -46,7 +46,7 @@ class TestGenerators:
         )
         assert resp.status_code == 200
         data = resp.json()
-        assert data["count"] == 1
+        assert data["count"] == 3  # Titan 130, 250, 350
         assert "Titan 130" in data["generators"]
 
     def test_filter_by_query_param(self, client):

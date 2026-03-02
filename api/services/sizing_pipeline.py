@@ -76,7 +76,7 @@ def _find_availability_config(
     name: str,
     n_running: int,
     unit_site_cap: float,
-    mtbf_hours: float,
+    unit_availability: float,
     project_years: int,
     gen_data: dict,
     avail_decimal: float,
@@ -97,9 +97,7 @@ def _find_availability_config(
     for n_res in range(0, 101):
         n_tot = n_running + n_res
         avg_avail, _ = calculate_availability_weibull(
-            n_tot, n_running, mtbf_hours, project_years,
-            gen_data["maintenance_interval_hrs"],
-            gen_data["maintenance_duration_hrs"],
+            n_tot, n_running, unit_availability, project_years,
         )
         effective_avail = min(1.0, avg_avail + bess_reliability_boost)
 
@@ -130,9 +128,7 @@ def _find_availability_config(
         n_res_fb = 100
         n_tot_fb = n_running + n_res_fb
         fb_avail, _ = calculate_availability_weibull(
-            n_tot_fb, n_running, mtbf_hours, project_years,
-            gen_data["maintenance_interval_hrs"],
-            gen_data["maintenance_duration_hrs"],
+            n_tot_fb, n_running, unit_availability, project_years,
         )
         eff = get_part_load_efficiency(
             gen_data["electrical_efficiency"], load_pct, gen_data["type"]
@@ -193,13 +189,22 @@ def run_full_sizing(inputs: SizingInput) -> dict:
     p_avg_at_gen = p_total_avg / dist_loss_factor
     p_peak_at_gen = p_total_peak / dist_loss_factor
 
-    # ── Step 3: Site derating ──
+    # ── Step 3: Site derating (CAT official tables with bilinear interpolation) ──
     if inputs.derate_mode == "Auto-Calculate":
-        derate_factor = calculate_site_derate(
+        derate_result = calculate_site_derate(
             inputs.site_temp_c, inputs.site_alt_m, inputs.methane_number
         )
+        derate_factor = derate_result["derate_factor"]
+        methane_deration = derate_result["methane_deration"]
+        altitude_deration = derate_result["altitude_deration"]
+        achrf = derate_result["achrf"]
+        methane_warning = derate_result["methane_warning"]
     else:
         derate_factor = inputs.derate_factor_manual
+        methane_deration = 1.0
+        altitude_deration = derate_factor  # Manual mode: attribute all derating to altitude
+        achrf = 1.0
+        methane_warning = None
 
     unit_iso_cap = gen_data["iso_rating_mw"]
     unit_site_cap = unit_iso_cap * derate_factor
@@ -241,7 +246,7 @@ def run_full_sizing(inputs: SizingInput) -> dict:
 
     # ── Step 7: Availability target ──
     avail_decimal = inputs.avail_req / 100
-    mtbf_hours = gen_data["mtbf_hours"]
+    unit_availability = gen_data.get("unit_availability", 0.93)
     mttr_hours = 48
 
     # ── Step 8: Reliability configurations A/B/C ──
@@ -263,7 +268,7 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         name="A: No BESS",
         n_running=n_running_no_bess,
         unit_site_cap=unit_site_cap,
-        mtbf_hours=mtbf_hours,
+        unit_availability=unit_availability,
         project_years=inputs.project_years,
         gen_data=gen_data,
         avail_decimal=avail_decimal,
@@ -290,7 +295,7 @@ def run_full_sizing(inputs: SizingInput) -> dict:
             name="B: BESS Transient",
             n_running=n_running_with_bess,
             unit_site_cap=unit_site_cap,
-            mtbf_hours=mtbf_hours,
+            unit_availability=unit_availability,
             project_years=inputs.project_years,
             gen_data=gen_data,
             avail_decimal=avail_decimal,
@@ -351,9 +356,7 @@ def run_full_sizing(inputs: SizingInput) -> dict:
                 n_tot = n_run + n_res_try
                 try:
                     avg_avail, _ = calculate_availability_weibull(
-                        n_tot, n_run, mtbf_hours, inputs.project_years,
-                        gen_data["maintenance_interval_hrs"],
-                        gen_data["maintenance_duration_hrs"],
+                        n_tot, n_run, unit_availability, inputs.project_years,
                     )
                     avg_avail_with_bess = min(1.0, avg_avail + bess_reliability_boost)
 
@@ -390,9 +393,7 @@ def run_full_sizing(inputs: SizingInput) -> dict:
             n_run_fb = n_running_min_c
             n_res_fb = 100
             fb_avail, _ = calculate_availability_weibull(
-                n_run_fb + n_res_fb, n_run_fb, mtbf_hours, inputs.project_years,
-                gen_data["maintenance_interval_hrs"],
-                gen_data["maintenance_duration_hrs"],
+                n_run_fb + n_res_fb, n_run_fb, unit_availability, inputs.project_years,
             )
             fb_load = (p_avg_at_gen / (n_run_fb * unit_site_cap)) * 100
             config_c = {
@@ -455,27 +456,14 @@ def run_full_sizing(inputs: SizingInput) -> dict:
     else:
         bess_breakdown = {}
 
-    # ── Step 11: Fleet efficiency with site corrections ──
-    # Fuel quality correction
-    if inputs.methane_number < 70:
-        eff_fuel_factor = 0.94
-    elif inputs.methane_number < 80:
-        eff_fuel_factor = 0.98
-    else:
-        eff_fuel_factor = 1.0
-
-    # Extreme altitude correction
-    if inputs.site_alt_m > 2000:
-        eff_alt_factor = 1.0 - ((inputs.site_alt_m - 2000) / 1000) * 0.005
-    else:
-        eff_alt_factor = 1.0
-
-    site_efficiency_correction = eff_fuel_factor * eff_alt_factor
-
+    # ── Step 11: Fleet efficiency ──
+    # Note: Site derating (temp/altitude/fuel) is already applied at the power level
+    # via the CAT ADF table in Step 3. No additional efficiency corrections are applied
+    # here to avoid double-counting.
     base_fleet_eff = get_part_load_efficiency(
         gen_data["electrical_efficiency"], load_per_unit_pct, gen_data["type"]
     )
-    fleet_efficiency = base_fleet_eff * site_efficiency_correction
+    fleet_efficiency = base_fleet_eff
 
     # ── Step 12: Voltage recommendation ──
     if inputs.volt_mode == "Auto-Recommend":
@@ -497,9 +485,7 @@ def run_full_sizing(inputs: SizingInput) -> dict:
 
     # ── Step 14: Availability curve ──
     system_availability, availability_curve = calculate_availability_weibull(
-        n_total, n_running, mtbf_hours, inputs.project_years,
-        gen_data["maintenance_interval_hrs"],
-        gen_data["maintenance_duration_hrs"],
+        n_total, n_running, unit_availability, inputs.project_years,
     )
 
     # ── Step 15: Emissions ──
@@ -562,12 +548,19 @@ def run_full_sizing(inputs: SizingInput) -> dict:
     idx_install = gen_install_cost / gen_unit_cost if gen_unit_cost > 0 else 0.5
     idx_chp = 0.20 if inputs.include_chp else 0
 
+    # Infrastructure line items (pipeline, permits, commissioning)
+    pipeline_cost = getattr(inputs, 'pipeline_cost_usd', 0) or 0
+    permitting_cost = getattr(inputs, 'permitting_cost_usd', 0) or 0
+    commissioning_cost = getattr(inputs, 'commissioning_cost_usd', 0) or 0
+    infra_capex_m = (pipeline_cost + permitting_cost + commissioning_cost) / 1e6
+
     # Total CAPEX
     total_capex_m = (
         gen_cost_total_m
         + gen_cost_total_m * idx_install
         + gen_cost_total_m * idx_chp
         + bess_capex_m
+        + infra_capex_m
     )
 
     # Effective hours and energy
@@ -677,6 +670,10 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         unit_iso_cap=unit_iso_cap,
         unit_site_cap=unit_site_cap,
         derate_factor=derate_factor,
+        methane_deration=methane_deration,
+        altitude_deration=altitude_deration,
+        achrf=achrf,
+        methane_warning=methane_warning,
         # Fleet
         n_running=n_running,
         n_reserve=n_reserve,
@@ -718,6 +715,9 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         annual_fuel_cost=fuel_cost_year,
         annual_om_cost=om_cost_year,
         simple_payback_years=simple_payback,
+        pipeline_cost_usd=pipeline_cost,
+        permitting_cost_usd=permitting_cost,
+        commissioning_cost_usd=commissioning_cost,
     )
 
 

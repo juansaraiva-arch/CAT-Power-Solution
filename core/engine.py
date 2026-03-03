@@ -1238,16 +1238,20 @@ def check_emissions_compliance(
     co2_kg_mwh: float,
     unit_cap_mw: float,
     n_running: int,
+    nox_tpy: float = 0.0,
+    co_tpy: float = 0.0,
+    co2_tpy: float = 0.0,
 ) -> list:
     """
-    Check emissions against 5 regulatory frameworks.
+    Check emissions against worldwide regulatory frameworks for NOx, CO, and CO₂.
 
     Frameworks:
     - US EPA NSPS (40 CFR Part 60 Subpart JJJJ)
     - US Title V (major source threshold)
-    - EU MCP Directive (Medium Combustion Plant)
-    - EU IED (Industrial Emissions Directive, >50 MW)
+    - EU MCP Directive (Medium Combustion Plant, 2015/2193)
+    - EU IED / BAT-AEL (Industrial Emissions Directive, >50 MWth)
     - CARB (California Air Resources Board)
+    - IFC / World Bank (Environmental, Health, and Safety Guidelines)
 
     Returns
     -------
@@ -1255,16 +1259,37 @@ def check_emissions_compliance(
         Each dict has: regulation, parameter, limit, actual, unit,
         compliant (bool), notes
     """
-    total_cap_mw = unit_cap_mw * n_running
+    # Cast to native Python types to avoid numpy.bool_ serialisation errors
+    nox_g_kwh = float(nox_g_kwh)
+    co_g_kwh = float(co_g_kwh)
+    co2_kg_mwh = float(co2_kg_mwh)
+    nox_tpy = float(nox_tpy)
+    co_tpy = float(co_tpy)
+    co2_tpy = float(co2_tpy)
+
+    total_cap_mw = float(unit_cap_mw * n_running)
     results = []
 
-    # Convert g/kWh → mg/Nm³ (approx: multiply by ~4.5 for lean-burn gas)
+    # ── Unit conversions ──
+    # g/kWh → g/bhp-hr (1 kWh = 1.341 bhp-hr → multiply by 0.7457)
+    nox_g_bhphr = nox_g_kwh * 0.7457
+    co_g_bhphr = co_g_kwh * 0.7457
+
+    # g/kWh → mg/Nm³ @15% O2 for lean-burn gas engines
+    # Conversion factor ≈ 4.5 (depends on engine efficiency & excess air)
     nox_mg_nm3 = nox_g_kwh * 4500
     co_mg_nm3 = co_g_kwh * 4500
 
-    # 1. US EPA NSPS Subpart JJJJ (Stationary CI & SI engines)
-    # NOx limit: 1.0 g/bhp-hr for lean-burn > 500 hp
-    nox_g_bhphr = nox_g_kwh * 0.7457  # kWh → bhp-hr conversion
+    # mg/Nm³ → ppmvd @15% O2  (MW_NOx=46: 1 ppm ≈ 2.05 mg/Nm³)
+    nox_ppm = nox_mg_nm3 / 2.05
+    # mg/Nm³ → ppmvd @15% O2  (MW_CO=28: 1 ppm ≈ 1.25 mg/Nm³)
+    co_ppm = co_mg_nm3 / 1.25
+
+    # ════════════════════════════════════════════════════════════════
+    # NOx REGULATIONS
+    # ════════════════════════════════════════════════════════════════
+
+    # 1. US EPA NSPS Subpart JJJJ — NOx ≤ 1.0 g/bhp-hr (lean-burn SI > 500 hp)
     results.append({
         'regulation': 'US EPA NSPS (JJJJ)',
         'parameter': 'NOx',
@@ -1275,20 +1300,18 @@ def check_emissions_compliance(
         'notes': 'Lean-burn SI engines > 500 hp',
     })
 
-    # 2. US Title V (Major source: >100 tpy of any criteria pollutant)
-    annual_nox_tpy = nox_g_kwh * total_cap_mw * 8760 * 0.9 / 907185
+    # 2. US Title V — NOx ≤ 100 tons/yr (major source threshold)
     results.append({
         'regulation': 'US Title V',
         'parameter': 'NOx (annual)',
         'limit': 100.0,
-        'actual': round(annual_nox_tpy, 1),
+        'actual': round(nox_tpy, 1),
         'unit': 'tons/year',
-        'compliant': annual_nox_tpy <= 100.0,
+        'compliant': nox_tpy <= 100.0,
         'notes': 'Major source threshold; may require Title V permit',
     })
 
-    # 3. EU MCP Directive (1-50 MWth)
-    # NOx limit: 190 mg/Nm³ @ 15% O2 for gas engines
+    # 3. EU MCP Directive (1–50 MWth) — NOx ≤ 190 mg/Nm³ @15% O2
     results.append({
         'regulation': 'EU MCP Directive',
         'parameter': 'NOx',
@@ -1296,35 +1319,23 @@ def check_emissions_compliance(
         'actual': round(nox_mg_nm3, 1),
         'unit': 'mg/Nm³ @15% O2',
         'compliant': nox_mg_nm3 <= 190.0,
-        'notes': 'Applies to 1-50 MWth plants',
+        'notes': 'New gas engines 1–50 MWth (Directive 2015/2193)',
     })
 
-    # 4. EU IED (>50 MWth)
-    # NOx limit: 100 mg/Nm³ for >50 MW gas engines (BAT-AEL)
-    if total_cap_mw > 50:
-        results.append({
-            'regulation': 'EU IED (BAT)',
-            'parameter': 'NOx',
-            'limit': 100.0,
-            'actual': round(nox_mg_nm3, 1),
-            'unit': 'mg/Nm³ @15% O2',
-            'compliant': nox_mg_nm3 <= 100.0,
-            'notes': 'Best Available Techniques for >50 MWth',
-        })
-    else:
-        results.append({
-            'regulation': 'EU IED (BAT)',
-            'parameter': 'NOx',
-            'limit': 100.0,
-            'actual': round(nox_mg_nm3, 1),
-            'unit': 'mg/Nm³ @15% O2',
-            'compliant': True,
-            'notes': 'Plant < 50 MWth — IED not applicable',
-        })
+    # 4. EU IED BAT-AEL (>50 MWth) — NOx ≤ 100 mg/Nm³ @15% O2
+    ied_applicable = total_cap_mw > 50
+    results.append({
+        'regulation': 'EU IED (BAT)',
+        'parameter': 'NOx',
+        'limit': 100.0,
+        'actual': round(nox_mg_nm3, 1),
+        'unit': 'mg/Nm³ @15% O2',
+        'compliant': nox_mg_nm3 <= 100.0 if ied_applicable else True,
+        'notes': 'BAT-AEL for gas engines >50 MWth' if ied_applicable
+                 else 'Plant <50 MWth — IED not applicable',
+    })
 
-    # 5. CARB (California)
-    # NOx limit: 11 ppm @ 15% O2 for stationary engines
-    nox_ppm = nox_mg_nm3 / 2.05  # mg/Nm³ → ppmvd approx for NOx
+    # 5. CARB — NOx ≤ 11 ppmvd @15% O2
     results.append({
         'regulation': 'CARB (California)',
         'parameter': 'NOx',
@@ -1333,6 +1344,93 @@ def check_emissions_compliance(
         'unit': 'ppmvd @15% O2',
         'compliant': nox_ppm <= 11.0,
         'notes': 'Most stringent US state regulation',
+    })
+
+    # ════════════════════════════════════════════════════════════════
+    # CO REGULATIONS
+    # ════════════════════════════════════════════════════════════════
+
+    # 6. US EPA NSPS Subpart JJJJ — CO ≤ 2.0 g/bhp-hr (lean-burn SI > 500 hp)
+    results.append({
+        'regulation': 'US EPA NSPS (JJJJ)',
+        'parameter': 'CO',
+        'limit': 2.0,
+        'actual': round(co_g_bhphr, 3),
+        'unit': 'g/bhp-hr',
+        'compliant': co_g_bhphr <= 2.0,
+        'notes': 'Lean-burn SI engines > 500 hp',
+    })
+
+    # 7. US Title V — CO ≤ 100 tons/yr (major source threshold)
+    results.append({
+        'regulation': 'US Title V',
+        'parameter': 'CO (annual)',
+        'limit': 100.0,
+        'actual': round(co_tpy, 1),
+        'unit': 'tons/year',
+        'compliant': co_tpy <= 100.0,
+        'notes': 'Major source threshold; may require Title V permit',
+    })
+
+    # 8. EU MCP Directive (1–50 MWth) — CO ≤ 500 mg/Nm³ @15% O2
+    results.append({
+        'regulation': 'EU MCP Directive',
+        'parameter': 'CO',
+        'limit': 500.0,
+        'actual': round(co_mg_nm3, 1),
+        'unit': 'mg/Nm³ @15% O2',
+        'compliant': co_mg_nm3 <= 500.0,
+        'notes': 'New gas engines 1–50 MWth (Directive 2015/2193)',
+    })
+
+    # 9. EU IED BAT-AEL (>50 MWth) — CO ≤ 100 mg/Nm³ @15% O2
+    results.append({
+        'regulation': 'EU IED (BAT)',
+        'parameter': 'CO',
+        'limit': 100.0,
+        'actual': round(co_mg_nm3, 1),
+        'unit': 'mg/Nm³ @15% O2',
+        'compliant': co_mg_nm3 <= 100.0 if ied_applicable else True,
+        'notes': 'BAT-AEL for gas engines >50 MWth' if ied_applicable
+                 else 'Plant <50 MWth — IED not applicable',
+    })
+
+    # 10. CARB — CO ≤ 250 ppmvd @15% O2
+    results.append({
+        'regulation': 'CARB (California)',
+        'parameter': 'CO',
+        'limit': 250.0,
+        'actual': round(co_ppm, 1),
+        'unit': 'ppmvd @15% O2',
+        'compliant': co_ppm <= 250.0,
+        'notes': 'Stationary gas engines',
+    })
+
+    # ════════════════════════════════════════════════════════════════
+    # CO₂ REGULATIONS
+    # ════════════════════════════════════════════════════════════════
+
+    # 11. IFC / World Bank EHS Guidelines — CO₂ ≤ 400 kg/MWh (gas-fired)
+    results.append({
+        'regulation': 'IFC / World Bank',
+        'parameter': 'CO₂',
+        'limit': 400.0,
+        'actual': round(co2_kg_mwh, 1),
+        'unit': 'kg/MWh',
+        'compliant': co2_kg_mwh <= 400.0,
+        'notes': 'EHS guideline for gas-fired thermal power',
+    })
+
+    # 12. EU ETS — reporting threshold (>20 MWth)
+    thermal_mw = total_cap_mw / 0.40  # approximate thermal input
+    results.append({
+        'regulation': 'EU ETS',
+        'parameter': 'CO₂ (annual)',
+        'limit': 'N/A',
+        'actual': f"{co2_tpy:,.0f}",
+        'unit': 'tons/year',
+        'compliant': thermal_mw < 20,
+        'notes': f'{"Reporting required (>20 MWth)" if thermal_mw >= 20 else "Below 20 MWth threshold — exempt"}',
     })
 
     return results

@@ -180,7 +180,7 @@ def _safe_get(d: dict, key: str, default=0):
 # SIDEBAR -- INPUT SECTIONS
 # =============================================================================
 def render_sidebar():
-    """Render all sidebar input sections. Returns (run_clicked, inputs_dict)."""
+    """Render all sidebar input sections. Returns (inputs_dict, benchmark_price)."""
 
     st.sidebar.markdown(
         f"### :zap: CAT Power Solution v{APP_VERSION}"
@@ -697,11 +697,6 @@ def render_sidebar():
 
     st.sidebar.divider()
 
-    # ---- 16. Run Button ----
-    run_clicked = st.sidebar.button(
-        ":zap: Run Sizing", type="primary", use_container_width=True,
-    )
-
     # ---- Project Save/Load ----
     st.sidebar.divider()
     st.sidebar.caption("Project File")
@@ -800,7 +795,7 @@ def render_sidebar():
         unit_system=unit_sys,
     )
 
-    return run_clicked, inputs_dict, benchmark_price
+    return inputs_dict, benchmark_price
 
 
 # =============================================================================
@@ -857,65 +852,59 @@ def render_summary_tab(r):
 
     st.divider()
 
-    # Key results table
-    st.subheader("Sizing Summary")
+    # Fleet Configuration Details — 2-column layout
+    st.subheader("Fleet Configuration Details")
 
-    data = {
-        "Parameter": [
-            "Generator Model",
-            "ISO Rating (MW)",
-            "Site Rating (MW)",
-            "Derate Factor",
-            "Running Units",
-            "Reserve Units",
-            "Total Fleet",
-            "Installed Capacity (MW)",
-            "Load per Unit (%)",
-            "Fleet Efficiency (%)",
-            "Recommended Voltage (kV)",
-            "Frequency (Hz)",
-            "BESS Power (MW)",
-            "BESS Energy (MWh)",
-        ],
-        "Value": [
-            r.selected_gen,
-            f"{r.unit_iso_cap:.2f}",
-            f"{r.unit_site_cap:.2f}",
-            f"{r.derate_factor:.4f}",
-            str(r.n_running),
-            str(r.n_reserve),
-            str(r.n_total),
-            f"{r.installed_cap:.1f}",
-            f"{r.load_per_unit_pct:.1f}",
-            f"{r.fleet_efficiency * 100:.1f}",
-            f"{r.rec_voltage_kv:.1f}",
-            str(r.freq_hz),
-            f"{r.bess_power_mw:.2f}",
-            f"{r.bess_energy_mwh:.2f}",
-        ],
-    }
-    st.table(pd.DataFrame(data).set_index("Parameter"))
+    col_specs, col_ops = st.columns(2)
+    with col_specs:
+        st.markdown("**Generator Specifications**")
+        st.write(f"- Model: **{r.selected_gen}**")
+        st.write(f"- ISO Rating: {r.unit_iso_cap:.2f} MW")
+        st.write(f"- Site Rating: {r.unit_site_cap:.2f} MW")
+        st.write(f"- Derate Factor: {r.derate_factor:.4f}")
+        st.write(f"- Efficiency (ISO): {r.fleet_efficiency * 100:.1f}%")
+        st.write(f"- Voltage: {r.rec_voltage_kv:.1f} kV")
+        st.write(f"- Frequency: {r.freq_hz} Hz")
+
+    with col_ops:
+        st.markdown("**Operating Parameters**")
+        st.write(f"- Running Units: **{r.n_running}**")
+        st.write(f"- Reserve Units: **{r.n_reserve}**")
+        st.write(f"- Total Fleet: **{r.n_total}**")
+        st.write(f"- Installed Capacity: {r.installed_cap:.1f} MW")
+        st.write(f"- Load per Unit: {r.load_per_unit_pct:.1f}%")
+        st.write(f"- BESS Power: {r.bess_power_mw:.2f} MW")
+        st.write(f"- BESS Energy: {r.bess_energy_mwh:.2f} MWh")
 
     # ---- Design Validation Scorecard ----
     if r.design_scorecard:
         st.divider()
         st.subheader("Design Validation Scorecard")
-        scorecard_data = []
-        for check in r.design_scorecard:
-            icon = "\u2705" if check.get('passed', False) else "\u274c"
-            scorecard_data.append({
-                "Status": icon,
-                "Check": check.get('check', ''),
-                "Actual": str(check.get('actual', '')),
-                "Requirement": str(check.get('requirement', '')),
-                "Notes": check.get('notes', ''),
-            })
-        df_scorecard = pd.DataFrame(scorecard_data)
-        st.dataframe(df_scorecard, use_container_width=True, hide_index=True)
+
+        # Render as card grid (2 rows of 4)
+        checks = r.design_scorecard
+        for row_start in range(0, len(checks), 4):
+            row_checks = checks[row_start:row_start + 4]
+            cols = st.columns(len(row_checks))
+            for col, check in zip(cols, row_checks):
+                passed_flag = check.get('passed', False)
+                icon = "\u2705" if passed_flag else "\u274c"
+                border_color = "#27AE60" if passed_flag else "#E74C3C"
+                with col:
+                    st.markdown(
+                        f"""<div style="border:2px solid {border_color}; border-radius:8px;
+                        padding:12px; text-align:center; height:140px;">
+                        <div style="font-size:24px;">{icon}</div>
+                        <div style="font-weight:bold; font-size:13px; margin:4px 0;">{check.get('check', '')}</div>
+                        <div style="font-size:15px; color:{border_color};">{check.get('actual', '')}</div>
+                        <div style="font-size:11px; color:#888;">Req: {check.get('requirement', '')}</div>
+                        </div>""",
+                        unsafe_allow_html=True,
+                    )
 
         # Count pass/fail
-        passed = sum(1 for c in r.design_scorecard if c.get('passed', False))
-        total = len(r.design_scorecard)
+        passed = sum(1 for c in checks if c.get('passed', False))
+        total = len(checks)
         if passed == total:
             st.success(f"All {total} design checks passed.")
         else:
@@ -926,24 +915,86 @@ def render_summary_tab(r):
 # TAB 2: RELIABILITY
 # =============================================================================
 def render_reliability_tab(r):
-    """Reliability configuration comparison."""
+    """Spinning reserve visualization and reliability configuration comparison."""
 
-    # Reliability configs comparison
+    # ---- Spinning Reserve Distribution ----
+    st.subheader("Load Distribution per Running Unit")
+
+    load_per_unit_mw = r.unit_site_cap * (r.load_per_unit_pct / 100)
+    headroom_per_unit_mw = r.unit_site_cap - load_per_unit_mw
+    n_show = min(r.n_running, 10)
+    bar_labels = [f"Gen {i+1}" for i in range(n_show)]
+
+    fig_dist = go.Figure()
+    fig_dist.add_trace(go.Bar(
+        name="Actual Load",
+        x=bar_labels, y=[load_per_unit_mw] * n_show,
+        marker_color="#1f77b4",
+        text=[f"{r.load_per_unit_pct:.0f}%"] * n_show,
+        textposition="inside",
+    ))
+    fig_dist.add_trace(go.Bar(
+        name="Spinning Reserve (Headroom)",
+        x=bar_labels, y=[headroom_per_unit_mw] * n_show,
+        marker_color="#90EE90",
+        text=[f"{100 - r.load_per_unit_pct:.0f}%"] * n_show,
+        textposition="inside",
+    ))
+
+    # BESS bar (if spinning from BESS > 0)
+    selected_cfg = next((c for c in r.reliability_configs if c.name == r.selected_config_name), None)
+    bess_spin = selected_cfg.spinning_from_bess if selected_cfg else 0
+    if bess_spin > 0:
+        fig_dist.add_trace(go.Bar(
+            name="BESS Reserve",
+            x=["BESS"], y=[bess_spin],
+            marker_color="#FFD700",
+            text=[f"{bess_spin:.1f} MW"],
+            textposition="inside",
+        ))
+
+    fig_dist.add_hline(
+        y=r.unit_site_cap, line_dash="dash", line_color=COLOR_DANGER,
+        annotation_text=f"Unit Capacity: {r.unit_site_cap:.1f} MW",
+    )
+    suffix = f" (showing {n_show} of {r.n_running})" if r.n_running > 10 else ""
+    fig_dist.update_layout(
+        barmode="stack",
+        yaxis_title="Power (MW)",
+        height=400,
+        title=f"Load Distribution Across {r.n_running} Running Units{suffix}",
+    )
+    st.plotly_chart(fig_dist, use_container_width=True)
+
+    st.divider()
+
+    # ---- Reliability configs comparison ----
     st.subheader("Reliability Configurations")
+
+    # Per-config CAPEX estimation (gen cost scales with fleet size)
+    gen_cost_per_unit = 0
+    if r.n_total > 0 and r.capex_breakdown:
+        gen_plus_install = r.capex_breakdown.get('generators', 0) + r.capex_breakdown.get('installation', 0)
+        gen_cost_per_unit = gen_plus_install / r.n_total  # $/unit
 
     configs_data = []
     for cfg in r.reliability_configs:
+        # Estimate CAPEX: gen+install scales with n_total, BESS scales with MWh
+        cfg_gen_cost = cfg.n_total * gen_cost_per_unit
+        cfg_bess_cost = (cfg.bess_mwh / r.bess_energy_mwh * r.capex_breakdown.get('bess', 0)) if r.bess_energy_mwh > 0 else 0
+        cfg_capex_m = (cfg_gen_cost + cfg_bess_cost) / 1e6
+
         configs_data.append({
             "Configuration": cfg.name,
-            "N Running": cfg.n_running,
-            "N Reserve": cfg.n_reserve,
-            "N Total": cfg.n_total,
-            "BESS MW": f"{cfg.bess_mw:.2f}",
-            "BESS MWh": f"{cfg.bess_mwh:.2f}",
-            "BESS Credit": f"{cfg.bess_credit:.2f}",
-            "Availability (%)": f"{cfg.availability * 100:.4f}",
+            "Fleet": f"{cfg.n_running}+{cfg.n_reserve}",
+            "Total": cfg.n_total,
+            "BESS (MW/MWh)": f"{cfg.bess_mw:.0f}/{cfg.bess_mwh:.0f}" if cfg.bess_mw > 0 else "None",
+            "BESS Credit": f"{cfg.bess_credit:.1f}",
+            "Spin. BESS": f"{cfg.spinning_from_bess:.1f} MW" if cfg.spinning_from_bess > 0 else "-",
             "Load (%)": f"{cfg.load_pct:.1f}",
-            "Efficiency (%)": f"{cfg.efficiency * 100:.1f}",
+            "Eff. (%)": f"{cfg.efficiency * 100:.1f}",
+            "Avail. (%)": f"{cfg.availability * 100:.4f}",
+            "CAPEX ($M)": f"${cfg_capex_m:.1f}",
         })
 
     df_configs = pd.DataFrame(configs_data)
@@ -1173,26 +1224,51 @@ def render_load_profile_tab(r):
 
     st.divider()
 
-    # Duration Curve
+    # Duration Curve — enriched with zones
     st.subheader("Load Duration Curve")
     sorted_load = np.sort(load_profile)[::-1]
     pct_time = np.linspace(0, 100, len(sorted_load))
+    online_cap = r.n_running * r.unit_site_cap
 
     fig_dur = go.Figure()
     fig_dur.add_trace(go.Scatter(
         x=list(pct_time), y=list(sorted_load),
         mode="lines",
-        name="Duration Curve",
-        line=dict(color=COLOR_PRIMARY, width=2),
+        name="DC Load",
+        line=dict(color="#667eea", width=2),
         fill="tozeroy",
-        fillcolor="rgba(255, 204, 0, 0.15)",
+        fillcolor="rgba(102, 126, 234, 0.15)",
     ))
-    fig_dur.add_hline(y=r.installed_cap, line_dash="dash", line_color=COLOR_SUCCESS,
+
+    # Zone: Spinning Reserve (green band above average load)
+    fig_dur.add_hrect(
+        y0=r.p_total_avg, y1=r.p_total_avg + r.spinning_reserve_mw,
+        fillcolor="lightgreen", opacity=0.3,
+        annotation_text=f"Spinning Reserve: {r.spinning_reserve_mw:.1f} MW",
+        annotation_position="top left",
+    )
+
+    # Zone: BESS Peak Shaving (yellow, only if BESS and peak > online)
+    if r.use_bess and r.p_total_peak > online_cap:
+        fig_dur.add_hrect(
+            y0=online_cap, y1=r.p_total_peak,
+            fillcolor="yellow", opacity=0.2,
+            annotation_text=f"BESS Peak Shaving ({r.bess_power_mw:.1f} MW)",
+            annotation_position="top left",
+        )
+
+    # Reference lines
+    fig_dur.add_hline(y=r.installed_cap, line_dash="dash", line_color=COLOR_DANGER,
                       annotation_text=f"Installed: {r.installed_cap:.1f} MW")
+    fig_dur.add_hline(y=online_cap, line_dash="dashdot", line_color=COLOR_SUCCESS,
+                      annotation_text=f"Online: {online_cap:.1f} MW")
+    fig_dur.add_hline(y=r.p_total_avg, line_dash="dot", line_color="orange",
+                      annotation_text=f"Average: {r.p_total_avg:.1f} MW")
+
     fig_dur.update_layout(
         xaxis_title="% of Time Exceeded",
         yaxis_title="Load (MW)",
-        height=400,
+        height=450,
     )
     st.plotly_chart(fig_dur, use_container_width=True)
 
@@ -1902,6 +1978,72 @@ def render_derating_tab(r):
 
 
 # =============================================================================
+# TAB: GAS CONSUMPTION
+# =============================================================================
+def render_gas_consumption_tab(r):
+    """Fuel consumption curve for the selected generator."""
+
+    gen_data = GENERATOR_LIBRARY.get(r.selected_gen, {})
+    curve = gen_data.get("fuel_consumption_curve")
+
+    if not curve:
+        st.info("Fuel consumption curve data is not available for this generator model.")
+        return
+
+    load_pcts = curve["load_pct"]
+    mj_values = curve["mj_per_ekwh"]
+    iso_kw = gen_data["iso_rating_mw"] * 1000
+    power_kw = [iso_kw * (p / 100) for p in load_pcts]
+
+    fig = go.Figure()
+
+    # Fuel consumption curve
+    fig.add_trace(go.Scatter(
+        x=power_kw, y=mj_values,
+        mode="lines+markers",
+        name="Fuel Consumption",
+        line=dict(color=COLOR_PRIMARY, width=3),
+        marker=dict(size=8),
+    ))
+
+    # Operating point
+    op_pct = min(max(r.load_per_unit_pct, load_pcts[0]), load_pcts[-1])
+    op_kw = iso_kw * (op_pct / 100)
+    # Interpolate MJ/ekWh at operating point
+    op_mj = np.interp(op_pct, load_pcts, mj_values)
+
+    fig.add_trace(go.Scatter(
+        x=[op_kw], y=[op_mj],
+        mode="markers+text",
+        name="Operating Point",
+        marker=dict(size=14, color=COLOR_DANGER, symbol="star"),
+        text=[f"  {op_mj:.2f} MJ/ekWh @ {op_pct:.0f}%"],
+        textposition="middle right",
+        textfont=dict(size=12, color=COLOR_DANGER),
+    ))
+
+    fig.update_layout(
+        title=f"Genset Power vs. Fuel Consumption (nominal) \u2014 {r.selected_gen}",
+        xaxis_title="Genset Power (ekW)",
+        yaxis_title="Fuel Consumption (MJ/ekW-hr)",
+        height=450,
+        yaxis=dict(range=[min(mj_values) - 0.3, max(mj_values) + 0.3]),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Summary metrics
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Full Load Consumption", f"{mj_values[-1]:.2f} MJ/ekWh")
+    c2.metric("At Operating Point", f"{op_mj:.2f} MJ/ekWh")
+    c3.metric("Load per Unit", f"{r.load_per_unit_pct:.1f}%")
+
+    st.caption(
+        "Source: CAT Gas Consumption data sheet. "
+        "Fuel consumption increases at part load due to lower thermal efficiency."
+    )
+
+
+# =============================================================================
 # TAB 15: PDF REPORT
 # =============================================================================
 def render_pdf_tab(r):
@@ -1992,7 +2134,7 @@ def main():
         st.session_state.result = None
 
     # Render sidebar and get inputs
-    run_clicked, inputs_dict, benchmark_price = render_sidebar()
+    inputs_dict, benchmark_price = render_sidebar()
 
     # Store some values for cross-tab access
     st.session_state["_benchmark_price"] = inputs_dict["benchmark_price"]
@@ -2003,25 +2145,18 @@ def main():
     st.session_state["_include_chp"] = inputs_dict["include_chp"]
     st.session_state["_enable_phasing"] = inputs_dict["enable_phasing"]
 
-    # Run sizing
-    if run_clicked:
-        try:
-            with st.spinner("Running sizing pipeline..."):
-                sizing_input = SizingInput(**inputs_dict)
-                result = run_full_sizing(sizing_input)
-                st.session_state.result = result
-        except Exception as e:
-            st.error(f"Sizing failed: {e}")
-            import traceback
-            st.code(traceback.format_exc())
-            return
-
-    # Main area
-    r = st.session_state.result
-
-    if r is None:
-        render_landing_page()
+    # Auto-run sizing on every input change (reactive)
+    try:
+        sizing_input = SizingInput(**inputs_dict)
+        result = run_full_sizing(sizing_input)
+        st.session_state.result = result
+    except Exception as e:
+        st.error(f"Sizing failed: {e}")
+        import traceback
+        st.code(traceback.format_exc())
         return
+
+    r = st.session_state.result
 
     # ---- Executive Summary (before tabs) ----
     render_executive_summary(r, benchmark_price)
@@ -2033,6 +2168,10 @@ def main():
     show_lng = fuel_mode in ("LNG", "Dual-Fuel")
 
     # ---- Build tab list ----
+    # Check if selected generator has fuel consumption curve
+    _gen_data = GENERATOR_LIBRARY.get(r.selected_gen, {})
+    show_gas_tab = "fuel_consumption_curve" in _gen_data
+
     tab_labels = [
         ":clipboard: Summary",
         ":chart_with_upwards_trend: Reliability",
@@ -2042,6 +2181,8 @@ def main():
         ":deciduous_tree: Environmental",
         ":moneybag: Financial",
     ]
+    if show_gas_tab:
+        tab_labels.append(":fuelpump: Gas Consumption")
 
     # Conditional tabs
     if include_chp:
@@ -2094,6 +2235,12 @@ def main():
     with tabs[tab_idx]:
         render_financial_tab(r, benchmark_price)
     tab_idx += 1
+
+    # Tab: Gas Consumption (conditional)
+    if show_gas_tab:
+        with tabs[tab_idx]:
+            render_gas_consumption_tab(r)
+        tab_idx += 1
 
     # Tab 8: CHP (conditional)
     if include_chp:

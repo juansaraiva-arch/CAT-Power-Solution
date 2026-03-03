@@ -662,6 +662,9 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         emissions.get('co_rate_g_kwh', 0),
         emissions.get('co2_rate_kg_mwh', 0),
         unit_site_cap, n_running,
+        nox_tpy=emissions.get('nox_tpy', 0),
+        co_tpy=emissions.get('co_tpy', 0),
+        co2_tpy=emissions.get('co2_tpy', 0),
     )
 
     # ── Step 18g: Frequency Screening ──

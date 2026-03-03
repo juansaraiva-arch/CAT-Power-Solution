@@ -1291,17 +1291,36 @@ def render_environmental_tab(r):
 
     emissions = r.emissions
     if emissions:
+        # Raw annual totals
+        nox_tpy = emissions.get('nox_tpy', 0)
+        co_tpy = emissions.get('co_tpy', 0)
+        co2_tpy = emissions.get('co2_tpy', 0)
+
+        # Aftertreatment reductions
+        ec = r.emissions_control if r.emissions_control else {}
+        nox_red = _safe_get(ec, 'nox_reduction_pct', 0) / 100  # 0.90 when SCR active
+        co_red = _safe_get(ec, 'co_reduction_pct', 0) / 100    # 0.80 when OxiCat active
+
+        nox_after = nox_tpy * (1 - nox_red)
+        co_after = co_tpy * (1 - co_red)
+        co2_after = co2_tpy  # No aftertreatment for CO2
+
         em_data = {
-            "Pollutant": ["NOx", "CO", "CO2"],
+            "Pollutant": ["NOx", "CO", "CO₂"],
             "Rate": [
                 f"{emissions.get('nox_rate_g_kwh', 0):.3f} g/kWh",
                 f"{emissions.get('co_rate_g_kwh', 0):.3f} g/kWh",
                 f"{emissions.get('co2_rate_kg_mwh', 0):.1f} kg/MWh",
             ],
             "Annual Total": [
-                f"{emissions.get('nox_tpy', 0):.1f} tons/yr",
-                f"{emissions.get('co_tpy', 0):.1f} tons/yr",
-                f"{emissions.get('co2_tpy', 0):,.0f} tons/yr",
+                f"{nox_tpy:.1f} tons/yr",
+                f"{co_tpy:.1f} tons/yr",
+                f"{co2_tpy:,.0f} tons/yr",
+            ],
+            "Annual Total (with Aftertreatment)": [
+                f"{nox_after:.1f} tons/yr" if nox_red > 0 else "—",
+                f"{co_after:.1f} tons/yr" if co_red > 0 else "—",
+                "—",
             ],
         }
         st.table(pd.DataFrame(em_data).set_index("Pollutant"))

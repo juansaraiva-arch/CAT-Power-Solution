@@ -244,6 +244,7 @@ class SizingResult(BaseModel):
     permitting_cost_usd: float = 0.0
     commissioning_cost_usd: float = 0.0
     capex_breakdown: dict = {}
+    capex_assumptions: dict = {}
     om_breakdown: dict = {}
 
     # ── Gas Sensitivity ──

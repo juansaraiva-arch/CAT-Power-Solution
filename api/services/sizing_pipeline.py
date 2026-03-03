@@ -759,6 +759,22 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         'permitting': permitting_cost,
         'commissioning': commissioning_cost,
     }
+    capex_assumptions = {
+        'generators': f"${gen_unit_cost:,.0f}/kW x {installed_cap * 1000:,.0f} kW",
+        'installation': f"${gen_install_cost:,.0f}/kW (idx {idx_install:.2f})",
+        'bess': (f"${inputs.bess_cost_kw:,.0f}/kW + ${inputs.bess_cost_kwh:,.0f}/kWh"
+                 if inputs.use_bess and bess_power_total > 0 else "N/A"),
+        'chp': ("HRSG $200k/MW + Abs $350k/MW" if inputs.include_chp else "N/A"),
+        'emissions_control': (
+            ("SCR $70/kW" if inputs.include_scr else "") +
+            (" + " if inputs.include_scr and inputs.include_oxicat else "") +
+            ("OxiCat $20/kW" if inputs.include_oxicat else "") or "N/A"
+        ),
+        'lng_infrastructure': "Tanks + vaporizer + piping" if lng_logistics.get('lng_capex_usd', 0) > 0 else "N/A",
+        'pipeline': "User input",
+        'permitting': "User input",
+        'commissioning': "User input",
+    }
     om_breakdown_dict = {
         'fixed': om_fixed_annual,
         'variable': om_variable_annual,
@@ -879,6 +895,7 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         commissioning_cost_usd=commissioning_cost,
         # Financial extras
         capex_breakdown=capex_breakdown,
+        capex_assumptions=capex_assumptions,
         om_breakdown=om_breakdown_dict,
         gas_sensitivity=gas_sens,
         lcoe_recommendations=lcoe_recs,

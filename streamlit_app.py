@@ -1349,11 +1349,11 @@ def render_environmental_tab(r):
         st.subheader("Aftertreatment Recommendation")
         ec = r.emissions_control
         c1, c2 = st.columns(2)
-        c1.metric("SCR CAPEX", f"${_safe_get(ec, 'scr_capex', 0):,.0f}")
-        c2.metric("OxiCat CAPEX", f"${_safe_get(ec, 'oxicat_capex', 0):,.0f}")
+        c1.metric("SCR CAPEX", f"${_safe_get(ec, 'scr_capex', 0):,.2f}")
+        c2.metric("OxiCat CAPEX", f"${_safe_get(ec, 'oxicat_capex', 0):,.2f}")
 
         c3, c4, c5 = st.columns(3)
-        c3.metric("Total Aftertreatment CAPEX", f"${_safe_get(ec, 'total_capex', 0):,.0f}")
+        c3.metric("Total Aftertreatment CAPEX", f"${_safe_get(ec, 'total_capex', 0):,.2f}")
         c4.metric("NOx Reduction", f"{_safe_get(ec, 'nox_reduction_pct', 0):.0f}%")
         c5.metric("CO Reduction", f"{_safe_get(ec, 'co_reduction_pct', 0):.0f}%")
 
@@ -1368,8 +1368,8 @@ def render_financial_tab(r, benchmark_price: float):
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("LCOE", f"${r.lcoe:.4f}/kWh")
-    c2.metric("Total CAPEX", f"${r.total_capex:,.0f}")
-    c3.metric("NPV", f"${r.npv:,.0f}")
+    c2.metric("Total CAPEX", f"${r.total_capex:,.2f}")
+    c3.metric("NPV", f"${r.npv:,.2f}")
     c4.metric("Payback", f"{r.simple_payback_years:.1f} years")
 
     st.divider()
@@ -1377,18 +1377,23 @@ def render_financial_tab(r, benchmark_price: float):
     # ---- Annual Costs ----
     st.subheader("Annual Operating Costs")
     c1, c2 = st.columns(2)
-    c1.metric("Annual Fuel Cost", f"${r.annual_fuel_cost:,.0f}")
-    c2.metric("Annual O&M Cost", f"${r.annual_om_cost:,.0f}")
+    c1.metric("Annual Fuel Cost", f"${r.annual_fuel_cost:,.2f}")
+    c2.metric("Annual O&M Cost", f"${r.annual_om_cost:,.2f}")
 
     st.divider()
 
     # ---- CAPEX Breakdown (editable) ----
     st.subheader("CAPEX Breakdown")
     if r.capex_breakdown:
+        assumptions = r.capex_assumptions if r.capex_assumptions else {}
         capex_items = []
         for key, val in r.capex_breakdown.items():
             label = key.replace("_", " ").title()
-            capex_items.append({"Component": label, "Cost ($)": float(val) if val else 0.0})
+            capex_items.append({
+                "Component": label,
+                "Assumption": assumptions.get(key, ""),
+                "Cost ($)": round(float(val), 2) if val else 0.00,
+            })
 
         df_capex = pd.DataFrame(capex_items)
         edited_capex = st.data_editor(
@@ -1396,20 +1401,14 @@ def render_financial_tab(r, benchmark_price: float):
             use_container_width=True,
             hide_index=True,
             disabled=["Component"],
+            column_config={
+                "Cost ($)": st.column_config.NumberColumn(format="$ %.2f"),
+            },
             num_rows="fixed",
             key="capex_editor",
         )
         capex_total = edited_capex["Cost ($)"].sum()
-        st.metric("Total CAPEX (Edited)", f"${capex_total:,.0f}")
-    else:
-        # Fallback: show basic CAPEX info
-        infra_total = r.pipeline_cost_usd + r.permitting_cost_usd + r.commissioning_cost_usd
-        if infra_total > 0:
-            st.subheader("Infrastructure Costs")
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Pipeline", f"${r.pipeline_cost_usd:,.0f}")
-            c2.metric("Permitting", f"${r.permitting_cost_usd:,.0f}")
-            c3.metric("Commissioning", f"${r.commissioning_cost_usd:,.0f}")
+        st.metric("Total CAPEX (Edited)", f"${capex_total:,.2f}")
 
     st.divider()
 
@@ -1434,7 +1433,7 @@ def render_financial_tab(r, benchmark_price: float):
                 y=[val],
                 name=cat,
                 marker_color=color,
-                text=[f"${val:,.0f}"],
+                text=[f"${val:,.2f}"],
                 textposition="inside",
             ))
         fig_om.update_layout(
@@ -1572,7 +1571,7 @@ def render_chp_tab(r):
     c4, c5, c6 = st.columns(3)
     c4.metric("Absorption Chiller Cooling", f"{_safe_get(chp, 'cooling_from_absorption_mw', 0):.2f} MW")
     c5.metric("Cooling Coverage", f"{_safe_get(chp, 'cooling_coverage_pct', 0):.0f}%")
-    c6.metric("CHP CAPEX", f"${_safe_get(chp, 'chp_capex_usd', 0):,.0f}")
+    c6.metric("CHP CAPEX", f"${_safe_get(chp, 'chp_capex_usd', 0):,.2f}")
 
     st.divider()
 
@@ -1684,10 +1683,10 @@ def render_phasing_tab(r):
     c1, c2, c3 = st.columns(3)
     c1.metric("Number of Phases", str(_safe_get(phasing, 'n_phases', len(phases))))
     c2.metric("Total Duration", f"{_safe_get(phasing, 'total_months', 0)} months")
-    c3.metric("Phase 1 CAPEX", f"${_safe_get(phasing, 'phase1_capex', 0):,.0f}")
+    c3.metric("Phase 1 CAPEX", f"${_safe_get(phasing, 'phase1_capex', 0):,.2f}")
 
     if _safe_get(phasing, 'deferred_capex', 0) > 0:
-        st.info(f"Deferred CAPEX: ${phasing['deferred_capex']:,.0f}")
+        st.info(f"Deferred CAPEX: ${phasing['deferred_capex']:,.2f}")
 
     st.divider()
 
@@ -1700,7 +1699,7 @@ def render_phasing_tab(r):
             "Start Month": p.get('start_month', ''),
             "Units Added": p.get('units_added', p.get('n_units', '')),
             "Cumulative Capacity (MW)": f"{p.get('cumulative_cap_mw', 0):.1f}",
-            "CAPEX ($)": f"${p.get('capex', 0):,.0f}" if p.get('capex') else "",
+            "CAPEX ($)": f"${p.get('capex', 0):,.2f}" if p.get('capex') else "",
         })
     st.table(pd.DataFrame(phase_rows))
 
@@ -1815,9 +1814,9 @@ def render_emissions_compliance_tab(r):
         st.subheader("Aftertreatment System Recommendation")
         ec = r.emissions_control
         c1, c2, c3 = st.columns(3)
-        c1.metric("SCR CAPEX", f"${_safe_get(ec, 'scr_capex', 0):,.0f}")
-        c2.metric("OxiCat CAPEX", f"${_safe_get(ec, 'oxicat_capex', 0):,.0f}")
-        c3.metric("Total CAPEX", f"${_safe_get(ec, 'total_capex', 0):,.0f}")
+        c1.metric("SCR CAPEX", f"${_safe_get(ec, 'scr_capex', 0):,.2f}")
+        c2.metric("OxiCat CAPEX", f"${_safe_get(ec, 'oxicat_capex', 0):,.2f}")
+        c3.metric("Total CAPEX", f"${_safe_get(ec, 'total_capex', 0):,.2f}")
 
         st.markdown(
             f"- NOx Reduction: **{_safe_get(ec, 'nox_reduction_pct', 0):.0f}%**\n"
@@ -1933,7 +1932,7 @@ def render_lng_tab(r):
 
     c4, c5, c6 = st.columns(3)
     c4.metric("Truck Deliveries/Week", f"{_safe_get(lng, 'truck_deliveries_per_week', 0):.1f}")
-    c5.metric("LNG Infrastructure CAPEX", f"${_safe_get(lng, 'lng_capex_usd', 0):,.0f}")
+    c5.metric("LNG Infrastructure CAPEX", f"${_safe_get(lng, 'lng_capex_usd', 0):,.2f}")
     c6.metric("Blended Gas Price", f"${_safe_get(lng, 'blended_gas_price', 0):.2f}/MMBtu")
 
     st.divider()

@@ -883,7 +883,7 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         # Financial
         lcoe=lcoe_val,
         npv=npv_val,
-        total_capex=total_capex_m,
+        total_capex=total_capex_m * 1e6,
         annual_fuel_cost=fuel_cost_year,
         annual_om_cost=om_cost_year,
         simple_payback_years=simple_payback,

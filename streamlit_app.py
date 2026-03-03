@@ -1402,7 +1402,10 @@ def render_financial_tab(r, benchmark_price: float):
             hide_index=True,
             disabled=["Component"],
             column_config={
-                "Cost ($)": st.column_config.NumberColumn(format="$,.2f"),
+                "Cost ($)": st.column_config.NumberColumn(
+                    format="%.2f",
+                    min_value=0.0,
+                ),
             },
             num_rows="fixed",
             key="capex_editor",

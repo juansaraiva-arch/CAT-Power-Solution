@@ -1,11 +1,20 @@
-# CAT Power Solution — Core Dependencies
-# ========================================
-# These are the MINIMUM dependencies for the calculation engine.
-# UI frameworks (Streamlit, FastAPI, React) are added per deployment target.
+# CAT Power Solution — Dependencies
+# ====================================
 
+# Core engine
 numpy>=1.24.0
+pydantic>=2.0.0
 reportlab>=4.0.0
 pdfplumber>=0.10.0
+
+# Streamlit UI
+streamlit>=1.28.0
+plotly>=5.14.0
+pandas>=2.0.0
+
+# API (optional — only needed for FastAPI deployment)
+# fastapi>=0.100.0
+# uvicorn>=0.23.0
 
 # Testing
 pytest>=7.0.0

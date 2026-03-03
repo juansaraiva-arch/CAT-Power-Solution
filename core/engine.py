@@ -1529,13 +1529,14 @@ def design_validation_scorecard(
     """
     checks = []
 
-    # 1. Availability
+    # 1. Availability (system_availability is decimal, avail_req is %)
+    avail_pct = system_availability * 100
     checks.append({
         'check': 'System Availability',
-        'passed': system_availability >= avail_req,
-        'actual': f'{system_availability:.4f}%',
+        'passed': avail_pct >= avail_req,
+        'actual': f'{avail_pct:.4f}%',
         'requirement': f'>= {avail_req}%',
-        'notes': '' if system_availability >= avail_req else 'Add reserve units or BESS',
+        'notes': '' if avail_pct >= avail_req else 'Add reserve units or BESS',
     })
 
     # 2. Spinning Reserve
@@ -1556,13 +1557,29 @@ def design_validation_scorecard(
         'notes': '' if voltage_sag <= 10 else 'Add units or BESS for step support',
     })
 
-    # 4. Load per Unit
+    # 4. Load per Unit (tiered: >100% overload, 76-100% optimal, 60-75% OK, <60% low eff)
+    if load_per_unit_pct > 100.0:
+        load_status = 'OVERLOAD'
+        load_passed = False
+        load_notes = 'Exceeds rated capacity — reduce load or add units'
+    elif load_per_unit_pct >= 76.0:
+        load_status = 'OPTIMAL'
+        load_passed = True
+        load_notes = ''
+    elif load_per_unit_pct >= 60.0:
+        load_status = 'OK'
+        load_passed = True
+        load_notes = 'Acceptable but below optimal efficiency range'
+    else:
+        load_status = 'LOW EFFICIENCY'
+        load_passed = False
+        load_notes = 'Below 60% — poor fuel efficiency, consider fewer larger units'
     checks.append({
         'check': 'Load per Unit',
-        'passed': 50.0 <= load_per_unit_pct <= 85.0,
-        'actual': f'{load_per_unit_pct:.1f}%',
-        'requirement': '50-85%',
-        'notes': 'Optimal range for efficiency and longevity',
+        'passed': load_passed,
+        'actual': f'{load_per_unit_pct:.1f}% ({load_status})',
+        'requirement': '76-100% optimal',
+        'notes': load_notes,
     })
 
     # 5. BESS vs Step Load

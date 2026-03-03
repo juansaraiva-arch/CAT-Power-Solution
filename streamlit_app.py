@@ -815,7 +815,7 @@ def render_executive_summary(r, benchmark_price: float):
     c1.metric("Total DC Load", f"{r.p_total_dc:.1f} MW")
     c2.metric("Fleet Size", f"{r.n_running}+{r.n_reserve} = {r.n_total}")
     c3.metric("LCOE", f"${r.lcoe:.4f}/kWh")
-    c4.metric("Availability", f"{r.system_availability:.3f}%")
+    c4.metric("Availability", f"{r.system_availability * 100:.3f}%")
     c5.metric("BESS Power", f"{r.bess_power_mw:.2f} MW")
     c6.metric("Payback", f"{r.simple_payback_years:.1f} yr")
 
@@ -853,7 +853,7 @@ def render_summary_tab(r):
     c1.metric("Total DC Load", f"{r.p_total_dc:.1f} MW")
     c2.metric("Fleet Size", f"{r.n_running}+{r.n_reserve} = {r.n_total}")
     c3.metric("LCOE", f"${r.lcoe:.4f}/kWh")
-    c4.metric("Availability", f"{r.system_availability:.3f}%")
+    c4.metric("Availability", f"{r.system_availability * 100:.3f}%")
 
     st.divider()
 
@@ -926,34 +926,7 @@ def render_summary_tab(r):
 # TAB 2: RELIABILITY
 # =============================================================================
 def render_reliability_tab(r):
-    """Availability over time chart and config comparison."""
-
-    st.subheader("System Availability Over Time")
-
-    # Availability chart
-    years = list(range(1, len(r.availability_over_time) + 1))
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=years, y=r.availability_over_time,
-        mode="lines+markers",
-        name="System Availability",
-        line=dict(color=COLOR_PRIMARY, width=3),
-        marker=dict(size=6),
-    ))
-    fig.add_hline(
-        y=r.avail_req, line_dash="dash", line_color=COLOR_DANGER,
-        annotation_text=f"Requirement: {r.avail_req}%",
-    )
-    fig.update_layout(
-        xaxis_title="Year",
-        yaxis_title="Availability (%)",
-        yaxis=dict(range=[
-            min(min(r.availability_over_time) - 0.5, r.avail_req - 1),
-            100.1,
-        ]),
-        height=400,
-    )
-    st.plotly_chart(fig, use_container_width=True)
+    """Reliability configuration comparison."""
 
     # Reliability configs comparison
     st.subheader("Reliability Configurations")
@@ -968,7 +941,7 @@ def render_reliability_tab(r):
             "BESS MW": f"{cfg.bess_mw:.2f}",
             "BESS MWh": f"{cfg.bess_mwh:.2f}",
             "BESS Credit": f"{cfg.bess_credit:.2f}",
-            "Availability (%)": f"{cfg.availability:.4f}",
+            "Availability (%)": f"{cfg.availability * 100:.4f}",
             "Load (%)": f"{cfg.load_pct:.1f}",
             "Efficiency (%)": f"{cfg.efficiency * 100:.1f}",
         })

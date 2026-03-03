@@ -97,23 +97,31 @@ def _find_availability_config(
     bess_mwh: float = 0,
     bess_credit: float = 0,
     spinning_result: dict | None = None,
-    bess_reliability_boost: float = 0,
+    bess_genset_credit: int = 0,
 ) -> dict:
     """
     Find minimum N+X reserve to meet availability target.
+
+    When *bess_genset_credit* > 0 the BESS can bridge power for that many
+    generator-equivalents while a reserve unit starts.  The availability
+    model then only requires ``n_running - bess_genset_credit`` physical
+    generators to be simultaneously available, which reduces the number of
+    reserve units needed.
+
     Returns a reliability config dict.
     """
     load_pct = (p_avg_at_gen / (n_running * unit_site_cap)) * 100 if n_running > 0 else 0
+    # BESS can cover some generators, so fewer need to be available at once
+    effective_n_running = max(1, n_running - bess_genset_credit)
 
     best = None
     for n_res in range(0, 101):
         n_tot = n_running + n_res
         avg_avail, _ = calculate_availability_weibull(
-            n_tot, n_running, unit_availability, project_years,
+            n_tot, effective_n_running, unit_availability, project_years,
         )
-        effective_avail = min(1.0, avg_avail + bess_reliability_boost)
 
-        if effective_avail >= avail_decimal:
+        if avg_avail >= avail_decimal:
             eff = get_part_load_efficiency(
                 gen_data["electrical_efficiency"], load_pct, gen_data["type"]
             )
@@ -125,7 +133,7 @@ def _find_availability_config(
                 "bess_mw": bess_mw,
                 "bess_mwh": bess_mwh,
                 "bess_credit": bess_credit,
-                "availability": effective_avail,
+                "availability": avg_avail,
                 "load_pct": load_pct,
                 "efficiency": eff,
                 "spinning_reserve_mw": spinning_result.get("spinning_reserve_mw", 0) if spinning_result else 0,
@@ -140,7 +148,7 @@ def _find_availability_config(
         n_res_fb = 100
         n_tot_fb = n_running + n_res_fb
         fb_avail, _ = calculate_availability_weibull(
-            n_tot_fb, n_running, unit_availability, project_years,
+            n_tot_fb, effective_n_running, unit_availability, project_years,
         )
         eff = get_part_load_efficiency(
             gen_data["electrical_efficiency"], load_pct, gen_data["type"]
@@ -153,7 +161,7 @@ def _find_availability_config(
             "bess_mw": bess_mw,
             "bess_mwh": bess_mwh,
             "bess_credit": bess_credit,
-            "availability": min(1.0, fb_avail + bess_reliability_boost),
+            "availability": fb_avail,
             "load_pct": load_pct,
             "efficiency": eff,
             "spinning_reserve_mw": spinning_result.get("spinning_reserve_mw", 0) if spinning_result else 0,
@@ -339,7 +347,7 @@ def run_full_sizing(inputs: SizingInput) -> dict:
             target_gensets_covered * unit_site_cap * bess_coverage_hrs,
         )
 
-        # BESS reliability credit
+        # BESS reliability credit — how many genset-equivalents BESS can bridge
         try:
             bess_credit_units, credit_breakdown = calculate_bess_reliability_credit(
                 bess_power_hybrid, bess_energy_hybrid, unit_site_cap, mttr_hours
@@ -350,83 +358,25 @@ def run_full_sizing(inputs: SizingInput) -> dict:
             bess_credit_int = 0
             bess_credit_conservative = 0
 
-        # Search for optimal Config C
-        config_b_reserve = config_b["n_reserve"] if config_b else config_a["n_reserve"]
-        bess_reliability_boost = min(0.0005, bess_credit_int * 0.00005)
-
-        found_c = False
-        for n_run_offset in range(-5, 10):
-            if found_c:
-                break
-            n_run = n_running_min_c + n_run_offset
-            if n_run < n_running_min_c:
-                continue
-            if n_run * unit_site_cap < spinning_with_bess["required_online_capacity"]:
-                continue
-
-            for n_res_try in range(max(1, config_b_reserve - 10), config_b_reserve + 2):
-                n_tot = n_run + n_res_try
-                try:
-                    avg_avail, _ = calculate_availability_weibull(
-                        n_tot, n_run, unit_availability, inputs.project_years,
-                    )
-                    avg_avail_with_bess = min(1.0, avg_avail + bess_reliability_boost)
-
-                    if avg_avail_with_bess >= avail_decimal:
-                        load_pct_c = (p_avg_at_gen / (n_run * unit_site_cap)) * 100
-                        eff_c = get_part_load_efficiency(
-                            gen_data["electrical_efficiency"], load_pct_c, gen_data["type"]
-                        )
-                        config_c = {
-                            "name": f"C: {inputs.bess_strategy}",
-                            "n_running": n_run,
-                            "n_reserve": n_res_try,
-                            "n_total": n_tot,
-                            "bess_mw": bess_power_hybrid,
-                            "bess_mwh": bess_energy_hybrid,
-                            "bess_credit": bess_credit_conservative,
-                            "availability": avg_avail_with_bess,
-                            "load_pct": load_pct_c,
-                            "efficiency": eff_c,
-                            "spinning_reserve_mw": spinning_with_bess["spinning_reserve_mw"],
-                            "spinning_from_gens": spinning_with_bess["spinning_from_gens"],
-                            "spinning_from_bess": spinning_with_bess["spinning_from_bess"],
-                            "headroom_mw": n_run * unit_site_cap - p_total_avg,
-                        }
-                        found_c = True
-                        break
-                except Exception:
-                    continue
-
-        if config_c:
-            reliability_configs.append(config_c)
-        else:
-            # Fallback Config C
-            n_run_fb = n_running_min_c
-            n_res_fb = 100
-            fb_avail, _ = calculate_availability_weibull(
-                n_run_fb + n_res_fb, n_run_fb, unit_availability, inputs.project_years,
-            )
-            fb_load = (p_avg_at_gen / (n_run_fb * unit_site_cap)) * 100
-            config_c = {
-                "name": f"C: {inputs.bess_strategy} (fallback)",
-                "n_running": n_run_fb,
-                "n_reserve": n_res_fb,
-                "n_total": n_run_fb + n_res_fb,
-                "bess_mw": bess_power_hybrid,
-                "bess_mwh": bess_energy_hybrid,
-                "bess_credit": bess_credit_conservative,
-                "availability": fb_avail,
-                "load_pct": fb_load,
-                "efficiency": get_part_load_efficiency(
-                    gen_data["electrical_efficiency"], fb_load, gen_data["type"]
-                ),
-                "spinning_reserve_mw": spinning_with_bess["spinning_reserve_mw"],
-                "spinning_from_gens": spinning_with_bess["spinning_from_gens"],
-                "spinning_from_bess": spinning_with_bess["spinning_from_bess"],
-                "headroom_mw": n_run_fb * unit_site_cap - p_total_avg,
-            }
-            reliability_configs.append(config_c)
+        # Use _find_availability_config with bess_genset_credit so that
+        # the availability model requires fewer physical generators to be
+        # available simultaneously → fewer reserve units needed.
+        config_c = _find_availability_config(
+            name=f"C: {inputs.bess_strategy}",
+            n_running=n_running_min_c,
+            unit_site_cap=unit_site_cap,
+            unit_availability=unit_availability,
+            project_years=inputs.project_years,
+            gen_data=gen_data,
+            avail_decimal=avail_decimal,
+            p_avg_at_gen=p_avg_at_gen,
+            bess_mw=bess_power_hybrid,
+            bess_mwh=bess_energy_hybrid,
+            bess_credit=bess_credit_conservative,
+            spinning_result=spinning_with_bess,
+            bess_genset_credit=bess_credit_int,
+        )
+        reliability_configs.append(config_c)
 
     # ── Step 9: Select final configuration ──
     if inputs.bess_strategy == "Transient Only" and len(reliability_configs) >= 2:

@@ -1737,6 +1737,43 @@ def render_phasing_tab(r):
 def render_emissions_compliance_tab(r):
     """Full emissions compliance matrix with detailed regulation breakdown."""
 
+    # ---- Emissions Summary (rates + annual totals + aftertreatment) ----
+    st.subheader("Emissions Summary")
+    emissions = r.emissions
+    if emissions:
+        nox_tpy = emissions.get('nox_tpy', 0)
+        co_tpy = emissions.get('co_tpy', 0)
+        co2_tpy = emissions.get('co2_tpy', 0)
+
+        ec_at = r.emissions_control if r.emissions_control else {}
+        nox_red = _safe_get(ec_at, 'nox_reduction_pct', 0) / 100
+        co_red = _safe_get(ec_at, 'co_reduction_pct', 0) / 100
+
+        nox_after = nox_tpy * (1 - nox_red)
+        co_after = co_tpy * (1 - co_red)
+
+        em_data = {
+            "Pollutant": ["NOx", "CO", "CO₂"],
+            "Rate": [
+                f"{emissions.get('nox_rate_g_kwh', 0):.3f} g/kWh",
+                f"{emissions.get('co_rate_g_kwh', 0):.3f} g/kWh",
+                f"{emissions.get('co2_rate_kg_mwh', 0):.1f} kg/MWh",
+            ],
+            "Annual Total": [
+                f"{nox_tpy:.1f} tons/yr",
+                f"{co_tpy:.1f} tons/yr",
+                f"{co2_tpy:,.0f} tons/yr",
+            ],
+            "Annual Total (with Aftertreatment)": [
+                f"{nox_after:.1f} tons/yr" if nox_red > 0 else "—",
+                f"{co_after:.1f} tons/yr" if co_red > 0 else "—",
+                "—",
+            ],
+        }
+        st.table(pd.DataFrame(em_data).set_index("Pollutant"))
+
+    st.divider()
+
     st.subheader("Emissions Compliance Matrix")
 
     if not r.emissions_compliance:

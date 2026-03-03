@@ -16,6 +16,7 @@ import numpy as np
 from api.services.sizing_pipeline import run_full_sizing
 from api.schemas.sizing import SizingInput
 from core.generator_library import GENERATOR_LIBRARY, filter_by_type, parse_gerp_pdf
+from core.engine import calculate_site_derate
 from core.pdf_report import generate_comprehensive_pdf
 from core.project_manager import (
     APP_VERSION,
@@ -313,7 +314,17 @@ def render_sidebar():
             help=HELP_TEXTS.get("derate_mode", ""),
         )
         derate_factor_manual = 0.9
-        if derate_mode == "Manual":
+        if derate_mode == "Auto-Calculate":
+            _dr = calculate_site_derate(site_temp_c, site_alt_m, methane_number)
+            st.info(
+                f"**Derate Factor: {_dr['derate_factor']:.4f}**  \n"
+                f"Methane: {_dr['methane_deration']:.4f} | "
+                f"Altitude: {_dr['altitude_deration']:.4f} | "
+                f"ACHRF: {_dr['achrf']:.4f}"
+            )
+            if _dr.get('methane_warning'):
+                st.warning(_dr['methane_warning'])
+        else:
             derate_factor_manual = st.number_input(
                 "Manual Derate Factor", min_value=0.01, max_value=1.0,
                 value=float(INPUT_DEFAULTS["derate_factor_manual"]), step=0.05,
@@ -2253,7 +2264,6 @@ def main():
     tab_labels.append(":loud_sound: Noise")
     if show_lng:
         tab_labels.append(":fuelpump: LNG Logistics")
-    tab_labels.append(":thermometer: Derating")
     tab_labels.append(":page_facing_up: PDF Report")
 
     tabs = st.tabs(tab_labels)
@@ -2334,12 +2344,7 @@ def main():
             render_lng_tab(r)
         tab_idx += 1
 
-    # Tab 14: Derating
-    with tabs[tab_idx]:
-        render_derating_tab(r)
-    tab_idx += 1
-
-    # Tab 15: PDF Report
+    # Tab: PDF Report
     with tabs[tab_idx]:
         render_pdf_tab(r)
     tab_idx += 1

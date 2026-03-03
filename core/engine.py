@@ -224,21 +224,41 @@ def get_part_load_efficiency(base_eff: float, load_pct: float, gen_type: str) ->
 # ==============================================================================
 
 def transient_stability_check(xd_pu: float, num_units: int,
-                              step_load_pct: float) -> tuple:
+                              step_load_mw: float,
+                              unit_capacity_mw: float) -> tuple:
     """
-    Critical voltage sag check for AI workloads.
+    Voltage sag screening for block-load step events (IEEE 3002.7).
 
-    Note: Voltage sag results are screening values. For projects with tight
-    margins, validate with a full dynamic simulation (e.g., ETAP).
+    Formula:  ΔV% ≈ P_step / S_sc × 100
+    where     S_sc  = N × S_rated / X"d   (short-circuit capacity)
+              P_step = step load in MW
+
+    The step load represents a sudden block-load energization (e.g., a
+    data-hall coming online) expressed as a fraction of total system load.
+
+    Note: Results are screening values. For projects with tight margins,
+    validate with a full dynamic simulation (e.g., ETAP).
+
+    Parameters
+    ----------
+    xd_pu : float
+        Sub-transient reactance X"d per unit.
+    num_units : int
+        Number of generators online in parallel.
+    step_load_mw : float
+        Step load magnitude in MW.
+    unit_capacity_mw : float
+        Rated capacity of each generator in MW.
 
     Returns
     -------
     tuple(bool, float)
         (passes, voltage_sag_percent)
     """
-    # Parallel generators: equivalent impedance = X"d / N (not sqrt(N))
-    equiv_xd = xd_pu / num_units
-    voltage_sag = (step_load_pct / 100) * equiv_xd * 100
+    # System short-circuit capacity (MVA, assuming pf ≈ 1)
+    s_sc = (num_units * unit_capacity_mw) / xd_pu if xd_pu > 0 else 1e9
+    # Voltage sag: ΔV% ≈ P_step / (P_step + S_sc) × 100
+    voltage_sag = (step_load_mw / (step_load_mw + s_sc)) * 100
     return (voltage_sag <= 10), voltage_sag
 
 

@@ -23,7 +23,9 @@ env/
 
 # Secrets
 .streamlit/secrets.toml
-*.env
+.env
+.env.local
+.env.production.local
 
 # OS
 .DS_Store
@@ -35,3 +37,9 @@ logs/
 
 # Server log
 server.log
+
+# Node.js / Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+frontend/.env.production.local

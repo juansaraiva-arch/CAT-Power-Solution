@@ -27,7 +27,19 @@ from core.engine import (
     calculate_emissions,
     calculate_footprint,
     calculate_lcoe,
+    calculate_lng_logistics,
+    calculate_pipeline_capex,
+    calculate_chp,
+    calculate_emissions_control_capex,
+    check_emissions_compliance,
+    gas_price_sensitivity,
+    calculate_net_efficiency_and_heat_rate,
+    calculate_phasing,
+    design_validation_scorecard,
+    lcoe_gap_recommender,
+    footprint_optimization_recommendations,
 )
+from core.generator_library import GENERATOR_LIBRARY
 from api.services.generator_resolver import resolve_generator
 from api.schemas.sizing import SizingInput, SizingResult, ReliabilityConfig
 
@@ -569,12 +581,14 @@ def run_full_sizing(inputs: SizingInput) -> dict:
 
     # O&M costs
     om = _DEFAULT_OM
+    model_var_om = gen_data.get('variable_om_mwh', om["variable_mwh"])
     om_fixed_annual = (installed_cap * 1000) * om["fixed_kw_yr"]
-    om_variable_annual = mwh_year * om["variable_mwh"]
+    om_variable_annual = mwh_year * model_var_om
     om_labor_annual = n_total * om["labor_per_unit"]
 
     # Overhaul
-    overhaul_interval_years = 60000 / (8760 * inputs.capacity_factor) if inputs.capacity_factor > 0 else 20
+    overhaul_hours = gen_data.get('overhaul_hours', 60000)
+    overhaul_interval_years = overhaul_hours / (8760 * inputs.capacity_factor) if inputs.capacity_factor > 0 else 20
     overhaul_pv = 0
     if wacc > 0:
         for year in np.arange(overhaul_interval_years, inputs.project_years, overhaul_interval_years):
@@ -648,6 +662,176 @@ def run_full_sizing(inputs: SizingInput) -> dict:
     else:
         simple_payback = 99.0
 
+    # ── Step 18a: Net Efficiency & Heat Rate ──
+    aux_pct = gen_data.get('aux_load_pct', 4.0)
+    net_eff_data = calculate_net_efficiency_and_heat_rate(
+        fleet_efficiency, aux_pct, inputs.dist_loss_pct,
+    )
+
+    # ── Step 18b: LNG Logistics ──
+    lng_logistics = {}
+    effective_gas_price = inputs.gas_price
+    if inputs.fuel_mode in ("LNG", "Dual-Fuel"):
+        lng_logistics = calculate_lng_logistics(
+            p_avg_at_gen, fleet_efficiency, inputs.lng_days,
+            inputs.gas_price_lng, inputs.gas_price,
+            100.0 if inputs.fuel_mode == "LNG" else inputs.lng_backup_pct,
+        )
+        effective_gas_price = lng_logistics.get('blended_gas_price', inputs.gas_price)
+        # Recalculate fuel cost with blended price
+        fuel_cost_year = total_fuel_input_mmbtu_hr * effective_gas_price * effective_hours
+
+    # ── Step 18c: Pipeline auto-calc ──
+    if inputs.pipeline_distance_km > 0 and pipeline_cost == 0:
+        pipeline_cost = calculate_pipeline_capex(
+            inputs.pipeline_distance_km, inputs.pipeline_diameter_inch
+        )
+        # Recalculate infra
+        infra_capex_m = (pipeline_cost + permitting_cost + commissioning_cost) / 1e6
+
+    # ── Step 18d: CHP / Tri-Generation ──
+    chp_results = {}
+    if inputs.include_chp:
+        chp_results = calculate_chp(
+            n_running, unit_site_cap, gen_data, load_per_unit_pct,
+            inputs.chp_recovery_eff, inputs.absorption_cop, inputs.cooling_load_mw,
+        )
+
+    # ── Step 18e: Emissions Control ──
+    emissions_control = calculate_emissions_control_capex(
+        n_total, unit_site_cap, inputs.include_scr, inputs.include_oxicat,
+    )
+
+    # ── Step 18f: Emissions Compliance ──
+    emissions_compliance = check_emissions_compliance(
+        emissions.get('nox_rate_g_kwh', 0),
+        emissions.get('co_rate_g_kwh', 0),
+        emissions.get('co2_rate_kg_mwh', 0),
+        unit_site_cap, n_running,
+    )
+
+    # ── Step 18g: Frequency Screening ──
+    freq_result = frequency_screening(
+        n_running, unit_site_cap, p_avg_at_gen,
+        p_avg_at_gen * (inputs.load_step_pct / 100),
+        gen_data, bess_power_total, inputs.use_bess, inputs.freq_hz,
+    )
+
+    # ── Step 18h: Noise Assessment ──
+    attenuation_map = {"Standard": 10, "Enhanced": 20, "Critical": 30, "Building": 40}
+    attenuation_db = attenuation_map.get(inputs.acoustic_treatment, 10)
+    source_noise = gen_data.get('noise_db_at_1m', 105)
+    combined_noise = calculate_combined_noise(source_noise, attenuation_db, n_running)
+    noise_at_property = noise_at_distance(combined_noise, inputs.distance_to_property_m)
+    noise_at_residence = noise_at_distance(combined_noise, inputs.distance_to_residence_m)
+    setback = noise_setback_distance(combined_noise, inputs.noise_limit_db)
+    noise_results = {
+        'source_noise_db': source_noise,
+        'attenuation_db': attenuation_db,
+        'combined_noise_db': combined_noise,
+        'noise_at_property_db': noise_at_property,
+        'noise_at_residence_db': noise_at_residence,
+        'noise_limit_db': inputs.noise_limit_db,
+        'property_compliant': noise_at_property <= inputs.noise_limit_db,
+        'setback_distance_m': setback,
+        'acoustic_treatment': inputs.acoustic_treatment,
+    }
+
+    # ── Step 18i: Design Validation Scorecard ──
+    spinning_required = p_avg_at_gen * (inputs.spinning_res_pct / 100)
+    step_load_mw_actual = p_avg_at_gen * (inputs.load_step_pct / 100)
+    scorecard = design_validation_scorecard(
+        system_availability, inputs.avail_req,
+        selected_config.get("spinning_reserve_mw", 0), spinning_required,
+        voltage_sag, load_per_unit_pct,
+        bess_power_total, step_load_mw_actual,
+        freq_result.get('nadir_hz', 59.5),
+        freq_result.get('nadir_limit', 59.5),
+        freq_result.get('rocof_hz_s', 0),
+        freq_result.get('rocof_limit', 2.0),
+        n_reserve,
+    )
+
+    # ── Step 18j: Gas Price Sensitivity ──
+    gas_sens = gas_price_sensitivity(
+        inputs.gas_price,
+        emissions.get('annual_fuel_mmbtu', 0),
+        om_cost_year,
+        total_capex_m * 1e6,
+        mwh_year * 1000,
+        wacc, inputs.project_years, inputs.benchmark_price,
+    )
+
+    # ── Step 18k: LCOE Recommender ──
+    lcoe_recs = lcoe_gap_recommender(
+        lcoe_val, inputs.benchmark_price, gen_data,
+        n_running, n_reserve, inputs.use_bess,
+        inputs.include_chp, inputs.enable_depreciation,
+    )
+
+    # ── Step 18l: Footprint Optimization ──
+    total_area = footprint.get('total_area_m2', 0)
+    fp_recs = []
+    if inputs.enable_footprint_limit and total_area > inputs.max_area_m2:
+        fp_recs = footprint_optimization_recommendations(
+            total_area, inputs.max_area_m2, gen_data,
+            n_total, n_reserve, inputs.use_bess, GENERATOR_LIBRARY,
+        )
+
+    # ── Step 18m: Phasing ──
+    phasing_result = {}
+    if inputs.enable_phasing:
+        phasing_result = calculate_phasing(
+            p_total_dc, unit_site_cap, n_total, total_capex_m * 1e6,
+            inputs.n_phases, inputs.months_between_phases,
+        )
+
+    # ── Step 18n: CAPEX & O&M Breakdown ──
+    capex_breakdown = {
+        'generators': gen_cost_total_m * 1e6,
+        'installation': gen_cost_total_m * idx_install * 1e6,
+        'bess': bess_capex_m * 1e6,
+        'chp': chp_results.get('chp_capex_usd', 0) if inputs.include_chp else 0,
+        'emissions_control': emissions_control.get('total_capex', 0),
+        'lng_infrastructure': lng_logistics.get('lng_capex_usd', 0),
+        'pipeline': pipeline_cost,
+        'permitting': permitting_cost,
+        'commissioning': commissioning_cost,
+    }
+    om_breakdown_dict = {
+        'fixed': om_fixed_annual,
+        'variable': om_variable_annual,
+        'labor': om_labor_annual,
+        'overhaul': overhaul_annualized,
+        'bess_om': bess_om_annual,
+    }
+
+    # ── Step 18o: Off-Grid vs Grid Comparison ──
+    grid_comparison = {}
+    grid_annual = mwh_year * 1000 * inputs.benchmark_price
+    gas_annual = fuel_cost_year + om_cost_year
+    if grid_annual > 0:
+        grid_cumulative = []
+        gas_cumulative = []
+        cum_grid = 0
+        cum_gas = total_capex_m * 1e6
+        crossover_year = None
+        for yr in range(1, inputs.project_years + 1):
+            cum_grid += grid_annual
+            cum_gas += gas_annual
+            grid_cumulative.append(cum_grid)
+            gas_cumulative.append(cum_gas)
+            if crossover_year is None and cum_grid >= cum_gas:
+                crossover_year = yr
+        grid_comparison = {
+            'grid_cumulative': grid_cumulative,
+            'gas_cumulative': gas_cumulative,
+            'crossover_year': crossover_year,
+            'grid_annual': grid_annual,
+            'gas_annual': gas_annual,
+            'savings_20yr': cum_grid - cum_gas,
+        }
+
     # ── Step 19: Assemble result ──
     rel_configs = [ReliabilityConfig(**c) for c in reliability_configs]
 
@@ -656,7 +840,7 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         project_name="",
         dc_type=inputs.dc_type,
         region=inputs.region,
-        app_version="3.1",
+        app_version="4.0",
         # Load
         p_it=inputs.p_it,
         pue=inputs.pue,
@@ -701,13 +885,24 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         stability_ok=stability_ok,
         voltage_sag=voltage_sag,
         net_efficiency=net_efficiency,
+        # Net Efficiency & Heat Rate
+        gross_efficiency=fleet_efficiency,
+        aux_load_pct=aux_pct,
+        heat_rate_lhv_btu=net_eff_data['heat_rate_lhv_btu'],
+        heat_rate_hhv_btu=net_eff_data['heat_rate_hhv_btu'],
+        heat_rate_lhv_mj=net_eff_data['heat_rate_lhv_mj'],
+        heat_rate_hhv_mj=net_eff_data['heat_rate_hhv_mj'],
         # Availability
         system_availability=system_availability,
         availability_over_time=availability_curve,
         # Emissions
         emissions=emissions,
+        # Emissions Compliance
+        emissions_compliance=emissions_compliance,
+        emissions_control=emissions_control,
         # Footprint
         footprint=footprint,
+        footprint_recommendations=fp_recs,
         # Financial
         lcoe=lcoe_val,
         npv=npv_val,
@@ -715,9 +910,31 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         annual_fuel_cost=fuel_cost_year,
         annual_om_cost=om_cost_year,
         simple_payback_years=simple_payback,
+        annual_savings=annual_savings,
+        grid_annual_cost=annual_grid_cost,
+        breakeven_gas_price=gas_sens.get('breakeven_gas_price', 0),
         pipeline_cost_usd=pipeline_cost,
         permitting_cost_usd=permitting_cost,
         commissioning_cost_usd=commissioning_cost,
+        # Financial extras
+        capex_breakdown=capex_breakdown,
+        om_breakdown=om_breakdown_dict,
+        gas_sensitivity=gas_sens,
+        lcoe_recommendations=lcoe_recs,
+        # LNG
+        lng_logistics=lng_logistics,
+        # CHP
+        chp_results=chp_results,
+        # Noise
+        noise_results=noise_results,
+        # Phasing
+        phasing=phasing_result,
+        # Scorecard
+        design_scorecard=scorecard,
+        # Frequency
+        frequency_screening=freq_result,
+        # Grid comparison
+        grid_comparison=grid_comparison,
     )
 
 

@@ -25,4 +25,9 @@ class TestHealth:
     def test_root_redirect(self, client):
         resp = client.get("/")
         assert resp.status_code == 200
-        assert "docs" in resp.json()
+        # In dev mode returns JSON with docs link; with static/ dir returns HTML SPA
+        content_type = resp.headers.get("content-type", "")
+        if "application/json" in content_type:
+            assert "docs" in resp.json()
+        else:
+            assert "text/html" in content_type

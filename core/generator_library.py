@@ -40,6 +40,15 @@ GENERATOR_LIBRARY = {
         "gas_pressure_min_psi": 1.5,
         "reactance_xd_2": 0.14,
         "inertia_h": 1.0,
+        "variable_om_mwh": 17.5,          # midpoint of $15-20/MWh
+        "voltage_kv": 0.48,               # 480V Standard
+        "gas_pressure_max_psi": 5.0,
+        "co2_g_nm3": 177.0,
+        "noise_db_at_1m": 108.0,          # typical recip engine
+        "cooling_type": "Water-Cooled",   # make-up (closed loop)
+        "aux_load_pct": 4.0,
+        "overhaul_hours": 80000,
+        "overhaul_duration_weeks": 4,
     },
     "G3520FR": {
         "description": "Fast Response Gen Set (High Speed)",
@@ -60,11 +69,20 @@ GENERATOR_LIBRARY = {
         "gas_pressure_min_psi": 1.5,
         "reactance_xd_2": 0.14,
         "inertia_h": 1.5,
+        "variable_om_mwh": 17.5,
+        "voltage_kv": 13.8,
+        "gas_pressure_max_psi": 5.0,
+        "co2_g_nm3": 175.0,
+        "noise_db_at_1m": 108.0,
+        "cooling_type": "Water-Cooled",
+        "aux_load_pct": 4.0,
+        "overhaul_hours": 80000,
+        "overhaul_duration_weeks": 4,
     },
     "G3520K": {
         "description": "High Efficiency Gen Set (High Speed)",
         "type": "High Speed",
-        "iso_rating_mw": 2.4,
+        "iso_rating_mw": 2.5,
         "electrical_efficiency": 0.453,
         "heat_rate_lhv": 7638,
         "step_load_pct": 15.0,
@@ -80,6 +98,15 @@ GENERATOR_LIBRARY = {
         "gas_pressure_min_psi": 1.5,
         "reactance_xd_2": 0.13,
         "inertia_h": 1.2,
+        "variable_om_mwh": 17.5,
+        "voltage_kv": 13.8,
+        "gas_pressure_max_psi": 5.0,
+        "co2_g_nm3": 178.0,
+        "noise_db_at_1m": 106.0,
+        "cooling_type": "Water-Cooled",
+        "aux_load_pct": 4.0,
+        "overhaul_hours": 80000,
+        "overhaul_duration_weeks": 4,
     },
     "G3516H": {
         "description": "Data Center Workhorse (High Speed, 2.5 MW)",
@@ -100,6 +127,15 @@ GENERATOR_LIBRARY = {
         "gas_pressure_min_psi": 1.5,
         "reactance_xd_2": 0.14,
         "inertia_h": 1.2,
+        "variable_om_mwh": 17.5,
+        "voltage_kv": 13.8,
+        "gas_pressure_max_psi": 5.0,
+        "co2_g_nm3": 176.0,
+        "noise_db_at_1m": 107.0,
+        "cooling_type": "Water-Cooled",
+        "aux_load_pct": 4.0,
+        "overhaul_hours": 80000,
+        "overhaul_duration_weeks": 4,
     },
     "CG260-16": {
         "description": "Cogeneration Specialist (High Speed)",
@@ -120,6 +156,15 @@ GENERATOR_LIBRARY = {
         "gas_pressure_min_psi": 7.25,
         "reactance_xd_2": 0.15,
         "inertia_h": 1.3,
+        "variable_om_mwh": 12.5,          # midpoint of $10-15/MWh
+        "voltage_kv": 13.8,
+        "gas_pressure_max_psi": 145.0,
+        "co2_g_nm3": 119.84,
+        "noise_db_at_1m": 105.0,
+        "cooling_type": "Water-Cooled",
+        "aux_load_pct": 3.5,
+        "overhaul_hours": 80000,
+        "overhaul_duration_weeks": 1,      # 1 week
     },
     "C175-20": {
         "description": "High Power Gas Gen Set (4 MW, High Speed)",
@@ -140,6 +185,15 @@ GENERATOR_LIBRARY = {
         "gas_pressure_min_psi": 3.0,
         "reactance_xd_2": 0.15,
         "inertia_h": 1.4,
+        "variable_om_mwh": 15.0,
+        "voltage_kv": 13.8,
+        "gas_pressure_max_psi": 10.0,
+        "co2_g_nm3": 170.0,
+        "noise_db_at_1m": 107.0,
+        "cooling_type": "Water-Cooled",
+        "aux_load_pct": 4.0,
+        "overhaul_hours": 80000,
+        "overhaul_duration_weeks": 4,
     },
     "Titan 130": {
         "description": "Solar Gas Turbine (16.5 MW)",
@@ -160,6 +214,16 @@ GENERATOR_LIBRARY = {
         "gas_pressure_min_psi": 300.0,
         "reactance_xd_2": 0.18,
         "inertia_h": 5.0,
+        "variable_om_mwh": 7.5,            # midpoint of $5-10/MWh
+        "voltage_kv": 13.8,
+        "gas_pressure_max_psi": 400.0,
+        "co2_exhaust_pct": 3.2,            # ~3.2% of Exhaust Flow (different format from recip)
+        "co2_g_nm3": 0.0,                  # use co2_exhaust_pct instead
+        "noise_db_at_1m": 100.0,           # gas turbines generally quieter
+        "cooling_type": "Air-Cooled",
+        "aux_load_pct": 3.0,
+        "overhaul_hours": 40000,
+        "overhaul_duration_weeks": 1,      # 3-5 days (swap program)
     },
     "Titan 250": {
         "description": "Solar Gas Turbine (23.2 MW)",
@@ -180,6 +244,16 @@ GENERATOR_LIBRARY = {
         "gas_pressure_min_psi": 400.0,
         "reactance_xd_2": 0.18,
         "inertia_h": 5.0,
+        "variable_om_mwh": 7.5,
+        "voltage_kv": 13.8,
+        "gas_pressure_max_psi": 500.0,
+        "co2_exhaust_pct": 3.2,
+        "co2_g_nm3": 0.0,
+        "noise_db_at_1m": 102.0,
+        "cooling_type": "Air-Cooled",
+        "aux_load_pct": 3.0,
+        "overhaul_hours": 40000,
+        "overhaul_duration_weeks": 1,
     },
     "Titan 350": {
         "description": "Solar Gas Turbine (38 MW)",
@@ -200,6 +274,16 @@ GENERATOR_LIBRARY = {
         "gas_pressure_min_psi": 400.0,
         "reactance_xd_2": 0.18,
         "inertia_h": 5.0,
+        "variable_om_mwh": 7.5,
+        "voltage_kv": 13.8,
+        "gas_pressure_max_psi": 500.0,
+        "co2_exhaust_pct": 3.2,
+        "co2_g_nm3": 0.0,
+        "noise_db_at_1m": 103.0,
+        "cooling_type": "Air-Cooled",
+        "aux_load_pct": 3.0,
+        "overhaul_hours": 40000,
+        "overhaul_duration_weeks": 1,
     },
     "G20CM34": {
         "description": "Medium Speed Baseload Platform",
@@ -220,6 +304,16 @@ GENERATOR_LIBRARY = {
         "gas_pressure_min_psi": 90.0,
         "reactance_xd_2": 0.16,
         "inertia_h": 2.5,
+        "variable_om_mwh": 7.5,
+        "voltage_kv": 11.0,               # 11kV Standard
+        "gas_pressure_max_psi": 110.0,
+        "co2_exhaust_pct": 4.5,           # 4.5% of Exhaust Flow
+        "co2_g_nm3": 0.0,
+        "noise_db_at_1m": 104.0,
+        "cooling_type": "Water-Cooled",
+        "aux_load_pct": 3.5,
+        "overhaul_hours": 80000,
+        "overhaul_duration_weeks": 1,
     },
 }
 

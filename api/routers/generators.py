@@ -4,8 +4,9 @@ CAT Power Solution — Generators Router
 CRUD endpoints for the generator library.
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File
 from typing import Optional
+from io import BytesIO
 
 from api.schemas.generators import (
     GeneratorSpec,
@@ -19,6 +20,7 @@ from core.generator_library import (
     filter_by_type,
     get_model_names,
     get_model_summary,
+    parse_gerp_pdf,
 )
 
 router = APIRouter()
@@ -76,3 +78,35 @@ def filter_generators(req: GeneratorFilterRequest):
     lib = get_library()
     filtered = filter_by_type(lib, req.types)
     return GeneratorLibraryResponse(generators=filtered, count=len(filtered))
+
+
+@router.post("/upload-gerp")
+async def upload_gerp(file: UploadFile = File(...)):
+    """
+    Parse a GERP PDF performance report and return extracted generator data.
+    Returns model name, site rating (kW), efficiency, heat rejection, and emissions.
+    """
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are accepted.")
+
+    try:
+        contents = await file.read()
+        pdf_bytes = BytesIO(contents)
+        data = parse_gerp_pdf(pdf_bytes)
+
+        if not data:
+            raise HTTPException(
+                status_code=422,
+                detail="Could not extract generator data from this PDF. "
+                       "Please verify it is a valid GERP performance report.",
+            )
+
+        return {
+            "success": True,
+            "parsed_data": data,
+            "message": f"Successfully parsed GERP for model {data.get('model', 'Unknown')}",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error parsing GERP PDF: {str(e)}")

@@ -118,7 +118,7 @@ class TestProjects:
         data = resp.json()
         assert "header" in data
         assert "inputs" in data
-        assert data["app_version"] == "3.1"
+        assert data["app_version"] == "4.0"
 
     def test_list_templates(self, client):
         resp = client.get("/api/v1/projects/templates")

@@ -63,6 +63,15 @@ def _build_styles():
         spaceAfter=6,
         alignment=TA_JUSTIFY,
     ))
+    styles.add(ParagraphStyle(
+        name='Disclaimer',
+        parent=styles['Normal'],
+        fontSize=8,
+        textColor=HexColor('#666666'),
+        spaceAfter=4,
+        alignment=TA_JUSTIFY,
+        fontName='Helvetica-Oblique',
+    ))
     return styles
 
 
@@ -469,7 +478,12 @@ def generate_comprehensive_pdf(data: dict) -> bytes:
     story.append(Paragraph("11. CAPEX BREAKDOWN", styles['SectionHeader']))
     capex_items = g('capex_items', [])
     capex_rows = [['Item', 'Cost (M USD)']]
-    for item_name, cost_val in capex_items:
+    for item in capex_items:
+        if isinstance(item, dict):
+            item_name = item.get('label', 'Unknown')
+            cost_val = item.get('value_m', 0)
+        else:
+            item_name, cost_val = item
         capex_rows.append([item_name, f"${cost_val:.2f}M"])
 
     # Infrastructure line items (always shown, even if zero)
@@ -525,6 +539,178 @@ def generate_comprehensive_pdf(data: dict) -> bytes:
     Caterpillar Inc. makes no warranties regarding accuracy or completeness.
     """
     story.append(Paragraph(disclaimer_text, styles['CustomBody']))
+
+    # Build PDF
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+# ==============================================================================
+# EXECUTIVE SUMMARY (1-PAGE)
+# ==============================================================================
+
+def generate_executive_pdf(data: dict) -> bytes:
+    """
+    Generate a 1-page executive summary PDF.
+
+    Parameters
+    ----------
+    data : dict
+        Same keys as generate_comprehensive_pdf(). Only a subset is used.
+
+    Returns
+    -------
+    bytes
+        PDF file content.
+    """
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        rightMargin=0.6 * inch,
+        leftMargin=0.6 * inch,
+        topMargin=0.5 * inch,
+        bottomMargin=0.5 * inch,
+    )
+
+    styles = _build_styles()
+    ts = _standard_table_style()
+    story = []
+
+    def g(key, default=""):
+        return data.get(key, default)
+
+    # ── Header ──
+    story.append(Paragraph("⚡ CAT POWER SOLUTION — Executive Summary", styles['ReportTitle']))
+    story.append(Spacer(1, 0.15 * inch))
+
+    # Project info row
+    info_data = [
+        ['Project', g('project_name', 'Untitled'),
+         'Date', datetime.now().strftime("%B %d, %Y")],
+        ['DC Type', g('dc_type'), 'Region', g('region')],
+        ['Version', f"v{g('app_version', '4.0')}", 'Client', g('client_name', '')],
+    ]
+    info_table = Table(info_data, colWidths=[0.9 * inch, 2.4 * inch, 0.9 * inch, 2.4 * inch])
+    info_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+    ]))
+    story.append(info_table)
+    story.append(Spacer(1, 0.15 * inch))
+
+    # ── Key Metrics (horizontal) ──
+    story.append(Paragraph("KEY METRICS", styles['SectionHeader']))
+    metrics_data = [
+        ['IT Load', 'Fleet', 'LCOE', 'Availability', 'CAPEX', 'Payback'],
+        [f"{g('p_it', 0):.0f} MW",
+         f"{g('n_total', 0)}× {g('selected_gen', 'N/A')}",
+         f"${g('lcoe', 0):.4f}/kWh",
+         f"{g('prob_gen', 0) * 100:.3f}%",
+         f"${g('initial_capex_sum', 0):.1f}M",
+         g('payback_str', 'N/A')],
+    ]
+    mt = Table(metrics_data, colWidths=[1.05 * inch] * 6)
+    mt.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), HexColor('#1a1a2e')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('GRID', (0, 0), (-1, -1), 0.5, HexColor('#cccccc')),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+    ]))
+    story.append(mt)
+    story.append(Spacer(1, 0.15 * inch))
+
+    # ── Configuration ──
+    story.append(Paragraph("SYSTEM CONFIGURATION", styles['SectionHeader']))
+    use_bess = g('use_bess', False)
+    config_data = [
+        ['Parameter', 'Value', 'Parameter', 'Value'],
+        ['Total DC Load', f"{g('p_total_dc', 0):.1f} MW",
+         'PUE', f"{g('pue', 1.2):.2f}"],
+        ['Generator', g('selected_gen', 'N/A'),
+         'Site Rating', f"{g('unit_site_cap', 0):.2f} MW"],
+        ['Fleet', f"{g('n_running', 0)}+{g('n_reserve', 0)} ({g('n_total', 0)} total)",
+         'Derate Factor', f"{g('derate_factor', 1.0) * 100:.1f}%"],
+        ['Load/Unit', f"{g('load_per_unit_pct', 0):.1f}%",
+         'Efficiency', f"{g('fleet_efficiency', 0) * 100:.1f}%"],
+        ['Voltage', f"{g('rec_voltage_kv', 13.8)} kV",
+         'Frequency', f"{g('freq_hz', 60)} Hz"],
+        ['BESS Power', f"{g('bess_power_total', 0):.1f} MW" if use_bess else 'N/A',
+         'BESS Energy', f"{g('bess_energy_total', 0):.1f} MWh" if use_bess else 'N/A'],
+    ]
+    ct = Table(config_data, colWidths=[1.4 * inch, 1.7 * inch, 1.4 * inch, 1.7 * inch])
+    ct.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), HexColor('#1a1a2e')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (0, 1), (0, -1), 'Helvetica-Bold'),
+        ('FONTNAME', (2, 1), (2, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('GRID', (0, 0), (-1, -1), 0.5, HexColor('#cccccc')),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [white, HexColor('#f8f8f8')]),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+    ]))
+    story.append(ct)
+    story.append(Spacer(1, 0.15 * inch))
+
+    # ── Financial ──
+    story.append(Paragraph("FINANCIAL SUMMARY", styles['SectionHeader']))
+    fin_data = [
+        ['Total CAPEX', 'Annual Fuel', 'Annual O&M', 'Annual Savings', 'NPV'],
+        [f"${g('initial_capex_sum', 0):.1f}M",
+         f"${g('annual_fuel_cost', 0) / 1e6:.1f}M",
+         f"${g('annual_om_cost', 0) / 1e6:.1f}M",
+         f"${g('annual_savings', 0) / 1e6:.1f}M",
+         f"${g('npv', 0) / 1e6:.1f}M"],
+    ]
+    ft = Table(fin_data, colWidths=[1.26 * inch] * 5)
+    ft.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), HexColor('#1a1a2e')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), white),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('GRID', (0, 0), (-1, -1), 0.5, HexColor('#cccccc')),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+    ]))
+    story.append(ft)
+    story.append(Spacer(1, 0.15 * inch))
+
+    # ── Verdict ──
+    lcoe = g('lcoe', 0)
+    benchmark = g('benchmark_price', 0)
+    if benchmark > 0 and lcoe > 0:
+        gap_pct = ((lcoe - benchmark) / benchmark) * 100
+        if lcoe <= benchmark:
+            verdict = f"LCOE ${lcoe:.4f}/kWh is {abs(gap_pct):.1f}% BELOW grid benchmark ${benchmark:.3f}/kWh — project is economically favorable."
+        else:
+            verdict = f"LCOE ${lcoe:.4f}/kWh is {gap_pct:.1f}% ABOVE grid benchmark ${benchmark:.3f}/kWh — consider optimization strategies."
+        story.append(Paragraph(f"<b>Economic Verdict:</b> {verdict}", styles['CustomBody']))
+
+    breakeven = g('breakeven_gas_price', 0)
+    if breakeven > 0:
+        story.append(Paragraph(
+            f"<b>Breakeven Gas Price:</b> ${breakeven:.2f}/MMBtu",
+            styles['CustomBody'],
+        ))
+
+    story.append(Spacer(1, 0.2 * inch))
+    story.append(Paragraph(
+        "<i>This executive summary is for preliminary planning purposes. "
+        "See full report for detailed analysis.</i>",
+        styles['CustomBody'],
+    ))
 
     # Build PDF
     doc.build(story)

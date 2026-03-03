@@ -12,7 +12,7 @@ import json
 from datetime import datetime
 from copy import deepcopy
 
-APP_VERSION = "3.1"
+APP_VERSION = "4.0"
 
 # ==============================================================================
 # HEADER DEFAULTS
@@ -100,6 +100,10 @@ INPUT_DEFAULTS = {
     "gen_install_kw_override": None,
     "lead_time_weeks": 24,
 
+    # ── Generation Cost Method ──
+    "gen_cost_mode": "budget_estimate",       # "budget_estimate" or "bdm_total_price"
+    "gen_total_price_bdm": 0.0,               # Total price in USD if BDM mode
+
     # ── Section 4: Economics ──
     "gas_price_pipeline": 3.5,
     "gas_price_lng": 9.5,
@@ -133,8 +137,35 @@ INPUT_DEFAULTS = {
     "enable_lcoe_target": False,
     "target_lcoe": 0.08,
 
-    # Load Distribution
-    "load_strategy": "Equal Loading (N units)",
+    # Dual-Fuel / LNG
+    "lng_backup_pct": 30.0,
+
+    # CHP / Tri-Generation
+    "chp_recovery_eff": 0.50,
+    "absorption_cop": 0.70,
+    "cooling_load_mw": 0.0,
+
+    # Emissions Control
+    "include_scr": False,
+    "include_oxicat": False,
+
+    # Noise
+    "noise_limit_db": 65.0,
+    "distance_to_property_m": 100.0,
+    "distance_to_residence_m": 300.0,
+    "acoustic_treatment": "Standard",
+
+    # Phasing
+    "enable_phasing": False,
+    "n_phases": 3,
+    "months_between_phases": 6,
+
+    # Pipeline Sizing
+    "pipeline_distance_km": 0.0,
+    "pipeline_diameter_inch": 6.0,
+
+    # Aux Load
+    "aux_load_pct": 4.0,
 }
 
 # ==============================================================================
@@ -199,7 +230,7 @@ HELP_TEXTS = {
 
     # Site Conditions
     "derate_mode": "Auto-Calculate uses temperature and altitude to compute derating. Manual lets you enter a fixed factor.",
-    "site_temp_c": "Maximum ambient temperature at site. Higher temperatures reduce generator output.",
+    "site_temp_c": "Maximum ambient temperature at site. CAT generators do not derate until above 40°C.",
     "site_alt_m": "Site elevation above sea level. Higher altitude = less oxygen = lower output.",
     "methane_number": "Gas quality indicator. Pipeline gas is typically MN 70-90. Below 70 may require derating.",
     "derate_factor_manual": "Manual power derating factor. 0.90 = generators produce 90% of their ISO rating.",
@@ -250,11 +281,59 @@ HELP_TEXTS = {
 # COUNTRY / LOCATION DATA
 # ==============================================================================
 COUNTRIES = [
-    "", "United States", "Canada", "Mexico", "Brazil", "Argentina", "Chile", "Colombia",
-    "United Kingdom", "Germany", "France", "Spain", "Italy", "Netherlands", "Sweden", "Norway",
+    "",
+    # Americas
+    "United States", "Canada", "Mexico", "Guatemala", "Honduras", "El Salvador",
+    "Nicaragua", "Costa Rica", "Panama", "Cuba", "Dominican Republic", "Haiti",
+    "Jamaica", "Trinidad and Tobago", "Bahamas", "Barbados",
+    "Colombia", "Venezuela", "Ecuador", "Peru", "Brazil", "Bolivia",
+    "Paraguay", "Uruguay", "Argentina", "Chile", "Guyana", "Suriname",
+    # Europe — Western
+    "United Kingdom", "Ireland", "France", "Belgium", "Netherlands", "Luxembourg",
+    "Germany", "Austria", "Switzerland", "Liechtenstein", "Monaco",
+    # Europe — Southern
+    "Spain", "Portugal", "Italy", "Greece", "Malta", "Cyprus", "Andorra",
+    # Europe — Northern
+    "Sweden", "Norway", "Denmark", "Finland", "Iceland",
+    "Estonia", "Latvia", "Lithuania",
+    # Europe — Central & Eastern
+    "Poland", "Czech Republic", "Slovakia", "Hungary", "Romania", "Bulgaria",
+    "Slovenia", "Croatia", "Serbia", "Bosnia and Herzegovina", "Montenegro",
+    "North Macedonia", "Albania", "Kosovo", "Moldova", "Ukraine", "Belarus",
+    # Europe — Other
+    "Turkey", "Georgia", "Armenia", "Azerbaijan",
+    # Middle East
     "Saudi Arabia", "UAE", "Qatar", "Kuwait", "Oman", "Bahrain",
-    "India", "China", "Japan", "South Korea", "Singapore", "Australia",
-    "South Africa", "Nigeria", "Kenya", "Egypt",
+    "Iraq", "Iran", "Israel", "Jordan", "Lebanon", "Syria", "Yemen",
+    # Africa — North
+    "Egypt", "Libya", "Tunisia", "Algeria", "Morocco",
+    # Africa — West
+    "Nigeria", "Ghana", "Senegal", "Ivory Coast", "Cameroon", "Mali",
+    "Burkina Faso", "Niger", "Guinea", "Benin", "Togo", "Sierra Leone", "Liberia",
+    # Africa — East
+    "Kenya", "Ethiopia", "Tanzania", "Uganda", "Rwanda", "Mozambique",
+    "Madagascar", "Somalia", "Djibouti", "Eritrea",
+    # Africa — Southern
+    "South Africa", "Namibia", "Botswana", "Zimbabwe", "Zambia",
+    "Angola", "Malawi", "Mauritius",
+    # Africa — Central
+    "Democratic Republic of Congo", "Republic of Congo", "Gabon",
+    "Equatorial Guinea", "Central African Republic", "Chad",
+    # South Asia
+    "India", "Pakistan", "Bangladesh", "Sri Lanka", "Nepal", "Bhutan", "Maldives",
+    # East Asia
+    "China", "Japan", "South Korea", "North Korea", "Taiwan", "Mongolia",
+    # Southeast Asia
+    "Indonesia", "Philippines", "Vietnam", "Thailand", "Myanmar", "Malaysia",
+    "Singapore", "Cambodia", "Laos", "Brunei", "Timor-Leste",
+    # Central Asia
+    "Kazakhstan", "Uzbekistan", "Turkmenistan", "Tajikistan", "Kyrgyzstan", "Afghanistan",
+    # Oceania
+    "Australia", "New Zealand", "Papua New Guinea", "Fiji",
+    "Samoa", "Tonga", "Solomon Islands", "Vanuatu",
+    # Russia
+    "Russia",
+    # Other
     "Other",
 ]
 

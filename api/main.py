@@ -11,9 +11,13 @@ Docs at:
     http://localhost:8000/api/redoc      (ReDoc)
 """
 
-from fastapi import FastAPI
+import os
+from pathlib import Path
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 from api.routers import health, generators, engine, sizing, projects, reports
 
@@ -76,9 +80,35 @@ async def key_error_handler(request, exc):
 
 
 # ==============================================================================
-# ROOT REDIRECT
+# STATIC FRONTEND (Production Mode)
 # ==============================================================================
+# In Docker/production, the built React app is in /app/static.
+# FastAPI serves it so we only need a single server.
 
-@app.get("/", include_in_schema=False)
-async def root():
-    return {"message": "CAT Power Solution API", "docs": "/api/docs"}
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+
+if STATIC_DIR.is_dir():
+    # Serve static assets (JS, CSS, images)
+    app.mount("/assets", StaticFiles(directory=str(STATIC_DIR / "assets")), name="static-assets")
+
+    @app.get("/", include_in_schema=False)
+    async def serve_spa():
+        return FileResponse(str(STATIC_DIR / "index.html"))
+
+    # Catch-all: any non-API route returns the SPA (for client-side routing)
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def catch_all(request: Request, full_path: str):
+        # Don't catch API routes
+        if full_path.startswith("api"):
+            return JSONResponse(status_code=404, content={"detail": "Not found"})
+        # Serve actual static files if they exist
+        file_path = STATIC_DIR / full_path
+        if file_path.is_file():
+            return FileResponse(str(file_path))
+        # Otherwise return index.html for SPA routing
+        return FileResponse(str(STATIC_DIR / "index.html"))
+else:
+    # Development mode: no static dir, just return API info
+    @app.get("/", include_in_schema=False)
+    async def root():
+        return {"message": "CAT Power Solution API", "docs": "/api/docs"}

@@ -977,3 +977,765 @@ def calculate_lcoe(
         'permitting_cost_usd': permitting_cost_usd,
         'commissioning_cost_usd': commissioning_cost_usd,
     }
+
+
+# ==============================================================================
+# 15. DUAL-FUEL & LNG LOGISTICS
+# ==============================================================================
+
+def calculate_lng_logistics(
+    p_avg_mw: float,
+    fleet_efficiency: float,
+    lng_days: int = 5,
+    gas_price_lng: float = 8.0,
+    gas_price_pipeline: float = 3.5,
+    lng_backup_pct: float = 100.0,
+) -> dict:
+    """
+    LNG virtual pipeline logistics: daily consumption, storage sizing,
+    number of tanks, truck traffic, and infrastructure CAPEX.
+
+    Parameters
+    ----------
+    p_avg_mw : float
+        Average load (MW).
+    fleet_efficiency : float
+        Fleet electrical efficiency (decimal).
+    lng_days : int
+        LNG storage autonomy in days.
+    gas_price_lng : float
+        LNG price in $/MMBtu.
+    gas_price_pipeline : float
+        Pipeline gas price in $/MMBtu.
+    lng_backup_pct : float
+        % of load to be covered by LNG (for dual-fuel mode).
+
+    Returns
+    -------
+    dict
+        daily_consumption_gal, storage_gallons, n_tanks, tank_capacity_gal,
+        truck_deliveries_per_week, lng_capex_usd, blended_gas_price
+    """
+    if fleet_efficiency <= 0:
+        return {
+            'daily_consumption_gal': 0, 'storage_gallons': 0,
+            'n_tanks': 0, 'tank_capacity_gal': 0,
+            'truck_deliveries_per_week': 0, 'lng_capex_usd': 0,
+            'blended_gas_price': gas_price_pipeline,
+        }
+
+    # Fuel consumption
+    total_fuel_mw = p_avg_mw * (lng_backup_pct / 100) / fleet_efficiency
+    total_fuel_mmbtu_hr = total_fuel_mw * 3.412
+    daily_mmbtu = total_fuel_mmbtu_hr * 24
+
+    # LNG: ~82.6 MJ/gal LHV → 0.0783 MMBtu/gal
+    mmbtu_per_gal = 0.0783
+    daily_gal = daily_mmbtu / mmbtu_per_gal
+
+    # Storage sizing
+    storage_gal = daily_gal * lng_days
+
+    # Tank sizing (standard 15,000 gal horizontal tanks)
+    tank_capacity = 15000
+    n_tanks = max(1, math.ceil(storage_gal / tank_capacity))
+
+    # Truck deliveries (10,000 gal per truck)
+    truck_capacity = 10000
+    weekly_gal = daily_gal * 7
+    trucks_per_week = max(1, math.ceil(weekly_gal / truck_capacity))
+
+    # LNG infrastructure CAPEX
+    tank_cost = 250000  # per tank
+    vaporizer_cost = 150000 * max(1, math.ceil(total_fuel_mw / 5))
+    piping_cost = 75000 * n_tanks
+    lng_capex = n_tanks * tank_cost + vaporizer_cost + piping_cost
+
+    # Blended gas price (for dual-fuel)
+    blended = gas_price_pipeline * (1 - lng_backup_pct / 100) + gas_price_lng * (lng_backup_pct / 100)
+
+    return {
+        'daily_consumption_gal': daily_gal,
+        'storage_gallons': storage_gal,
+        'n_tanks': n_tanks,
+        'tank_capacity_gal': tank_capacity,
+        'truck_deliveries_per_week': trucks_per_week,
+        'lng_capex_usd': lng_capex,
+        'blended_gas_price': blended,
+        'daily_mmbtu': daily_mmbtu,
+        'storage_mmbtu': daily_mmbtu * lng_days,
+    }
+
+
+def calculate_pipeline_capex(
+    distance_km: float = 1.0,
+    diameter_inch: float = 6.0,
+    terrain_factor: float = 1.0,
+) -> float:
+    """
+    Pipeline infrastructure CAPEX based on diameter and distance.
+
+    Base cost: ~$500/m for 6" pipe + terrain multiplier.
+
+    Returns
+    -------
+    float
+        Total pipeline CAPEX in USD.
+    """
+    base_cost_per_m = 500 * (diameter_inch / 6) ** 1.4
+    return base_cost_per_m * distance_km * 1000 * terrain_factor
+
+
+# ==============================================================================
+# 16. CHP / TRI-GENERATION
+# ==============================================================================
+
+def calculate_chp(
+    n_running: int,
+    unit_cap_mw: float,
+    gen_data: dict,
+    load_pct: float = 75.0,
+    chp_recovery_eff: float = 0.50,
+    absorption_cop: float = 0.70,
+    cooling_load_mw: float = 0.0,
+) -> dict:
+    """
+    Combined Heat and Power / Tri-Generation calculations.
+
+    Parameters
+    ----------
+    chp_recovery_eff : float
+        Fraction of waste heat recoverable (typically 0.40-0.60).
+    absorption_cop : float
+        Absorption chiller COP (typically 0.65-0.80).
+    cooling_load_mw : float
+        Site cooling demand in MW thermal.
+
+    Returns
+    -------
+    dict
+        waste_heat_mw, recovered_heat_mw, chp_efficiency,
+        cooling_from_absorption_mw, cooling_coverage_pct,
+        pue_improvement, chp_capex_usd
+    """
+    elec_output = n_running * unit_cap_mw * (load_pct / 100)
+    elec_eff = gen_data.get('electrical_efficiency', 0.40)
+
+    # Waste heat = fuel input - electrical output
+    fuel_input = elec_output / elec_eff if elec_eff > 0 else 0
+    waste_heat = fuel_input - elec_output
+
+    # Recoverable heat
+    recovered_heat = waste_heat * chp_recovery_eff
+
+    # Combined efficiency
+    chp_efficiency = (elec_output + recovered_heat) / fuel_input if fuel_input > 0 else 0
+
+    # Absorption chiller cooling
+    cooling_from_absorption = recovered_heat * absorption_cop
+
+    # Cooling coverage
+    cooling_coverage = min(1.0, cooling_from_absorption / cooling_load_mw) if cooling_load_mw > 0 else 0
+
+    # PUE improvement from CHP
+    # Typical: base PUE 1.4 → with CHP can reach 1.2
+    pue_improvement = min(0.20, cooling_coverage * 0.20)
+
+    # CHP CAPEX (heat recovery + absorption chiller)
+    hrsg_cost = recovered_heat * 200000  # $/MW_thermal
+    absorption_cost = cooling_from_absorption * 350000 if cooling_from_absorption > 0 else 0
+    chp_capex = hrsg_cost + absorption_cost
+
+    # Water usage (make-up water for cooling tower)
+    wue = recovered_heat * 0.5  # L/kWh simplified
+
+    return {
+        'waste_heat_mw': waste_heat,
+        'recovered_heat_mw': recovered_heat,
+        'chp_efficiency': chp_efficiency,
+        'cooling_from_absorption_mw': cooling_from_absorption,
+        'cooling_coverage_pct': cooling_coverage * 100,
+        'pue_improvement': pue_improvement,
+        'chp_capex_usd': chp_capex,
+        'fuel_input_mw': fuel_input,
+        'wue_l_kwh': wue,
+    }
+
+
+# ==============================================================================
+# 17. EMISSIONS CONTROL & COMPLIANCE
+# ==============================================================================
+
+def calculate_emissions_control_capex(
+    n_total: int,
+    unit_cap_mw: float,
+    include_scr: bool = False,
+    include_oxicat: bool = False,
+    force_scr: bool = False,
+) -> dict:
+    """
+    Emissions control equipment CAPEX.
+
+    SCR (Selective Catalytic Reduction) — reduces NOx by 90%.
+    OxiCat (Oxidation Catalyst) — reduces CO by 80%.
+
+    Returns
+    -------
+    dict
+        scr_capex, oxicat_capex, total_capex, nox_reduction_pct, co_reduction_pct
+    """
+    plant_capacity_mw = n_total * unit_cap_mw
+
+    scr_capex = 0
+    oxicat_capex = 0
+    nox_reduction = 0
+    co_reduction = 0
+
+    if include_scr or force_scr:
+        # SCR: ~$60-80/kW for reciprocating engines
+        scr_cost_per_kw = 70
+        scr_capex = plant_capacity_mw * 1000 * scr_cost_per_kw
+        nox_reduction = 90.0
+
+    if include_oxicat:
+        # OxiCat: ~$15-25/kW
+        oxicat_cost_per_kw = 20
+        oxicat_capex = plant_capacity_mw * 1000 * oxicat_cost_per_kw
+        co_reduction = 80.0
+
+    return {
+        'scr_capex': scr_capex,
+        'oxicat_capex': oxicat_capex,
+        'total_capex': scr_capex + oxicat_capex,
+        'nox_reduction_pct': nox_reduction,
+        'co_reduction_pct': co_reduction,
+    }
+
+
+def check_emissions_compliance(
+    nox_g_kwh: float,
+    co_g_kwh: float,
+    co2_kg_mwh: float,
+    unit_cap_mw: float,
+    n_running: int,
+) -> list:
+    """
+    Check emissions against 5 regulatory frameworks.
+
+    Frameworks:
+    - US EPA NSPS (40 CFR Part 60 Subpart JJJJ)
+    - US Title V (major source threshold)
+    - EU MCP Directive (Medium Combustion Plant)
+    - EU IED (Industrial Emissions Directive, >50 MW)
+    - CARB (California Air Resources Board)
+
+    Returns
+    -------
+    list[dict]
+        Each dict has: regulation, parameter, limit, actual, unit,
+        compliant (bool), notes
+    """
+    total_cap_mw = unit_cap_mw * n_running
+    results = []
+
+    # Convert g/kWh → mg/Nm³ (approx: multiply by ~4.5 for lean-burn gas)
+    nox_mg_nm3 = nox_g_kwh * 4500
+    co_mg_nm3 = co_g_kwh * 4500
+
+    # 1. US EPA NSPS Subpart JJJJ (Stationary CI & SI engines)
+    # NOx limit: 1.0 g/bhp-hr for lean-burn > 500 hp
+    nox_g_bhphr = nox_g_kwh * 0.7457  # kWh → bhp-hr conversion
+    results.append({
+        'regulation': 'US EPA NSPS (JJJJ)',
+        'parameter': 'NOx',
+        'limit': 1.0,
+        'actual': round(nox_g_bhphr, 3),
+        'unit': 'g/bhp-hr',
+        'compliant': nox_g_bhphr <= 1.0,
+        'notes': 'Lean-burn SI engines > 500 hp',
+    })
+
+    # 2. US Title V (Major source: >100 tpy of any criteria pollutant)
+    annual_nox_tpy = nox_g_kwh * total_cap_mw * 8760 * 0.9 / 907185
+    results.append({
+        'regulation': 'US Title V',
+        'parameter': 'NOx (annual)',
+        'limit': 100.0,
+        'actual': round(annual_nox_tpy, 1),
+        'unit': 'tons/year',
+        'compliant': annual_nox_tpy <= 100.0,
+        'notes': 'Major source threshold; may require Title V permit',
+    })
+
+    # 3. EU MCP Directive (1-50 MWth)
+    # NOx limit: 190 mg/Nm³ @ 15% O2 for gas engines
+    results.append({
+        'regulation': 'EU MCP Directive',
+        'parameter': 'NOx',
+        'limit': 190.0,
+        'actual': round(nox_mg_nm3, 1),
+        'unit': 'mg/Nm³ @15% O2',
+        'compliant': nox_mg_nm3 <= 190.0,
+        'notes': 'Applies to 1-50 MWth plants',
+    })
+
+    # 4. EU IED (>50 MWth)
+    # NOx limit: 100 mg/Nm³ for >50 MW gas engines (BAT-AEL)
+    if total_cap_mw > 50:
+        results.append({
+            'regulation': 'EU IED (BAT)',
+            'parameter': 'NOx',
+            'limit': 100.0,
+            'actual': round(nox_mg_nm3, 1),
+            'unit': 'mg/Nm³ @15% O2',
+            'compliant': nox_mg_nm3 <= 100.0,
+            'notes': 'Best Available Techniques for >50 MWth',
+        })
+    else:
+        results.append({
+            'regulation': 'EU IED (BAT)',
+            'parameter': 'NOx',
+            'limit': 100.0,
+            'actual': round(nox_mg_nm3, 1),
+            'unit': 'mg/Nm³ @15% O2',
+            'compliant': True,
+            'notes': 'Plant < 50 MWth — IED not applicable',
+        })
+
+    # 5. CARB (California)
+    # NOx limit: 11 ppm @ 15% O2 for stationary engines
+    nox_ppm = nox_mg_nm3 / 2.05  # mg/Nm³ → ppmvd approx for NOx
+    results.append({
+        'regulation': 'CARB (California)',
+        'parameter': 'NOx',
+        'limit': 11.0,
+        'actual': round(nox_ppm, 1),
+        'unit': 'ppmvd @15% O2',
+        'compliant': nox_ppm <= 11.0,
+        'notes': 'Most stringent US state regulation',
+    })
+
+    return results
+
+
+# ==============================================================================
+# 18. GAS PRICE SENSITIVITY
+# ==============================================================================
+
+def gas_price_sensitivity(
+    base_gas_price: float,
+    annual_fuel_mmbtu: float,
+    annual_om_cost: float,
+    total_capex: float,
+    annual_energy_kwh: float,
+    wacc: float,
+    project_years: int,
+    benchmark_price: float = 0.12,
+) -> dict:
+    """
+    Gas price sensitivity analysis.
+
+    Calculates LCOE at multiple gas price points and finds breakeven
+    vs grid benchmark.
+
+    Returns
+    -------
+    dict
+        prices: list[float], lcoes: list[float], breakeven_price: float|None
+    """
+    if annual_energy_kwh <= 0 or project_years <= 0:
+        return {'prices': [], 'lcoes': [], 'breakeven_price': None}
+
+    # CRF
+    if wacc > 0:
+        crf = (wacc * (1 + wacc) ** project_years) / ((1 + wacc) ** project_years - 1)
+    else:
+        crf = 1.0 / project_years
+
+    annualized_capex = total_capex * crf
+    heat_rate_mmbtu_kwh = annual_fuel_mmbtu / annual_energy_kwh if annual_energy_kwh > 0 else 0
+
+    # Price sweep from $1 to $15/MMBtu
+    prices = [round(p * 0.5, 1) for p in range(2, 31)]
+    lcoes = []
+    breakeven = None
+
+    for gp in prices:
+        fuel_cost = gp * annual_fuel_mmbtu * (gp / base_gas_price) if base_gas_price > 0 else 0
+        total_annual = annualized_capex + fuel_cost + annual_om_cost
+        lcoe = total_annual / annual_energy_kwh
+        lcoes.append(lcoe)
+
+        if breakeven is None and lcoe > benchmark_price:
+            # Linear interpolation for breakeven
+            if len(lcoes) >= 2:
+                prev_lcoe = lcoes[-2]
+                prev_price = prices[len(lcoes) - 2]
+                if lcoe != prev_lcoe:
+                    frac = (benchmark_price - prev_lcoe) / (lcoe - prev_lcoe)
+                    breakeven = prev_price + frac * (gp - prev_price)
+
+    return {
+        'prices': prices,
+        'lcoes': lcoes,
+        'breakeven_price': breakeven,
+    }
+
+
+# ==============================================================================
+# 19. NET EFFICIENCY & HEAT RATE CONVERSIONS
+# ==============================================================================
+
+def calculate_net_efficiency_and_heat_rate(
+    gross_efficiency: float,
+    aux_load_pct: float = 4.0,
+    dist_loss_pct: float = 1.5,
+) -> dict:
+    """
+    Net efficiency and heat rate conversions.
+
+    Net Efficiency = Gross × (1 - aux_load/100) × (1 - dist_loss/100)
+    Heat Rate LHV = 3412 / efficiency (BTU/kWh)
+    Heat Rate HHV = Heat Rate LHV × 1.108 (for natural gas)
+    Heat Rate MJ = BTU × 0.001055
+
+    Returns
+    -------
+    dict
+        net_efficiency, heat_rate_lhv_btu, heat_rate_hhv_btu,
+        heat_rate_lhv_mj, heat_rate_hhv_mj
+    """
+    net_eff = gross_efficiency * (1 - aux_load_pct / 100) * (1 - dist_loss_pct / 100)
+
+    hr_lhv_btu = 3412 / net_eff if net_eff > 0 else 0
+    hr_hhv_btu = hr_lhv_btu * 1.108  # HHV/LHV ratio for natural gas
+    hr_lhv_mj = hr_lhv_btu * 0.001055
+    hr_hhv_mj = hr_hhv_btu * 0.001055
+
+    return {
+        'net_efficiency': net_eff,
+        'gross_efficiency': gross_efficiency,
+        'aux_load_pct': aux_load_pct,
+        'dist_loss_pct': dist_loss_pct,
+        'heat_rate_lhv_btu': hr_lhv_btu,
+        'heat_rate_hhv_btu': hr_hhv_btu,
+        'heat_rate_lhv_mj': hr_lhv_mj,
+        'heat_rate_hhv_mj': hr_hhv_mj,
+    }
+
+
+# ==============================================================================
+# 20. PHASING & MODULAR DEPLOYMENT
+# ==============================================================================
+
+def calculate_phasing(
+    total_load_mw: float,
+    unit_cap_mw: float,
+    n_total: int,
+    total_capex: float,
+    n_phases: int = 3,
+    months_between_phases: int = 6,
+    phase_pcts: list = None,
+) -> dict:
+    """
+    Multi-phase deployment planning.
+
+    Parameters
+    ----------
+    n_phases : int
+        Number of phases (1-5).
+    months_between_phases : int
+        Months between each phase start.
+    phase_pcts : list[float]
+        Percentage of total capacity per phase. If None, distributed equally.
+
+    Returns
+    -------
+    dict
+        phases: list[dict], total_months, phase1_capex, deferred_capex
+    """
+    if phase_pcts is None:
+        phase_pcts = [100.0 / n_phases] * n_phases
+
+    # Normalize to 100%
+    total_pct = sum(phase_pcts)
+    if total_pct > 0:
+        phase_pcts = [p / total_pct * 100 for p in phase_pcts]
+
+    phases = []
+    cumulative_gens = 0
+    cumulative_cap = 0
+    cumulative_capex = 0
+
+    for i, pct in enumerate(phase_pcts):
+        phase_gens = max(1, round(n_total * pct / 100))
+        phase_cap = phase_gens * unit_cap_mw
+        phase_capex = total_capex * (pct / 100)
+        start_month = i * months_between_phases
+        cumulative_gens += phase_gens
+        cumulative_cap += phase_cap
+        cumulative_capex += phase_capex
+
+        phases.append({
+            'phase': i + 1,
+            'start_month': start_month,
+            'generators': phase_gens,
+            'capacity_mw': phase_cap,
+            'pct_of_total': pct,
+            'capex': phase_capex,
+            'cumulative_gens': min(cumulative_gens, n_total),
+            'cumulative_cap_mw': min(cumulative_cap, n_total * unit_cap_mw),
+            'cumulative_capex': cumulative_capex,
+        })
+
+    total_months = (n_phases - 1) * months_between_phases + 6  # +6 for commissioning
+
+    return {
+        'phases': phases,
+        'n_phases': n_phases,
+        'total_months': total_months,
+        'phase1_capex': phases[0]['capex'] if phases else 0,
+        'deferred_capex': total_capex - (phases[0]['capex'] if phases else 0),
+        'time_to_first_power_months': 6,  # typical construction + commissioning
+    }
+
+
+# ==============================================================================
+# 21. DESIGN VALIDATION SCORECARD
+# ==============================================================================
+
+def design_validation_scorecard(
+    system_availability: float,
+    avail_req: float,
+    spinning_reserve_mw: float,
+    spinning_required_mw: float,
+    voltage_sag: float,
+    load_per_unit_pct: float,
+    bess_power_mw: float,
+    step_load_mw: float,
+    nadir_hz: float,
+    nadir_limit: float,
+    rocof_hz_s: float,
+    rocof_limit: float,
+    n_reserve: int,
+) -> list:
+    """
+    8-point design validation scorecard.
+
+    Returns
+    -------
+    list[dict]
+        Each dict: check_name, passed (bool), actual, requirement, notes
+    """
+    checks = []
+
+    # 1. Availability
+    checks.append({
+        'check': 'System Availability',
+        'passed': system_availability >= avail_req,
+        'actual': f'{system_availability:.4f}%',
+        'requirement': f'>= {avail_req}%',
+        'notes': '' if system_availability >= avail_req else 'Add reserve units or BESS',
+    })
+
+    # 2. Spinning Reserve
+    checks.append({
+        'check': 'Spinning Reserve',
+        'passed': spinning_reserve_mw >= spinning_required_mw * 0.95,
+        'actual': f'{spinning_reserve_mw:.2f} MW',
+        'requirement': f'>= {spinning_required_mw:.2f} MW',
+        'notes': '',
+    })
+
+    # 3. Voltage Sag
+    checks.append({
+        'check': 'Voltage Sag (Step Load)',
+        'passed': voltage_sag <= 10.0,
+        'actual': f'{voltage_sag:.1f}%',
+        'requirement': '<= 10%',
+        'notes': '' if voltage_sag <= 10 else 'Add units or BESS for step support',
+    })
+
+    # 4. Load per Unit
+    checks.append({
+        'check': 'Load per Unit',
+        'passed': 50.0 <= load_per_unit_pct <= 85.0,
+        'actual': f'{load_per_unit_pct:.1f}%',
+        'requirement': '50-85%',
+        'notes': 'Optimal range for efficiency and longevity',
+    })
+
+    # 5. BESS vs Step Load
+    bess_covers_step = bess_power_mw >= step_load_mw * 0.8 if step_load_mw > 0 else True
+    checks.append({
+        'check': 'BESS Step Coverage',
+        'passed': bess_covers_step,
+        'actual': f'{bess_power_mw:.2f} MW',
+        'requirement': f'>= {step_load_mw * 0.8:.2f} MW',
+        'notes': '80% of step load covered by BESS',
+    })
+
+    # 6. Frequency Nadir
+    checks.append({
+        'check': 'Frequency Nadir',
+        'passed': nadir_hz >= nadir_limit,
+        'actual': f'{nadir_hz:.2f} Hz',
+        'requirement': f'>= {nadir_limit} Hz',
+        'notes': '' if nadir_hz >= nadir_limit else 'Add inertia or BESS virtual inertia',
+    })
+
+    # 7. ROCOF
+    checks.append({
+        'check': 'ROCOF (IEEE 1547)',
+        'passed': rocof_hz_s <= rocof_limit,
+        'actual': f'{rocof_hz_s:.2f} Hz/s',
+        'requirement': f'<= {rocof_limit} Hz/s',
+        'notes': '',
+    })
+
+    # 8. N+X Redundancy
+    checks.append({
+        'check': 'N+X Redundancy',
+        'passed': n_reserve >= 1,
+        'actual': f'N+{n_reserve}',
+        'requirement': '>= N+1',
+        'notes': '' if n_reserve >= 1 else 'No reserve units — single point of failure',
+    })
+
+    return checks
+
+
+# ==============================================================================
+# 22. LCOE RECOMMENDER
+# ==============================================================================
+
+def lcoe_gap_recommender(
+    lcoe: float,
+    target_lcoe: float,
+    gen_data: dict,
+    n_running: int,
+    n_reserve: int,
+    use_bess: bool,
+    include_chp: bool,
+    enable_depreciation: bool,
+) -> list:
+    """
+    Recommend strategies to close LCOE gap vs target.
+
+    Returns
+    -------
+    list[dict]
+        Each dict: strategy, potential_savings_pct, description, applicable
+    """
+    gap = lcoe - target_lcoe
+    if gap <= 0:
+        return [{'strategy': 'On Target', 'potential_savings_pct': 0,
+                 'description': 'LCOE meets or beats target', 'applicable': True}]
+
+    strategies = []
+
+    # 1. Enable CHP (if not already)
+    if not include_chp:
+        strategies.append({
+            'strategy': 'Enable CHP/Cogeneration',
+            'potential_savings_pct': 8.0,
+            'description': 'Recover waste heat → improve overall efficiency by 15-20%',
+            'applicable': True,
+        })
+
+    # 2. Optimize fleet loading
+    strategies.append({
+        'strategy': 'Optimize Fleet Loading',
+        'potential_savings_pct': 5.0,
+        'description': 'Target 70-80% load per unit for peak efficiency',
+        'applicable': True,
+    })
+
+    # 3. Enable MACRS depreciation
+    if not enable_depreciation:
+        strategies.append({
+            'strategy': 'Enable MACRS Depreciation',
+            'potential_savings_pct': 4.0,
+            'description': '5-year accelerated depreciation tax shield',
+            'applicable': True,
+        })
+
+    # 4. Reduce redundancy (if over-provisioned)
+    if n_reserve > 3:
+        strategies.append({
+            'strategy': 'Reduce Reserve Units',
+            'potential_savings_pct': 3.0,
+            'description': f'Current N+{n_reserve} may be over-provisioned with BESS',
+            'applicable': use_bess,
+        })
+
+    # 5. Technology switch
+    strategies.append({
+        'strategy': 'Consider Higher Efficiency Model',
+        'potential_savings_pct': 6.0,
+        'description': 'Switch to model with higher electrical efficiency',
+        'applicable': gen_data.get('electrical_efficiency', 0) < 0.45,
+    })
+
+    return strategies
+
+
+# ==============================================================================
+# 23. FOOTPRINT OPTIMIZATION
+# ==============================================================================
+
+def footprint_optimization_recommendations(
+    current_area_m2: float,
+    max_area_m2: float,
+    gen_data: dict,
+    n_total: int,
+    n_reserve: int,
+    use_bess: bool,
+    available_generators: dict = None,
+) -> list:
+    """
+    Recommend ways to reduce plant footprint.
+
+    Returns
+    -------
+    list[dict]
+        Each dict: recommendation, area_savings_m2, feasibility, notes
+    """
+    recommendations = []
+    overshoot = current_area_m2 - max_area_m2
+
+    # 1. Technology switch to higher power density
+    if available_generators:
+        current_density = gen_data.get('power_density_mw_per_m2', 0.010)
+        for model, data in available_generators.items():
+            if data.get('power_density_mw_per_m2', 0) > current_density * 1.3:
+                new_area = current_area_m2 * (current_density / data['power_density_mw_per_m2'])
+                savings = current_area_m2 - new_area
+                recommendations.append({
+                    'recommendation': f'Switch to {model}',
+                    'area_savings_m2': savings,
+                    'feasibility': 'Medium',
+                    'notes': f'Higher power density: {data["power_density_mw_per_m2"]:.3f} MW/m² vs {current_density:.3f}',
+                })
+
+    # 2. Reduce redundancy
+    if n_reserve > 2:
+        unit_area = gen_data.get('iso_rating_mw', 2.5) / gen_data.get('power_density_mw_per_m2', 0.010)
+        removable = n_reserve - 1
+        savings = removable * unit_area
+        recommendations.append({
+            'recommendation': f'Reduce reserves from N+{n_reserve} to N+1',
+            'area_savings_m2': savings,
+            'feasibility': 'High' if use_bess else 'Low',
+            'notes': 'BESS compensates for fewer reserves' if use_bess else 'Requires BESS to maintain availability',
+        })
+
+    # 3. Vertical/compact arrangement
+    recommendations.append({
+        'recommendation': 'Compact layout / multi-level',
+        'area_savings_m2': current_area_m2 * 0.15,
+        'feasibility': 'Medium',
+        'notes': 'Stacked transformers, shared utility corridors',
+    })
+
+    return recommendations

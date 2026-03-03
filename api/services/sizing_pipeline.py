@@ -495,8 +495,11 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         gen_data["reactance_xd_2"], n_running, inputs.load_step_pct
     )
 
-    # ── Step 14: Availability curve ──
-    system_availability, availability_curve = calculate_availability_weibull(
+    # ── Step 14: Availability ──
+    # Use the config's pre-calculated availability (includes BESS reliability
+    # boost).  Only call Weibull for the timeline array.
+    system_availability = selected_config["availability"]
+    _, availability_curve = calculate_availability_weibull(
         n_total, n_running, unit_availability, inputs.project_years,
     )
 

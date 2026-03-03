@@ -1113,7 +1113,7 @@ def render_electrical_tab(r):
     c1.metric("Gross Efficiency", f"{r.gross_efficiency * 100:.1f}%" if r.gross_efficiency else "N/A")
     c2.metric("Net Efficiency", f"{r.net_efficiency * 100:.1f}%")
     c3.metric("Aux Load", f"{r.aux_load_pct:.1f}%")
-    c4.metric("Dist Losses", f"{r.net_efficiency * 100:.1f}%")
+    c4.metric("Dist Losses", f"{st.session_state.get('_dist_loss_pct', 1.5):.1f}%")
 
     st.markdown("**Heat Rates**")
     hr_data = {
@@ -2142,6 +2142,7 @@ def main():
     st.session_state["_site_alt"] = inputs_dict["site_alt_m"]
     st.session_state["_mn"] = inputs_dict["methane_number"]
     st.session_state["_fuel_mode"] = inputs_dict["fuel_mode"]
+    st.session_state["_dist_loss_pct"] = inputs_dict["dist_loss_pct"]
     st.session_state["_include_chp"] = inputs_dict["include_chp"]
     st.session_state["_enable_phasing"] = inputs_dict["enable_phasing"]
 

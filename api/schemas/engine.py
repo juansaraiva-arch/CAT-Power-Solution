@@ -31,9 +31,10 @@ class PartLoadEfficiencyResponse(BaseModel):
 # ==============================================================================
 
 class TransientStabilityRequest(BaseModel):
-    xd_pu: float = Field(..., description="Transient reactance in per-unit")
-    num_units: int = Field(..., ge=1, description="Number of generating units")
-    step_load_pct: float = Field(..., ge=0, description="Step load as percentage")
+    xd_pu: float = Field(..., description="Sub-transient reactance X''d in per-unit")
+    num_units: int = Field(..., ge=1, description="Number of generating units online")
+    step_load_pct: float = Field(..., ge=0, description="Step load as % of avg system load")
+    unit_capacity_mw: float = Field(2.5, gt=0, description="Rated capacity per unit (MW)")
 
 
 class TransientStabilityResponse(BaseModel):

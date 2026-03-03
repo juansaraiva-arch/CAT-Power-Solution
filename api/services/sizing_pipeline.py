@@ -441,8 +441,9 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         rec_voltage_kv = inputs.manual_voltage_kv
 
     # ── Step 13: Transient stability ──
+    step_load_mw = p_avg_at_gen * (inputs.load_step_pct / 100)
     stability_ok, voltage_sag = transient_stability_check(
-        gen_data["reactance_xd_2"], n_running, inputs.load_step_pct
+        gen_data["reactance_xd_2"], n_running, step_load_mw, unit_site_cap
     )
 
     # ── Step 14: Availability ──

@@ -71,7 +71,12 @@ def api_part_load_efficiency(req: PartLoadEfficiencyRequest):
 @router.post("/transient-stability", response_model=TransientStabilityResponse)
 def api_transient_stability(req: TransientStabilityRequest):
     """Check transient voltage stability for step load events."""
-    passes, sag = transient_stability_check(req.xd_pu, req.num_units, req.step_load_pct)
+    # step_load_pct is % of total online capacity → convert to MW
+    total_online_mw = req.num_units * req.unit_capacity_mw
+    step_load_mw = total_online_mw * (req.step_load_pct / 100)
+    passes, sag = transient_stability_check(
+        req.xd_pu, req.num_units, step_load_mw, req.unit_capacity_mw,
+    )
     return TransientStabilityResponse(passes=passes, voltage_sag_pct=sag)
 
 

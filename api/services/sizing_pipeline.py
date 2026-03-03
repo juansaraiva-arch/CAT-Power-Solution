@@ -657,13 +657,17 @@ def run_full_sizing(inputs: SizingInput) -> dict:
     )
 
     # ── Step 18f: Emissions Compliance ──
+    # Apply aftertreatment reductions so compliance reflects post-treatment values
+    nox_red_frac = 1 - emissions_control.get('nox_reduction_pct', 0) / 100
+    co_red_frac = 1 - emissions_control.get('co_reduction_pct', 0) / 100
+
     emissions_compliance = check_emissions_compliance(
-        emissions.get('nox_rate_g_kwh', 0),
-        emissions.get('co_rate_g_kwh', 0),
+        emissions.get('nox_rate_g_kwh', 0) * nox_red_frac,
+        emissions.get('co_rate_g_kwh', 0) * co_red_frac,
         emissions.get('co2_rate_kg_mwh', 0),
         unit_site_cap, n_running,
-        nox_tpy=emissions.get('nox_tpy', 0),
-        co_tpy=emissions.get('co_tpy', 0),
+        nox_tpy=emissions.get('nox_tpy', 0) * nox_red_frac,
+        co_tpy=emissions.get('co_tpy', 0) * co_red_frac,
         co2_tpy=emissions.get('co2_tpy', 0),
     )
 

@@ -27,6 +27,10 @@ env/
 .env.local
 .env.production.local
 
+# Auth data — never commit
+auth_users.json
+auth_otps.json
+
 # OS
 .DS_Store
 Thumbs.db

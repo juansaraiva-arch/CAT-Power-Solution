@@ -30,6 +30,7 @@ from core.project_manager import (
     project_to_json,
     project_from_json,
 )
+from security_config import check_auth
 
 # =============================================================================
 # PAGE CONFIG
@@ -187,6 +188,16 @@ def render_sidebar():
         f"### :zap: CAT Power Solution v{APP_VERSION}"
     )
     st.sidebar.caption("Prime Power Quick-Size Tool")
+
+    # ---- Logout button ----
+    user_email = st.session_state.get("auth_user", "")
+    if user_email:
+        st.sidebar.caption(f"Signed in as **{user_email}**")
+        if st.sidebar.button("Sign Out", use_container_width=True):
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            st.rerun()
+
     st.sidebar.divider()
 
     # ---- 1. Unit System Toggle ----
@@ -2197,6 +2208,9 @@ def render_landing_page():
 # =============================================================================
 def main():
     """Main app entry point."""
+
+    # ── Auth gate — blocks until authenticated ──
+    check_auth()
 
     # Initialize session state
     if "result" not in st.session_state:

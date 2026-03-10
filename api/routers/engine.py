@@ -3,10 +3,12 @@ CAT Power Solution — Engine Router
 ====================================
 Individual endpoints for each of the 16 calculation functions.
 All endpoints are POST (structured inputs → calculated outputs).
+Requires 'full' role or higher.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from api.auth import require_role, AuthenticatedUser
 from api.dependencies import resolve_generator_or_404
 from api.schemas.engine import (
     PartLoadEfficiencyRequest, PartLoadEfficiencyResponse,
@@ -53,7 +55,10 @@ router = APIRouter()
 # ==============================================================================
 
 @router.post("/part-load-efficiency", response_model=PartLoadEfficiencyResponse)
-def api_part_load_efficiency(req: PartLoadEfficiencyRequest):
+def api_part_load_efficiency(
+    req: PartLoadEfficiencyRequest,
+    user: AuthenticatedUser = Depends(require_role("full")),
+):
     """Calculate generator efficiency at a given load point."""
     eff = get_part_load_efficiency(req.base_efficiency, req.load_pct, req.gen_type)
     return PartLoadEfficiencyResponse(
@@ -69,7 +74,10 @@ def api_part_load_efficiency(req: PartLoadEfficiencyRequest):
 # ==============================================================================
 
 @router.post("/transient-stability", response_model=TransientStabilityResponse)
-def api_transient_stability(req: TransientStabilityRequest):
+def api_transient_stability(
+    req: TransientStabilityRequest,
+    user: AuthenticatedUser = Depends(require_role("full")),
+):
     """Check transient voltage stability for step load events."""
     # step_load_pct is % of total online capacity → convert to MW
     total_online_mw = req.num_units * req.unit_capacity_mw
@@ -85,7 +93,10 @@ def api_transient_stability(req: TransientStabilityRequest):
 # ==============================================================================
 
 @router.post("/frequency-screening", response_model=FrequencyScreeningResponse)
-def api_frequency_screening(req: FrequencyScreeningRequest):
+def api_frequency_screening(
+    req: FrequencyScreeningRequest,
+    user: AuthenticatedUser = Depends(require_role("full")),
+):
     """Screen frequency nadir and ROCOF per IEEE 1547-2018 (500ms window)."""
     gen_data = resolve_generator_or_404(req.generator)
     result = frequency_screening(
@@ -101,7 +112,10 @@ def api_frequency_screening(req: FrequencyScreeningRequest):
 # ==============================================================================
 
 @router.post("/spinning-reserve", response_model=SpinningReserveResponse)
-def api_spinning_reserve(req: SpinningReserveRequest):
+def api_spinning_reserve(
+    req: SpinningReserveRequest,
+    user: AuthenticatedUser = Depends(require_role("full")),
+):
     """Calculate number of units needed for spinning reserve."""
     result = calculate_spinning_reserve_units(
         req.p_avg_load, req.unit_capacity, req.spinning_reserve_pct,
@@ -115,7 +129,10 @@ def api_spinning_reserve(req: SpinningReserveRequest):
 # ==============================================================================
 
 @router.post("/bess-requirements", response_model=BessRequirementsResponse)
-def api_bess_requirements(req: BessRequirementsRequest):
+def api_bess_requirements(
+    req: BessRequirementsRequest,
+    user: AuthenticatedUser = Depends(require_role("full")),
+):
     """Size battery energy storage system (BESS)."""
     power, energy, breakdown = calculate_bess_requirements(
         req.p_net_req_avg, req.p_net_req_peak, req.step_load_req,
@@ -134,7 +151,10 @@ def api_bess_requirements(req: BessRequirementsRequest):
 # ==============================================================================
 
 @router.post("/bess-reliability-credit", response_model=BessReliabilityCreditResponse)
-def api_bess_reliability_credit(req: BessReliabilityCreditRequest):
+def api_bess_reliability_credit(
+    req: BessReliabilityCreditRequest,
+    user: AuthenticatedUser = Depends(require_role("full")),
+):
     """Calculate BESS reliability credit toward fleet availability."""
     effective, breakdown = calculate_bess_reliability_credit(
         req.bess_power_mw, req.bess_energy_mwh,
@@ -148,7 +168,10 @@ def api_bess_reliability_credit(req: BessReliabilityCreditRequest):
 # ==============================================================================
 
 @router.post("/availability", response_model=AvailabilityResponse)
-def api_availability(req: AvailabilityRequest):
+def api_availability(
+    req: AvailabilityRequest,
+    user: AuthenticatedUser = Depends(require_role("full")),
+):
     """Calculate system availability using Binomial N+X model with fixed unit availability."""
     avail_y1, timeline = calculate_availability_weibull(
         req.n_total, req.n_running, req.unit_availability,
@@ -165,7 +188,10 @@ def api_availability(req: AvailabilityRequest):
 # ==============================================================================
 
 @router.post("/fleet-optimization", response_model=FleetOptimizationResponse)
-def api_fleet_optimization(req: FleetOptimizationRequest):
+def api_fleet_optimization(
+    req: FleetOptimizationRequest,
+    user: AuthenticatedUser = Depends(require_role("full")),
+):
     """Find optimal fleet size balancing efficiency and reliability."""
     gen_data = resolve_generator_or_404(req.generator)
     n_opt, options = optimize_fleet_size(
@@ -187,7 +213,10 @@ def api_fleet_optimization(req: FleetOptimizationRequest):
 # ==============================================================================
 
 @router.post("/macrs-depreciation", response_model=MacrsDepreciationResponse)
-def api_macrs_depreciation(req: MacrsDepreciationRequest):
+def api_macrs_depreciation(
+    req: MacrsDepreciationRequest,
+    user: AuthenticatedUser = Depends(require_role("full")),
+):
     """Calculate MACRS depreciation tax shield (present value)."""
     benefit = calculate_macrs_depreciation(req.capex, req.project_years, req.wacc)
     return MacrsDepreciationResponse(pv_tax_shield=benefit)
@@ -198,7 +227,10 @@ def api_macrs_depreciation(req: MacrsDepreciationRequest):
 # ==============================================================================
 
 @router.post("/noise/at-distance", response_model=NoiseAtDistanceResponse)
-def api_noise_at_distance(req: NoiseAtDistanceRequest):
+def api_noise_at_distance(
+    req: NoiseAtDistanceRequest,
+    user: AuthenticatedUser = Depends(require_role("full")),
+):
     """Calculate noise level at a given distance from source."""
     db = noise_at_distance(req.combined_db, req.distance_m)
     return NoiseAtDistanceResponse(noise_db=db)
@@ -209,7 +241,10 @@ def api_noise_at_distance(req: NoiseAtDistanceRequest):
 # ==============================================================================
 
 @router.post("/noise/combined", response_model=CombinedNoiseResponse)
-def api_combined_noise(req: CombinedNoiseRequest):
+def api_combined_noise(
+    req: CombinedNoiseRequest,
+    user: AuthenticatedUser = Depends(require_role("full")),
+):
     """Calculate combined noise from N identical sources."""
     db = calculate_combined_noise(req.source_noise_db, req.attenuation_db, req.n_running)
     return CombinedNoiseResponse(combined_noise_db=db)
@@ -220,7 +255,10 @@ def api_combined_noise(req: CombinedNoiseRequest):
 # ==============================================================================
 
 @router.post("/noise/setback", response_model=NoiseSetbackResponse)
-def api_noise_setback(req: NoiseSetbackRequest):
+def api_noise_setback(
+    req: NoiseSetbackRequest,
+    user: AuthenticatedUser = Depends(require_role("full")),
+):
     """Calculate minimum setback distance to meet noise limit."""
     dist = noise_setback_distance(req.combined_db, req.noise_limit_db)
     return NoiseSetbackResponse(setback_distance_m=dist)
@@ -231,7 +269,10 @@ def api_noise_setback(req: NoiseSetbackRequest):
 # ==============================================================================
 
 @router.post("/site-derate", response_model=SiteDerateResponse)
-def api_site_derate(req: SiteDerateRequest):
+def api_site_derate(
+    req: SiteDerateRequest,
+    user: AuthenticatedUser = Depends(require_role("full")),
+):
     """Calculate site derating using official CAT lookup tables with bilinear interpolation."""
     result = calculate_site_derate(req.site_temp_c, req.site_alt_m, req.methane_number)
     return SiteDerateResponse(**result)
@@ -242,7 +283,10 @@ def api_site_derate(req: SiteDerateRequest):
 # ==============================================================================
 
 @router.post("/emissions", response_model=EmissionsResponse)
-def api_emissions(req: EmissionsRequest):
+def api_emissions(
+    req: EmissionsRequest,
+    user: AuthenticatedUser = Depends(require_role("full")),
+):
     """Calculate annual emissions (NOx, CO, CO2)."""
     gen_data = resolve_generator_or_404(req.generator)
     result = calculate_emissions(
@@ -257,7 +301,10 @@ def api_emissions(req: EmissionsRequest):
 # ==============================================================================
 
 @router.post("/footprint", response_model=FootprintResponse)
-def api_footprint(req: FootprintRequest):
+def api_footprint(
+    req: FootprintRequest,
+    user: AuthenticatedUser = Depends(require_role("full")),
+):
     """Calculate plant footprint (area in m2)."""
     gen_data = resolve_generator_or_404(req.generator)
     result = calculate_footprint(
@@ -274,7 +321,10 @@ def api_footprint(req: FootprintRequest):
 # ==============================================================================
 
 @router.post("/lcoe", response_model=LcoeResponse)
-def api_lcoe(req: LcoeRequest):
+def api_lcoe(
+    req: LcoeRequest,
+    user: AuthenticatedUser = Depends(require_role("full")),
+):
     """Calculate Levelized Cost of Energy (LCOE) and financial metrics."""
     result = calculate_lcoe(
         req.total_capex, req.annual_om, req.annual_fuel_cost,

@@ -2,10 +2,12 @@
 CAT Power Solution — Sizing Router
 ====================================
 Full and quick sizing pipeline endpoints.
+Requires 'full' role or higher.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 
+from api.auth import require_role, AuthenticatedUser
 from api.schemas.sizing import (
     SizingInput,
     SizingProjectInput,
@@ -18,7 +20,10 @@ router = APIRouter()
 
 
 @router.post("/full", response_model=SizingResult)
-def full_sizing(req: SizingProjectInput):
+def full_sizing(
+    req: SizingProjectInput,
+    user: AuthenticatedUser = Depends(require_role("full")),
+):
     """
     Execute the complete sizing pipeline.
 
@@ -41,7 +46,10 @@ def full_sizing(req: SizingProjectInput):
 
 
 @router.post("/quick", response_model=SizingResult)
-def quick_sizing(req: QuickSizingInput):
+def quick_sizing(
+    req: QuickSizingInput,
+    user: AuthenticatedUser = Depends(require_role("full")),
+):
     """
     Quick sizing with minimal inputs.
 

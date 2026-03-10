@@ -1,0 +1,82 @@
+# azure-pipelines.yml
+# CI/CD Pipeline — CAT Power Solution
+# Runs on every push to main and on PRs
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+
+pr:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  pythonVersion: '3.11'
+  appName: 'cat-power-solution-api'
+
+stages:
+
+# ── Stage 1: Test ──────────────────────────────────────────────
+- stage: Test
+  displayName: 'Run Test Suite'
+  jobs:
+  - job: RunTests
+    displayName: 'pytest — 127 tests'
+    steps:
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '$(pythonVersion)'
+
+    - script: |
+        pip install -r requirements.txt
+        pip install pytest pytest-cov
+      displayName: 'Install dependencies'
+
+    - script: |
+        pytest tests/ -v --tb=short \
+          --junitxml=test-results.xml \
+          --cov=core --cov=api \
+          --cov-report=xml:coverage.xml
+      displayName: 'Run tests'
+      env:
+        REQUIRE_AUTH: 'false'
+        ENABLE_DB_PERSISTENCE: 'false'
+        ENVIRONMENT: 'test'
+
+    - task: PublishTestResults@2
+      condition: always()
+      inputs:
+        testResultsFormat: 'JUnit'
+        testResultsFiles: 'test-results.xml'
+
+    - task: PublishCodeCoverageResults@1
+      inputs:
+        codeCoverageTool: 'Cobertura'
+        summaryFileLocation: 'coverage.xml'
+
+# ── Stage 2: Deploy (solo en merge a main) ─────────────────────
+- stage: Deploy
+  displayName: 'Deploy to Azure App Service'
+  dependsOn: Test
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - deployment: DeployAPI
+    displayName: 'Deploy API'
+    environment: 'production'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: AzureWebApp@1
+            inputs:
+              azureSubscription: 'CAT-Azure-Subscription'
+              appType: 'webAppLinux'
+              appName: '$(appName)'
+              runtimeStack: 'PYTHON|3.11'
+              startUpCommand: 'uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers 2'

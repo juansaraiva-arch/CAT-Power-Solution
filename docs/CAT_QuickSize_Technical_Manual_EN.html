@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CAT QuickSize v3.1 — Detailed Technical Manual</title>
+<style>
+  /* ── Reset & Base ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+    font-size: 15px; line-height: 1.65; color: #1a1a1a;
+    background: #f5f5f5; padding: 0;
+  }
+
+  /* ── CAT Brand Colors ── */
+  :root {
+    --cat-yellow: #FFCD11;
+    --cat-black: #1A1A1A;
+    --cat-dark: #2D2D2D;
+    --cat-gray: #4A4A4A;
+    --cat-light: #F5F5F5;
+    --cat-blue: #0066CC;
+    --cat-green: #28A745;
+    --cat-red: #DC3545;
+    --cat-orange: #FD7E14;
+    --accent: #FFCD11;
+    --section-bg: #FFFFFF;
+  }
+
+  /* ── Cover Page ── */
+  .cover {
+    background: linear-gradient(135deg, var(--cat-black) 0%, #333 50%, var(--cat-dark) 100%);
+    color: #fff; min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 60px 40px; position: relative; overflow: hidden;
+  }
+  .cover::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(45deg, transparent, transparent 35px, rgba(255,205,17,0.03) 35px, rgba(255,205,17,0.03) 70px);
+  }
+  .cover * { position: relative; z-index: 1; }
+  .cover .cat-triangle {
+    width: 0; height: 0; border-left: 50px solid transparent; border-right: 50px solid transparent;
+    border-bottom: 85px solid var(--cat-yellow); margin-bottom: 30px;
+  }
+  .cover h1 { font-size: 3.2em; font-weight: 800; letter-spacing: -1px; margin-bottom: 8px; }
+  .cover h1 span { color: var(--cat-yellow); }
+  .cover .subtitle { font-size: 1.4em; color: #ccc; margin-bottom: 6px; }
+  .cover .version { font-size: 1.1em; color: var(--cat-yellow); font-weight: 600; margin-bottom: 40px; }
+  .cover .meta { font-size: 0.95em; color: #999; line-height: 1.9; }
+  .cover .meta strong { color: #ddd; }
+  .cover .divider { width: 120px; height: 4px; background: var(--cat-yellow); margin: 30px auto; border-radius: 2px; }
+
+  /* ── Main Content ── */
+  .content { max-width: 1100px; margin: 0 auto; padding: 40px 30px 80px; }
+
+  /* ── Table of Contents ── */
+  .toc {
+    background: var(--section-bg); border-radius: 12px; padding: 40px;
+    margin-bottom: 40px; box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    border-left: 5px solid var(--cat-yellow);
+  }
+  .toc h2 { font-size: 1.6em; color: var(--cat-black); margin-bottom: 20px; }
+  .toc ol { padding-left: 22px; }
+  .toc li { margin-bottom: 8px; font-size: 1.05em; }
+  .toc a { color: var(--cat-blue); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+
+  /* ── Sections ── */
+  .section {
+    background: var(--section-bg); border-radius: 12px; padding: 40px;
+    margin-bottom: 32px; box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  }
+  .section h2 {
+    font-size: 1.7em; color: var(--cat-black); margin-bottom: 24px;
+    padding-bottom: 12px; border-bottom: 3px solid var(--cat-yellow);
+  }
+  .section h3 {
+    font-size: 1.25em; color: var(--cat-dark); margin: 28px 0 14px;
+    padding-left: 14px; border-left: 4px solid var(--cat-yellow);
+  }
+  .section h4 {
+    font-size: 1.05em; color: var(--cat-gray); margin: 20px 0 10px; font-weight: 700;
+  }
+  .section p { margin-bottom: 14px; }
+
+  /* ── Tables ── */
+  table {
+    width: 100%; border-collapse: collapse; margin: 16px 0 24px;
+    font-size: 0.92em;
+  }
+  thead th {
+    background: var(--cat-black); color: #fff; padding: 10px 14px;
+    text-align: left; font-weight: 600; white-space: nowrap;
+  }
+  thead th:first-child { border-radius: 6px 0 0 0; }
+  thead th:last-child { border-radius: 0 6px 0 0; }
+  tbody td { padding: 9px 14px; border-bottom: 1px solid #e8e8e8; }
+  tbody tr:nth-child(even) { background: #fafafa; }
+  tbody tr:hover { background: #fff8d6; }
+
+  /* ── Code / Formula blocks ── */
+  .formula-block {
+    background: #1e1e2e; color: #e0e0e0; padding: 18px 22px;
+    border-radius: 8px; margin: 14px 0 20px; font-family: 'Consolas', 'Fira Code', monospace;
+    font-size: 0.92em; line-height: 1.7; overflow-x: auto;
+    border-left: 4px solid var(--cat-yellow);
+  }
+  .formula-block .comment { color: #6a9955; }
+  .formula-block .keyword { color: #569cd6; }
+  .formula-block .number { color: #b5cea8; }
+  .formula-block .string { color: #ce9178; }
+  .formula-block .func { color: #dcdcaa; }
+
+  /* ── Info boxes ── */
+  .info-box {
+    padding: 16px 20px; border-radius: 8px; margin: 16px 0;
+    font-size: 0.95em;
+  }
+  .info-box.note { background: #e8f4fd; border-left: 4px solid var(--cat-blue); }
+  .info-box.warn { background: #fff3cd; border-left: 4px solid var(--cat-yellow); }
+  .info-box.critical { background: #f8d7da; border-left: 4px solid var(--cat-red); }
+  .info-box.success { background: #d4edda; border-left: 4px solid var(--cat-green); }
+
+  /* ── Tags / Badges ── */
+  .badge {
+    display: inline-block; padding: 2px 10px; border-radius: 12px;
+    font-size: 0.8em; font-weight: 600; letter-spacing: 0.5px;
+  }
+  .badge.hs { background: #e3f2fd; color: #1565c0; }
+  .badge.ms { background: #e8f5e9; color: #2e7d32; }
+  .badge.gt { background: #fff3e0; color: #e65100; }
+
+  /* ── Pipeline Steps ── */
+  .pipeline-step {
+    display: flex; align-items: flex-start; gap: 16px;
+    margin: 18px 0; padding: 16px;
+    background: #fafafa; border-radius: 8px; border: 1px solid #e8e8e8;
+  }
+  .pipeline-step .step-num {
+    flex-shrink: 0; width: 40px; height: 40px; border-radius: 50%;
+    background: var(--cat-black); color: var(--cat-yellow);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 1.1em;
+  }
+  .pipeline-step .step-content { flex: 1; }
+  .pipeline-step .step-content strong { color: var(--cat-black); }
+
+  /* ── Print ── */
+  @media print {
+    .cover { min-height: auto; padding: 40px; page-break-after: always; }
+    .section { page-break-inside: avoid; box-shadow: none; border: 1px solid #ddd; }
+    body { background: #fff; }
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 768px) {
+    .content { padding: 16px; }
+    .section { padding: 20px; }
+    .cover h1 { font-size: 2em; }
+    table { font-size: 0.82em; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════ -->
+<!-- COVER PAGE                                       -->
+<!-- ════════════════════════════════════════════════ -->
+<div class="cover">
+  <div class="cat-triangle"></div>
+  <h1><span>CAT</span> QuickSize</h1>
+  <div class="subtitle">Prime Power Sizing Tool for Data Centers</div>
+  <div class="version">Version 3.1 — Detailed Technical Manual</div>
+  <div class="divider"></div>
+  <div class="meta">
+    <strong>Platform:</strong> Streamlit + FastAPI + React<br>
+    <strong>URL:</strong> https://quick-size-solution.streamlit.app<br>
+    <strong>Calculation Engine:</strong> 14 functions, 23-step sizing pipeline<br>
+    <strong>Generator Library:</strong> 8 CAT generator models<br>
+    <strong>Input Variables:</strong> 76 parameters across 4 categories<br>
+    <strong>Output Variables:</strong> 55+ result fields<br>
+    <strong>Author:</strong> Francisco Saraiva<br>
+    <strong>Date:</strong> 2025
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════ -->
+<!-- TABLE OF CONTENTS                                -->
+<!-- ════════════════════════════════════════════════ -->
+<div class="content">
+
+<div class="toc">
+  <h2>Table of Contents</h2>
+  <ol>
+    <li><a href="#sec1">Application Overview</a></li>
+    <li><a href="#sec2">Input Variables — 76 Parameters</a></li>
+    <li><a href="#sec3">Generator Library — 8 CAT Models</a></li>
+    <li><a href="#sec4">Calculation Methodologies — 14 Engine Functions</a></li>
+    <li><a href="#sec5">Sizing Pipeline — 23 Steps</a></li>
+    <li><a href="#sec6">Output Variables — 55+ Fields</a></li>
+    <li><a href="#sec7">Predefined Templates — 4 Presets</a></li>
+    <li><a href="#sec8">Regional Multipliers &amp; O&amp;M Costs</a></li>
+    <li><a href="#sec9">Emissions Compliance Matrix — 5 Jurisdictions</a></li>
+    <li><a href="#sec10">Technical Summary</a></li>
+  </ol>
+</div>
+
+<!-- ════════════════════════════════════════════════ -->
+<!-- SECTION 1: APPLICATION OVERVIEW                  -->
+<!-- ════════════════════════════════════════════════ -->
+<div class="section" id="sec1">
+  <h2>1. Application Overview</h2>
+
+  <p><strong>CAT QuickSize</strong> is an engineering tool for sizing prime power generation solutions for data centers. It calculates the optimal fleet of CAT natural gas generators, Battery Energy Storage Systems (BESS), emissions controls, and full financial analysis.</p>
+
+  <h3>1.1 Architecture</h3>
+  <table>
+    <thead><tr><th>Component</th><th>Technology</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Pilot UI</td><td>Streamlit</td><td>Interactive web interface with sliders, tables, and charts</td></tr>
+      <tr><td>REST API</td><td>FastAPI (Python 3.11)</td><td>8 routers, endpoints for sizing, generators, projects</td></tr>
+      <tr><td>Web Frontend</td><td>React + TypeScript</td><td>Modern interface for BDMs (Business Development Managers)</td></tr>
+      <tr><td>Calculation Engine</td><td>Python (core/engine.py)</td><td>14 stateless functions — intellectual property core</td></tr>
+      <tr><td>Library</td><td>Python (core/generator_library.py)</td><td>8 generators with ~20 specifications each</td></tr>
+      <tr><td>Pipeline</td><td>Python (sizing_pipeline.py)</td><td>23-step sequential calculation orchestration</td></tr>
+    </tbody>
+  </table>
+
+  <h3>1.2 Calculation Flow</h3>
+  <p>The user enters load parameters, site conditions, technology choices, and economic inputs. The pipeline executes 23 sequential steps that produce: optimal fleet sizing, BESS requirements, electrical stability analysis, emissions assessment, physical footprint, and full financial analysis including LCOE, NPV, and payback period.</p>
+
+  <div class="info-box note">
+    <strong>Note:</strong> All engine functions are <em>stateless</em>: they receive inputs and produce pure outputs. No UI, database, or session dependencies.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════ -->
+<!-- SECTION 2: INPUT VARIABLES                       -->
+<!-- ════════════════════════════════════════════════ -->
+<div class="section" id="sec2">
+  <h2>2. Input Variables — 76 Parameters</h2>
+
+  <p>Parameters are organized into 4 main categories. Each has a default value, valid range (min/max), and functional description.</p>
+
+  <!-- 2.1 Load Profile -->
+  <h3>2.1 Load Profile</h3>
+  <table>
+    <thead><tr><th>Variable</th><th>Key</th><th>Default</th><th>Range</th><th>Unit</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>IT Load</td><td>p_it</td><td>100.0</td><td>0.1 – 2,000</td><td>MW</td><td>Total IT load of the data center (before PUE)</td></tr>
+      <tr><td>PUE</td><td>pue</td><td>1.20</td><td>1.0 – 3.0</td><td>ratio</td><td>Power Usage Effectiveness. Multiplies IT load to get total DC load</td></tr>
+      <tr><td>Capacity Factor</td><td>capacity_factor</td><td>0.90</td><td>0.01 – 1.0</td><td>ratio</td><td>Annual average capacity factor. p_avg = p_total_dc &times; CF</td></tr>
+      <tr><td>Peak/Average Ratio</td><td>peak_avg_ratio</td><td>1.15</td><td>1.0 – 2.0</td><td>ratio</td><td>Ratio between peak load and average load</td></tr>
+      <tr><td>Load Step</td><td>load_step_pct</td><td>40.0</td><td>0 – 100</td><td>%</td><td>Maximum instantaneous load change (transient)</td></tr>
+      <tr><td>Spinning Reserve</td><td>spinning_res_pct</td><td>20.0</td><td>0 – 100</td><td>%</td><td>Required spinning reserve percentage over average load</td></tr>
+      <tr><td>Availability Req.</td><td>avail_req</td><td>99.99</td><td>90 – 100</td><td>%</td><td>System availability target (e.g., 99.99% = Tier IV)</td></tr>
+      <tr><td>Load Ramp Rate</td><td>load_ramp_req</td><td>3.0</td><td>&gt;0</td><td>MW/min</td><td>Maximum required load change rate</td></tr>
+      <tr><td>DC Type</td><td>dc_type</td><td>AI Factory (Training)</td><td>Selection</td><td>—</td><td>Data center type: AI Training, AI Inference, Cloud, Enterprise, Edge, HPC, Mixed, Hyperscale</td></tr>
+    </tbody>
+  </table>
+
+  <!-- 2.2 Site Conditions -->
+  <h3>2.2 Site Conditions</h3>
+  <table>
+    <thead><tr><th>Variable</th><th>Key</th><th>Default</th><th>Range</th><th>Unit</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Derate Mode</td><td>derate_mode</td><td>Auto-Calculate</td><td>—</td><td>—</td><td>"Auto-Calculate" uses temperature, altitude, and gas quality. "Manual" accepts a direct factor.</td></tr>
+      <tr><td>Site Temperature</td><td>site_temp_c</td><td>35.0</td><td>-40 – 60</td><td>&deg;C</td><td>Maximum design ambient temperature. Derating begins above 40&deg;C.</td></tr>
+      <tr><td>Site Altitude</td><td>site_alt_m</td><td>100.0</td><td>0 – 5,000</td><td>m</td><td>Altitude above sea level. Derating begins above 300m.</td></tr>
+      <tr><td>Methane Number</td><td>methane_number</td><td>80</td><td>0 – 100</td><td>MN</td><td>Gas fuel quality. MN &lt; 80 reduces output due to knock risk.</td></tr>
+      <tr><td>Manual Derate Factor</td><td>derate_factor_manual</td><td>0.90</td><td>0.01 – 1.0</td><td>ratio</td><td>Manual derating factor (only if derate_mode = "Manual")</td></tr>
+    </tbody>
+  </table>
+
+  <!-- 2.3 Technology -->
+  <h3>2.3 Technology</h3>
+  <table>
+    <thead><tr><th>Variable</th><th>Key</th><th>Default</th><th>Range</th><th>Unit</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Generator Model</td><td>generator_model</td><td>G3516H</td><td>8 models</td><td>—</td><td>Generator model to use (see Section 3)</td></tr>
+      <tr><td>Generator Overrides</td><td>gen_overrides</td><td>null</td><td>—</td><td>—</td><td>Dictionary to override individual generator parameters</td></tr>
+      <tr><td>Use BESS</td><td>use_bess</td><td>true</td><td>—</td><td>bool</td><td>Include Battery Energy Storage System in the solution</td></tr>
+      <tr><td>BESS Strategy</td><td>bess_strategy</td><td>Hybrid (Balanced)</td><td>3 options</td><td>—</td><td>"Transient Only", "Hybrid (Balanced)", or "Reliability Priority"</td></tr>
+      <tr><td>Enable Black Start</td><td>enable_black_start</td><td>true</td><td>—</td><td>bool</td><td>Size BESS for black start capability (5% of peak load)</td></tr>
+      <tr><td>Cooling Method</td><td>cooling_method</td><td>Air-Cooled</td><td>2 options</td><td>—</td><td>"Air-Cooled" (120 m&sup2;/MW heat) or "Water-Cooled" (50 m&sup2;/MW heat)</td></tr>
+      <tr><td>Grid Frequency</td><td>freq_hz</td><td>60</td><td>50 or 60</td><td>Hz</td><td>Electrical grid frequency</td></tr>
+      <tr><td>Distribution Loss</td><td>dist_loss_pct</td><td>1.5</td><td>0 – 10</td><td>%</td><td>Internal site electrical distribution losses</td></tr>
+      <tr><td>Voltage Mode</td><td>volt_mode</td><td>Auto-Recommend</td><td>—</td><td>—</td><td>"Auto-Recommend" based on installed capacity, or "Manual"</td></tr>
+      <tr><td>Manual Voltage</td><td>manual_voltage_kv</td><td>13.8</td><td>&gt;0</td><td>kV</td><td>Manual voltage (only if volt_mode = "Manual")</td></tr>
+    </tbody>
+  </table>
+
+  <!-- 2.4 Economics -->
+  <h3>2.4 Economics</h3>
+  <table>
+    <thead><tr><th>Variable</th><th>Key</th><th>Default</th><th>Range</th><th>Unit</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Gas Price</td><td>gas_price</td><td>3.50</td><td>&ge;0</td><td>$/MMBtu</td><td>Natural gas price at site</td></tr>
+      <tr><td>WACC</td><td>wacc</td><td>8.0</td><td>0 – 30</td><td>%</td><td>Weighted Average Cost of Capital (discount rate)</td></tr>
+      <tr><td>Project Years</td><td>project_years</td><td>20</td><td>1 – 40</td><td>years</td><td>Project evaluation horizon</td></tr>
+      <tr><td>Benchmark Price</td><td>benchmark_price</td><td>0.12</td><td>&ge;0</td><td>$/kWh</td><td>Grid reference price for comparison</td></tr>
+      <tr><td>Carbon Price</td><td>carbon_price_per_ton</td><td>0.0</td><td>&ge;0</td><td>$/ton</td><td>Carbon tax per ton of CO2</td></tr>
+      <tr><td>Enable Depreciation</td><td>enable_depreciation</td><td>true</td><td>—</td><td>bool</td><td>Enable MACRS 5-year accelerated depreciation tax benefit</td></tr>
+      <tr><td>BESS Cost (Power)</td><td>bess_cost_kw</td><td>250.0</td><td>&ge;0</td><td>$/kW</td><td>BESS inverter/converter cost</td></tr>
+      <tr><td>BESS Cost (Energy)</td><td>bess_cost_kwh</td><td>400.0</td><td>&ge;0</td><td>$/kWh</td><td>BESS battery module cost</td></tr>
+      <tr><td>BESS O&amp;M</td><td>bess_om_kw_yr</td><td>5.0</td><td>&ge;0</td><td>$/kW/yr</td><td>Annual BESS operations and maintenance cost</td></tr>
+      <tr><td>Gen Cost Mode</td><td>gen_cost_mode</td><td>budget_estimate</td><td>2 options</td><td>—</td><td>"budget_estimate" ($/kW from library) or "bdm_total_price" (BDM total price)</td></tr>
+      <tr><td>BDM Total Price</td><td>gen_total_price_bdm</td><td>0.0</td><td>&ge;0</td><td>USD</td><td>Total generator equipment cost entered by the BDM</td></tr>
+      <tr><td>Force Emissions</td><td>force_emissions</td><td>false</td><td>—</td><td>bool</td><td>Force aftertreatment regardless of thresholds</td></tr>
+      <tr><td>SCR Cost</td><td>cost_scr_kw</td><td>75.0</td><td>0 – 500</td><td>$/kW</td><td>Selective Catalytic Reduction system unit cost</td></tr>
+      <tr><td>OxiCat Cost</td><td>cost_oxicat_kw</td><td>25.0</td><td>0 – 200</td><td>$/kW</td><td>Oxidation Catalyst unit cost</td></tr>
+      <tr><td>Fuel Mode</td><td>fuel_mode</td><td>Pipeline Gas</td><td>—</td><td>—</td><td>"Pipeline Gas", "LNG (Virtual Pipeline)", "Dual-Fuel (Pipe + LNG Backup)"</td></tr>
+      <tr><td>LNG Days</td><td>lng_days</td><td>5</td><td>1 – 30</td><td>days</td><td>LNG storage autonomy days</td></tr>
+      <tr><td>Include CHP</td><td>include_chp</td><td>false</td><td>—</td><td>bool</td><td>Include combined heat and power / trigeneration (adds 20% to CAPEX)</td></tr>
+      <tr><td>Footprint Limit</td><td>enable_footprint_limit</td><td>false</td><td>—</td><td>bool</td><td>Enable maximum area constraint</td></tr>
+      <tr><td>Max Area</td><td>max_area_m2</td><td>10,000</td><td>&gt;0</td><td>m&sup2;</td><td>Maximum available plant area</td></tr>
+      <tr><td>Region</td><td>region</td><td>US - Gulf Coast</td><td>15 regions</td><td>—</td><td>Region for cost multipliers (see Section 8)</td></tr>
+    </tbody>
+  </table>
+
+  <div class="info-box note">
+    <strong>Total:</strong> The <code>SizingInput</code> Pydantic model contains exactly 38 typed fields. The <code>project_manager.py</code> defines 76 total parameters including project header fields (name, client, contact, country, etc.) and additional UI options.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════ -->
+<!-- SECTION 3: GENERATOR LIBRARY                     -->
+<!-- ════════════════════════════════════════════════ -->
+<div class="section" id="sec3">
+  <h2>3. Generator Library — 8 CAT Models</h2>
+
+  <p>The library contains 8 Caterpillar natural gas generator models, each with ~20 technical specifications. Data sourced from CAT LEPS data sheets plus engineering estimates.</p>
+
+  <h3>3.1 Primary Specifications</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Model</th><th>Type</th><th>ISO Rating (MW)</th><th>Efficiency (%)</th>
+        <th>Heat Rate (Btu/kWh)</th><th>Step Load (%)</th><th>Ramp (MW/s)</th><th>MTBF (h)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>XGC1900</strong></td><td><span class="badge hs">High Speed</span></td><td>1.90</td><td>39.2%</td><td>8,780</td><td>25%</td><td>0.5</td><td>50,000</td></tr>
+      <tr><td><strong>G3520FR</strong></td><td><span class="badge hs">High Speed</span></td><td>2.50</td><td>38.6%</td><td>8,836</td><td>40%</td><td>0.6</td><td>48,000</td></tr>
+      <tr><td><strong>G3520K</strong></td><td><span class="badge hs">High Speed</span></td><td>2.50</td><td>45.3%</td><td>7,638</td><td>15%</td><td>0.4</td><td>52,000</td></tr>
+      <tr><td><strong>G3516H</strong></td><td><span class="badge hs">High Speed</span></td><td>2.50</td><td>44.1%</td><td>7,740</td><td>25%</td><td>0.5</td><td>50,000</td></tr>
+      <tr><td><strong>CG260-16</strong></td><td><span class="badge hs">High Speed</span></td><td>3.96</td><td>43.4%</td><td>7,860</td><td>10%</td><td>0.45</td><td>55,000</td></tr>
+      <tr><td><strong>C175-20</strong></td><td><span class="badge hs">High Speed</span></td><td>4.00</td><td>42.0%</td><td>8,120</td><td>20%</td><td>0.5</td><td>50,000</td></tr>
+      <tr><td><strong>Titan 130</strong></td><td><span class="badge gt">Gas Turbine</span></td><td>16.50</td><td>35.4%</td><td>9,630</td><td>15%</td><td>2.0</td><td>80,000</td></tr>
+      <tr><td><strong>G20CM34</strong></td><td><span class="badge ms">Medium Speed</span></td><td>9.76</td><td>47.5%</td><td>7,480</td><td>10%</td><td>0.3</td><td>60,000</td></tr>
+    </tbody>
+  </table>
+
+  <h3>3.2 Emissions &amp; Costs</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Model</th><th>NOx (g/kWh)</th><th>CO (g/kWh)</th>
+        <th>Est. Cost ($/kW)</th><th>Est. Install ($/kW)</th><th>Maint. Interval (h)</th><th>Maint. Duration (h)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>XGC1900</td><td>0.50</td><td>2.50</td><td>775</td><td>300</td><td>1,000</td><td>48</td></tr>
+      <tr><td>G3520FR</td><td>0.50</td><td>2.10</td><td>575</td><td>650</td><td>1,000</td><td>48</td></tr>
+      <tr><td>G3520K</td><td>0.30</td><td>2.30</td><td>575</td><td>650</td><td>1,000</td><td>48</td></tr>
+      <tr><td>G3516H</td><td>0.50</td><td>2.00</td><td>550</td><td>600</td><td>1,000</td><td>48</td></tr>
+      <tr><td>CG260-16</td><td>0.50</td><td>1.80</td><td>675</td><td>1,100</td><td>1,000</td><td>48</td></tr>
+      <tr><td>C175-20</td><td>0.50</td><td>1.50</td><td>625</td><td>900</td><td>1,000</td><td>56</td></tr>
+      <tr><td>Titan 130</td><td>0.60</td><td>0.60</td><td>775</td><td>1,000</td><td>8,000</td><td>120</td></tr>
+      <tr><td>G20CM34</td><td>0.50</td><td>0.50</td><td>700</td><td>1,250</td><td>2,500</td><td>72</td></tr>
+    </tbody>
+  </table>
+
+  <h3>3.3 Electrical &amp; Physical Parameters</h3>
+  <table>
+    <thead>
+      <tr><th>Model</th><th>Power Density (MW/m&sup2;)</th><th>Gas Pressure (psi)</th><th>Reactance X"d (p.u.)</th><th>Inertia H (s)</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>XGC1900</td><td>0.010</td><td>1.5</td><td>0.14</td><td>1.0</td></tr>
+      <tr><td>G3520FR</td><td>0.010</td><td>1.5</td><td>0.14</td><td>1.5</td></tr>
+      <tr><td>G3520K</td><td>0.010</td><td>1.5</td><td>0.13</td><td>1.2</td></tr>
+      <tr><td>G3516H</td><td>0.010</td><td>1.5</td><td>0.14</td><td>1.2</td></tr>
+      <tr><td>CG260-16</td><td>0.009</td><td>7.25</td><td>0.15</td><td>1.3</td></tr>
+      <tr><td>C175-20</td><td>0.009</td><td>3.0</td><td>0.15</td><td>1.4</td></tr>
+      <tr><td>Titan 130</td><td>0.020</td><td>300</td><td>0.18</td><td>5.0</td></tr>
+      <tr><td>G20CM34</td><td>0.008</td><td>90</td><td>0.16</td><td>2.5</td></tr>
+    </tbody>
+  </table>
+
+  <div class="info-box warn">
+    <strong>GERP Parser:</strong> The library includes a <code>parse_gerp_pdf()</code> function that can import specifications directly from Caterpillar GERP performance PDF reports, automatically extracting model, power, efficiency, heat rate, and emissions using regex.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════ -->
+<!-- SECTION 4: CALCULATION METHODOLOGIES             -->
+<!-- ════════════════════════════════════════════════ -->
+<div class="section" id="sec4">
+  <h2>4. Calculation Methodologies — 14 Engine Functions</h2>
+
+  <p>The file <code>core/engine.py</code> (897 lines) contains 14 stateless functions that form the intellectual property core of the application. Each function receives typed parameters and returns calculated results with no external dependencies.</p>
+
+  <!-- F1 -->
+  <h3>4.1 Part-Load Efficiency <code>get_part_load_efficiency()</code></h3>
+  <p>Part-load efficiency model validated against CAT test data. Uses linear interpolation against type-specific generator curves.</p>
+
+  <h4>Input Parameters</h4>
+  <table>
+    <thead><tr><th>Parameter</th><th>Type</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>base_eff</td><td>float</td><td>ISO-rated electrical efficiency (e.g., 0.441 = 44.1%)</td></tr>
+      <tr><td>load_pct</td><td>float</td><td>Operating load as percentage of rated capacity (0–100)</td></tr>
+      <tr><td>gen_type</td><td>str</td><td>"High Speed", "Medium Speed", or "Gas Turbine"</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Efficiency Curves (interpolation points)</h4>
+  <table>
+    <thead><tr><th>Load %</th><th>High Speed</th><th>Medium Speed</th><th>Gas Turbine</th></tr></thead>
+    <tbody>
+      <tr><td>0%</td><td>0.00</td><td>0.00</td><td>0.00</td></tr>
+      <tr><td>25%</td><td>0.70</td><td>0.75</td><td>0.55</td></tr>
+      <tr><td>50%</td><td>0.88</td><td>0.91</td><td>0.78</td></tr>
+      <tr><td>75%</td><td>0.96</td><td>0.97</td><td>0.90</td></tr>
+      <tr><td>100%</td><td>1.00</td><td>1.00</td><td>1.00</td></tr>
+    </tbody>
+  </table>
+
+  <div class="formula-block">
+    <span class="comment"># Formula:</span><br>
+    factor = <span class="func">np.interp</span>(load_pct, xp, fp)<br>
+    efficiency = base_eff &times; factor
+  </div>
+
+  <p><strong>Output:</strong> <code>float</code> — adjusted efficiency at the given load point.</p>
+
+  <!-- F2 -->
+  <h3>4.2 Transient Stability <code>transient_stability_check()</code></h3>
+  <p>Critical voltage sag check for AI workloads. A sag &gt; 10% can cause GPU server resets.</p>
+
+  <div class="formula-block">
+    <span class="comment"># Parameters:</span><br>
+    xd_pu &nbsp;&nbsp;&nbsp;= generator subtransient reactance (p.u.)<br>
+    num_units = number of parallel generators<br>
+    step_load_pct = instantaneous load change (%)<br><br>
+
+    <span class="comment"># Calculation:</span><br>
+    equiv_xd = xd_pu / <span class="func">sqrt</span>(num_units)<br>
+    voltage_sag = (step_load_pct / <span class="number">100</span>) &times; equiv_xd &times; <span class="number">100</span><br><br>
+
+    <span class="comment"># Criterion: PASS if voltage_sag &le; 10%</span>
+  </div>
+
+  <p><strong>Output:</strong> <code>tuple(bool, float)</code> — (passes_check, sag_percentage)</p>
+
+  <!-- F3 -->
+  <h3>4.3 Frequency Screening <code>frequency_screening()</code></h3>
+  <p>Analytical frequency nadir and ROCOF (Rate of Change of Frequency) screening using simplified swing equation. <strong>Not a substitute</strong> for full ODE simulation.</p>
+
+  <div class="formula-block">
+    <span class="comment"># Model constants:</span><br>
+    R = <span class="number">0.05</span> &nbsp;&nbsp;&nbsp;&nbsp;<span class="comment"># 5% droop</span><br>
+    D = <span class="number">2.0</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="comment"># Damping (data center PE loads)</span><br>
+    T_gov = <span class="number">0.5</span> &nbsp;&nbsp;<span class="comment"># Governor time constant (s)</span><br>
+    pf_gen = <span class="number">0.85</span> <span class="comment"># Generator power factor</span><br><br>
+
+    <span class="comment"># Total system MVA:</span><br>
+    S_gen_mva = unit_cap_mw / pf_gen<br>
+    S_total_mva = n_running &times; S_gen_mva<br><br>
+
+    <span class="comment"># Total inertia (including BESS virtual if applicable):</span><br>
+    H_total = H_mech + H_bess<br>
+    <span class="comment"># H_bess = 4.0 &times; min(1.0, bess_ratio / 0.2) if BESS enabled</span><br><br>
+
+    <span class="comment"># ROCOF (Rate of Change of Frequency):</span><br>
+    ROCOF = (P_step_pu &times; freq_hz) / (2 &times; H_total)<br><br>
+
+    <span class="comment"># Frequency nadir:</span><br>
+    &Delta;f_ss = (P_step_pu / (D + 1/R)) &times; freq_hz<br>
+    overshoot = 1.0 + <span class="func">sqrt</span>(T_gov / (4 &times; H_total))<br>
+    &Delta;f_nadir = &Delta;f_ss &times; overshoot<br>
+    nadir_hz = freq_hz - &Delta;f_nadir<br><br>
+
+    <span class="comment"># Criteria:</span><br>
+    nadir_ok = nadir_hz &ge; <span class="number">59.5</span> Hz (60 Hz) or <span class="number">49.5</span> Hz (50 Hz)<br>
+    rocof_ok = ROCOF &le; <span class="number">1.0</span> Hz/s
+  </div>
+
+  <p><strong>Output:</strong> <code>dict</code> with nadir_hz, rocof_hz_s, nadir_ok, rocof_ok, H_total, P_step_pu, notes.</p>
+
+  <!-- F4 -->
+  <h3>4.4 Spinning Reserve <code>calculate_spinning_reserve_units()</code></h3>
+  <p>Calculates the number of running generators needed considering spinning reserve requirements. Behavior differs based on BESS availability.</p>
+
+  <div class="formula-block">
+    <span class="comment"># Required spinning reserve:</span><br>
+    spinning_reserve_mw = p_avg_load &times; (spinning_reserve_pct / <span class="number">100</span>)<br><br>
+
+    <span class="comment"># WITHOUT BESS: generators must provide ALL reserve as headroom</span><br>
+    required_online_cap = p_avg_load + spinning_from_gens<br><br>
+
+    <span class="comment"># WITH BESS (if covering &ge;90% of reserve):</span><br>
+    required_online_cap = p_avg_load &times; <span class="number">1.05</span><br><br>
+
+    <span class="comment"># Units needed:</span><br>
+    n_units_running = <span class="func">ceil</span>(required_online_cap / unit_capacity)
+  </div>
+
+  <p><strong>Output:</strong> <code>dict</code> with n_units_running, load_per_unit_pct, spinning_reserve_mw, spinning_from_gens, spinning_from_bess, total_online_capacity, headroom_available.</p>
+
+  <!-- F5 -->
+  <h3>4.5 BESS Sizing <code>calculate_bess_requirements()</code></h3>
+  <p>Sophisticated BESS sizing based on actual transient analysis. Evaluates 6 independent components and selects the maximum.</p>
+
+  <h4>The 6 Sizing Components:</h4>
+  <table>
+    <thead><tr><th>#</th><th>Component</th><th>Formula</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Step Load Support</td><td>max(0, step_load_mw - gen_step_mw)</td></tr>
+      <tr><td>2</td><td>Peak Shaving</td><td>p_peak - p_avg</td></tr>
+      <tr><td>3</td><td>Ramp Rate Support</td><td>max(0, (load_ramp_req - gen_ramp_rate) &times; 10)</td></tr>
+      <tr><td>4</td><td>Frequency Regulation</td><td>p_avg &times; 0.05 (5%)</td></tr>
+      <tr><td>5</td><td>Black Start</td><td>p_peak &times; 0.05 (if enabled)</td></tr>
+      <tr><td>6</td><td>Spinning Reserve</td><td>p_avg &times; (step_load_pct / 100)</td></tr>
+    </tbody>
+  </table>
+
+  <div class="formula-block">
+    <span class="comment"># Total BESS power = max of all 6 components, floor at 15% of peak</span><br>
+    bess_power = <span class="func">max</span>(comp1, comp2, comp3, comp4, comp5, comp6, p_peak &times; <span class="number">0.15</span>)<br><br>
+
+    <span class="comment"># Energy at C-rate = 1.0 and 85% DoD:</span><br>
+    bess_energy = bess_power / <span class="number">1.0</span> / <span class="number">0.85</span>
+  </div>
+
+  <p><strong>Output:</strong> <code>tuple(float, float, dict)</code> — (bess_power_mw, bess_energy_mwh, component_breakdown)</p>
+
+  <!-- F6 -->
+  <h3>4.6 BESS Reliability Credit <code>calculate_bess_reliability_credit()</code></h3>
+  <p>Calculates how many genset equivalents the BESS can replace for reliability purposes. BESS realistically covers 2–4 hours (bridge power while backup starts), NOT the full 48-hour MTTR.</p>
+
+  <div class="formula-block">
+    realistic_coverage_hrs = <span class="number">2.0</span><br>
+    power_credit = bess_power_mw / unit_capacity_mw<br>
+    energy_credit = bess_energy_mwh / (unit_capacity_mw &times; realistic_coverage_hrs)<br><br>
+
+    raw_credit = <span class="func">min</span>(power_credit, energy_credit)<br><br>
+
+    <span class="comment"># Conservative factors:</span><br>
+    bess_availability = <span class="number">0.98</span><br>
+    coverage_factor = <span class="number">0.70</span><br><br>
+
+    effective_credit = raw_credit &times; bess_availability &times; coverage_factor
+  </div>
+
+  <p><strong>Output:</strong> <code>tuple(float, dict)</code> — (effective_credit, credit_breakdown)</p>
+
+  <!-- F7 -->
+  <h3>4.7 Availability (Weibull / Binomial N+X) <code>calculate_availability_weibull()</code></h3>
+  <p>Reliability model using industry-standard availability formula including planned maintenance. Calculates system availability and its evolution over time with aging.</p>
+
+  <div class="formula-block">
+    <span class="comment"># Unit availability (including planned maintenance):</span><br>
+    annual_maint_hrs = (<span class="number">8760</span> / maint_interval) &times; maint_duration<br>
+    total_unavailable = MTTR + annual_maint_hrs<br>
+    A_unit = MTBF / (MTBF + total_unavailable)<br><br>
+
+    <span class="comment"># System availability — binomial N+X model:</span><br>
+    A_system = &Sigma;<sub>k=N_run</sub><sup>N_total</sup> C(N_total, k) &times; A<sub>unit</sub><sup>k</sup> &times; (1 - A<sub>unit</sub>)<sup>(N_total - k)</sup><br><br>
+
+    <span class="comment"># Aging over project life:</span><br>
+    aging_factor(year) = <span class="func">max</span>(<span class="number">0.95</span>, <span class="number">1.0</span> - year &times; <span class="number">0.001</span>)<br>
+    A_unit_aged(year) = A_unit &times; aging_factor(year)
+  </div>
+
+  <p><strong>Output:</strong> <code>tuple(float, list[float])</code> — (year1_availability, availability_curve_per_year)</p>
+
+  <!-- F8 -->
+  <h3>4.8 Fleet Optimization <code>optimize_fleet_size()</code></h3>
+  <p>Multi-objective optimization that finds the optimal number of running generators, balancing capacity, efficiency, and step load coverage. Optimal load point is 72.5%.</p>
+
+  <div class="formula-block">
+    <span class="comment"># Optimal efficiency load point:</span><br>
+    optimal_load = <span class="number">72.5</span>%<br><br>
+
+    <span class="comment"># Candidates evaluated: n_min-1 through n_min+2</span><br>
+    <span class="comment"># Only options where 30% &le; load_pct &le; 95% are considered</span><br><br>
+
+    <span class="comment"># Multi-objective score per candidate:</span><br>
+    load_penalty = |load_pct - <span class="number">72.5</span>| / <span class="number">100</span><br>
+    score = efficiency &times; (1 - load_penalty &times; <span class="number">0.5</span>)<br><br>
+
+    <span class="comment"># Selection: n with highest score</span>
+  </div>
+
+  <p><strong>Output:</strong> <code>tuple(int, dict)</code> — (optimal_n, evaluated_options)</p>
+
+  <!-- F9 -->
+  <h3>4.9 MACRS Depreciation <code>calculate_macrs_depreciation()</code></h3>
+  <p>MACRS 5-year accelerated depreciation schedule (US tax code). Calculates present value of tax shield benefit.</p>
+
+  <div class="formula-block">
+    <span class="comment"># MACRS 5-year schedule:</span><br>
+    rates = [<span class="number">20.0%</span>, <span class="number">32.0%</span>, <span class="number">19.2%</span>, <span class="number">11.52%</span>, <span class="number">11.52%</span>, <span class="number">5.76%</span>]<br>
+    tax_rate = <span class="number">0.21</span> <span class="comment"># US corporate rate 21%</span><br><br>
+
+    PV_benefit = &Sigma; (CAPEX &times; rate<sub>yr</sub> &times; tax_rate) / (1 + WACC)<sup>yr</sup>
+  </div>
+
+  <p><strong>Output:</strong> <code>float</code> — present value of total tax shield benefit.</p>
+
+  <!-- F10 -->
+  <h3>4.10 Noise Propagation (3 functions)</h3>
+  <p>Acoustic propagation model for N identical sources with acoustic treatment.</p>
+
+  <h4>4.10a <code>calculate_combined_noise()</code></h4>
+  <div class="formula-block">
+    L_total = (L_source - attenuation) + 10 &times; <span class="func">log10</span>(N)
+  </div>
+
+  <h4>4.10b <code>noise_at_distance()</code></h4>
+  <div class="formula-block">
+    <span class="comment"># Point source, hemispherical spreading:</span><br>
+    L_receiver = L_source - 20 &times; <span class="func">log10</span>(distance_m) - 11
+  </div>
+
+  <h4>4.10c <code>noise_setback_distance()</code></h4>
+  <div class="formula-block">
+    d_min = 10<sup>((L_combined - L_limit - 11) / 20)</sup>
+  </div>
+
+  <!-- F11 -->
+  <h3>4.11 Site Derating <code>calculate_site_derate()</code></h3>
+  <p>Automatically calculates generator derating factor based on site conditions. Three multiplicative factors:</p>
+
+  <div class="formula-block">
+    <span class="comment"># Temperature (CAT generators do not derate until 40&deg;C):</span><br>
+    temp_derate = 1 - ((T - <span class="number">40</span>) / <span class="number">5.5</span>) &times; <span class="number">0.01</span> &nbsp; <span class="comment">if T &gt; 40&deg;C, else 1.0</span><br><br>
+
+    <span class="comment"># Altitude (no derating until 300m):</span><br>
+    alt_derate = 1 - ((alt - <span class="number">300</span>) / <span class="number">300</span>) &times; <span class="number">0.035</span> &nbsp; <span class="comment">if alt &gt; 300m, else 1.0</span><br><br>
+
+    <span class="comment"># Fuel quality:</span><br>
+    fuel_derate = 1 - ((<span class="number">80</span> - MN) / <span class="number">100</span>) &times; <span class="number">0.15</span> &nbsp; <span class="comment">if MN &lt; 80, else 1.0</span><br><br>
+
+    <span class="comment"># Combined factor (floor at 0.50):</span><br>
+    derate = <span class="func">max</span>(<span class="number">0.50</span>, temp_derate &times; alt_derate &times; fuel_derate)
+  </div>
+
+  <!-- F12 -->
+  <h3>4.12 Emissions <code>calculate_emissions()</code></h3>
+  <p>Complete emissions engine with 5 regulatory jurisdictions, aftertreatment recommendations, urea/DEF sizing, and compliance matrix.</p>
+
+  <h4>Primary Calculations</h4>
+  <div class="formula-block">
+    <span class="comment"># Emissions in lb/hr (industry formula for gas engines):</span><br>
+    NOx_lb_hr = p_avg_kw &times; (NOx_g_kwh / <span class="number">1000</span>)<br>
+    CO_lb_hr &nbsp;= p_avg_kw &times; (CO_g_kwh / <span class="number">1000</span>)<br><br>
+
+    <span class="comment"># Annual emissions (tons/year):</span><br>
+    NOx_tpy = (NOx_lb_hr &times; effective_hours) / <span class="number">2000</span><br>
+    CO2_tpy = fuel_input_mmbtu_hr &times; <span class="number">0.0531</span> &times; <span class="number">8760</span> &times; CF<br><br>
+
+    <span class="comment"># Regulatory conversions:</span><br>
+    mg_Nm3 = g_kWh &times; <span class="number">3.6</span> / <span class="number">4.5</span><br>
+    ppmvd = mg_Nm3 / factor <span class="comment">(NOx: /2.05, CO: /1.25)</span><br><br>
+
+    <span class="comment"># Aftertreatment triggers:</span><br>
+    needs_SCR = NOx_tpy &gt; <span class="number">100</span> OR NOx_g_kwh &gt; <span class="number">0.5</span><br>
+    needs_OxiCat = CO_tpy &gt; <span class="number">100</span> OR CO_g_kwh &gt; <span class="number">2.0</span><br>
+    SCR_reduction = <span class="number">90%</span>, OxiCat_reduction = <span class="number">85%</span>
+  </div>
+
+  <h4>Urea/DEF Sizing</h4>
+  <div class="formula-block">
+    urea_liters_per_MWh = <span class="number">20.0</span> <span class="comment">(if SCR required)</span><br>
+    storage = daily_gallons &times; <span class="number">30</span> <span class="comment">(30-day autonomy)</span><br>
+    num_totes = <span class="func">ceil</span>(storage / <span class="number">275</span>) <span class="comment">(standard IBC totes)</span><br>
+    annual_cost = annual_gallons &times; $<span class="number">0.50</span> <span class="comment">(bulk DEF)</span>
+  </div>
+
+  <!-- F13 -->
+  <h3>4.13 Footprint <code>calculate_footprint()</code></h3>
+  <p>Calculates plant physical footprint broken down by component.</p>
+
+  <table>
+    <thead><tr><th>Component</th><th>Formula</th></tr></thead>
+    <tbody>
+      <tr><td>Generators</td><td>N_total &times; unit_cap / power_density</td></tr>
+      <tr><td>BESS</td><td>bess_energy_mwh &times; 40 m&sup2;/MWh</td></tr>
+      <tr><td>LNG Storage</td><td>lng_gallons &times; 0.1 m&sup2;/gal</td></tr>
+      <tr><td>Cooling (Air)</td><td>total_heat_mw &times; 120 m&sup2;/MW</td></tr>
+      <tr><td>Cooling (Water)</td><td>total_heat_mw &times; 50 m&sup2;/MW</td></tr>
+      <tr><td>Substation</td><td>500 + total_cap_mw &times; 5 m&sup2;</td></tr>
+    </tbody>
+  </table>
+
+  <p><strong>Output:</strong> dict with gen_area, bess_area, lng_area, cooling_area, substation_area, total_area, power_density.</p>
+
+  <!-- F14 -->
+  <h3>4.14 LCOE / Financial <code>calculate_lcoe()</code></h3>
+  <p>Levelized Cost of Energy (LCOE), Net Present Value (NPV), and payback period calculation.</p>
+
+  <div class="formula-block">
+    <span class="comment"># Capital Recovery Factor (CRF):</span><br>
+    CRF = (WACC &times; (1 + WACC)<sup>n</sup>) / ((1 + WACC)<sup>n</sup> - 1)<br><br>
+
+    <span class="comment"># Annualized CAPEX:</span><br>
+    CAPEX_annual = total_capex &times; CRF<br><br>
+
+    <span class="comment"># LCOE:</span><br>
+    LCOE = (CAPEX_annual + OM_annual + Fuel_annual + Carbon_annual) / MWh_annual<br><br>
+
+    <span class="comment"># NPV:</span><br>
+    NPV = PV_savings + tax_benefits - total_capex - repowering_PV<br><br>
+
+    <span class="comment"># Simple payback:</span><br>
+    Payback = total_capex / annual_savings
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════ -->
+<!-- SECTION 5: SIZING PIPELINE                       -->
+<!-- ════════════════════════════════════════════════ -->
+<div class="section" id="sec5">
+  <h2>5. Sizing Pipeline — 23 Steps</h2>
+
+  <p>The file <code>sizing_pipeline.py</code> (830 lines) orchestrates the 23 sequential steps that transform the 76 input variables into the 55+ output fields. Main function: <code>run_full_sizing(inputs: SizingInput) -&gt; SizingResult</code>.</p>
+
+  <div class="pipeline-step">
+    <div class="step-num">1</div>
+    <div class="step-content"><strong>Resolve Generator</strong> — Loads selected generator from the library and applies user overrides if provided.</div>
+  </div>
+
+  <div class="pipeline-step">
+    <div class="step-num">2</div>
+    <div class="step-content"><strong>Load Calculations</strong> — <code>p_total_dc = p_it &times; PUE</code>, <code>p_avg = p_total_dc &times; CF</code>, <code>p_peak = p_total_dc &times; peak_ratio</code>. Applies distribution losses: <code>p_at_gen = p_total / (1 - dist_loss%)</code>.</div>
+  </div>
+
+  <div class="pipeline-step">
+    <div class="step-num">3</div>
+    <div class="step-content"><strong>Site Derating</strong> — Auto-calculates or applies manual factor. <code>unit_site_cap = unit_iso_cap &times; derate_factor</code>.</div>
+  </div>
+
+  <div class="pipeline-step">
+    <div class="step-num">4</div>
+    <div class="step-content"><strong>BESS Sizing</strong> — If <code>use_bess=true</code>, executes <code>calculate_bess_requirements()</code> with 6 transient sizing components.</div>
+  </div>
+
+  <div class="pipeline-step">
+    <div class="step-num">5</div>
+    <div class="step-content"><strong>Spinning Reserve</strong> — <code>calculate_spinning_reserve_units()</code> determines minimum generators for headroom.</div>
+  </div>
+
+  <div class="pipeline-step">
+    <div class="step-num">6</div>
+    <div class="step-content"><strong>Fleet Optimization</strong> — <code>optimize_fleet_size()</code> finds optimal efficiency point at 72.5% load. Takes maximum between optimization result and spinning reserve requirement.</div>
+  </div>
+
+  <div class="pipeline-step">
+    <div class="step-num">7</div>
+    <div class="step-content"><strong>Availability Target</strong> — Converts <code>avail_req</code> from percentage to decimal. Sets MTTR = 48 hours.</div>
+  </div>
+
+  <div class="pipeline-step">
+    <div class="step-num">8</div>
+    <div class="step-content"><strong>Reliability Configurations A/B/C</strong> — Generates up to 3 configurations:<br>
+      <strong>Config A:</strong> No BESS (baseline) — generators only with N+X reserves.<br>
+      <strong>Config B:</strong> BESS Transient Only — BESS for transients, fewer generators needed.<br>
+      <strong>Config C:</strong> Hybrid or Reliability Priority — additional BESS for reliability. Parameters by strategy: Hybrid covers 5 gensets / 2h, Reliability Priority covers 8 gensets / 2.5h. Includes BESS reliability credit (applied with conservative 0.65 factor).</div>
+  </div>
+
+  <div class="pipeline-step">
+    <div class="step-num">9</div>
+    <div class="step-content"><strong>Select Configuration</strong> — Based on <code>bess_strategy</code>: "Transient Only" selects Config B, "Hybrid"/"Reliability Priority" selects Config C, fallback selects Config A.</div>
+  </div>
+
+  <div class="pipeline-step">
+    <div class="step-num">10</div>
+    <div class="step-content"><strong>Extract Final Values</strong> — Extracts n_running, n_reserve, n_total, installed_cap, load_per_unit from selected config. Calculates BESS breakdown including reliability backup.</div>
+  </div>
+
+  <div class="pipeline-step">
+    <div class="step-num">11</div>
+    <div class="step-content"><strong>Fleet Efficiency + Site Corrections</strong> — Applies fuel quality corrections (MN&lt;70: &times;0.94, MN&lt;80: &times;0.98) and extreme altitude correction (&gt;2000m: -0.5% per additional 1000m) on top of base fleet efficiency.</div>
+  </div>
+
+  <div class="pipeline-step">
+    <div class="step-num">12</div>
+    <div class="step-content"><strong>Voltage Recommendation</strong> — Auto: &lt;10MW &rarr; 4.16kV, &lt;50MW &rarr; 13.8kV, &ge;50MW &rarr; 34.5kV. Or user manual value.</div>
+  </div>
+
+  <div class="pipeline-step">
+    <div class="step-num">13</div>
+    <div class="step-content"><strong>Transient Stability</strong> — <code>transient_stability_check()</code> verifies voltage sag &le; 10%.</div>
+  </div>
+
+  <div class="pipeline-step">
+    <div class="step-num">14</div>
+    <div class="step-content"><strong>Availability Curve</strong> — <code>calculate_availability_weibull()</code> generates the availability curve over the project life with aging.</div>
+  </div>
+
+  <div class="pipeline-step">
+    <div class="step-num">15</div>
+    <div class="step-content"><strong>Emissions</strong> — <code>calculate_emissions()</code> computes NOx, CO, CO2, aftertreatment, urea, and 5 regulatory checks.</div>
+  </div>
+
+  <div class="pipeline-step">
+    <div class="step-num">16</div>
+    <div class="step-content"><strong>Footprint</strong> — <code>calculate_footprint()</code> calculates area by component including LNG storage if applicable. LNG sizing: <code>lng_gal = lng_mmbtu_total / 0.075</code>.</div>
+  </div>
+
+  <div class="pipeline-step">
+    <div class="step-num">17</div>
+    <div class="step-content"><strong>Net Efficiency</strong> — <code>net_eff = fleet_eff &times; (1 - dist_loss%)</code>. Net efficiency delivered at point of use.</div>
+  </div>
+
+  <div class="pipeline-step">
+    <div class="step-num">18</div>
+    <div class="step-content"><strong>Financial Calculations</strong> — Full sequence: CAPEX (generators &times; $/kW &times; regional_mult &times; scale_factor + installation + CHP + BESS + aftertreatment), O&amp;M (fixed + variable + labor + overhaul + BESS + AT + urea), fuel cost, carbon cost, MACRS depreciation, BESS repowering (batteries every 10 years, inverters every 15 years), LCOE, NPV, payback.</div>
+  </div>
+
+  <div class="pipeline-step">
+    <div class="step-num">19</div>
+    <div class="step-content"><strong>CAPEX Breakdown</strong> — Itemized: generation_units, installation_bop, tri_gen_chp, bess_system, aftertreatment.</div>
+  </div>
+
+  <div class="pipeline-step">
+    <div class="step-num">20</div>
+    <div class="step-content"><strong>O&amp;M Breakdown</strong> — Itemized: fixed_kw_yr, variable_mwh, labor, overhaul, bess_om, aftertreatment_om, urea_def.</div>
+  </div>
+
+  <div class="pipeline-step">
+    <div class="step-num">21</div>
+    <div class="step-content"><strong>Gas Price Sensitivity</strong> — 20 points between 0 and 2&times; base price. Computes LCOE for each price. Finds breakeven gas price where LCOE = benchmark.</div>
+  </div>
+
+  <div class="pipeline-step">
+    <div class="step-num">22</div>
+    <div class="step-content"><strong>Grid Comparison</strong> — Cumulative costs: grid vs CAT (gross) vs CAT (with tax benefits). Determines crossover year.</div>
+  </div>
+
+  <div class="pipeline-step">
+    <div class="step-num">23</div>
+    <div class="step-content"><strong>Assemble Result</strong> — Packages all results into <code>SizingResult</code> (Pydantic model with 55+ typed fields).</div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════ -->
+<!-- SECTION 6: OUTPUT VARIABLES                      -->
+<!-- ════════════════════════════════════════════════ -->
+<div class="section" id="sec6">
+  <h2>6. Output Variables — 55+ Fields</h2>
+
+  <p>The <code>SizingResult</code> Pydantic model groups results into 10 categories.</p>
+
+  <h3>6.1 Project</h3>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>project_name</td><td>str</td><td>Project name</td></tr>
+      <tr><td>dc_type</td><td>str</td><td>Data center type</td></tr>
+      <tr><td>region</td><td>str</td><td>Selected geographic region</td></tr>
+      <tr><td>app_version</td><td>str</td><td>Application version (3.1)</td></tr>
+    </tbody>
+  </table>
+
+  <h3>6.2 Load</h3>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Unit</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>p_it</td><td>float</td><td>MW</td><td>Original IT load</td></tr>
+      <tr><td>pue</td><td>float</td><td>ratio</td><td>Applied PUE</td></tr>
+      <tr><td>p_total_dc</td><td>float</td><td>MW</td><td>Total DC load (IT &times; PUE)</td></tr>
+      <tr><td>p_total_avg</td><td>float</td><td>MW</td><td>Average load (DC &times; CF)</td></tr>
+      <tr><td>p_total_peak</td><td>float</td><td>MW</td><td>Peak load</td></tr>
+      <tr><td>capacity_factor</td><td>float</td><td>ratio</td><td>Capacity factor</td></tr>
+      <tr><td>avail_req</td><td>float</td><td>%</td><td>Required availability</td></tr>
+    </tbody>
+  </table>
+
+  <h3>6.3 Generator</h3>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Unit</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>selected_gen</td><td>str</td><td>—</td><td>Selected model</td></tr>
+      <tr><td>unit_iso_cap</td><td>float</td><td>MW</td><td>ISO rated capacity</td></tr>
+      <tr><td>unit_site_cap</td><td>float</td><td>MW</td><td>Site capacity (post-derating)</td></tr>
+      <tr><td>derate_factor</td><td>float</td><td>ratio</td><td>Applied derating factor</td></tr>
+    </tbody>
+  </table>
+
+  <h3>6.4 Fleet</h3>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Unit</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>n_running</td><td>int</td><td>units</td><td>Generators running simultaneously</td></tr>
+      <tr><td>n_reserve</td><td>int</td><td>units</td><td>Reserve generators (N+X)</td></tr>
+      <tr><td>n_total</td><td>int</td><td>units</td><td>Total installed generators</td></tr>
+      <tr><td>installed_cap</td><td>float</td><td>MW</td><td>Total installed capacity</td></tr>
+      <tr><td>load_per_unit_pct</td><td>float</td><td>%</td><td>Load per unit</td></tr>
+      <tr><td>fleet_efficiency</td><td>float</td><td>ratio</td><td>Fleet efficiency (with site corrections)</td></tr>
+    </tbody>
+  </table>
+
+  <h3>6.5 Spinning Reserve</h3>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Unit</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>spinning_reserve_mw</td><td>float</td><td>MW</td><td>Total required spinning reserve</td></tr>
+      <tr><td>spinning_from_gens</td><td>float</td><td>MW</td><td>Reserve from generators (headroom)</td></tr>
+      <tr><td>spinning_from_bess</td><td>float</td><td>MW</td><td>Reserve from BESS</td></tr>
+      <tr><td>headroom_mw</td><td>float</td><td>MW</td><td>Available headroom</td></tr>
+    </tbody>
+  </table>
+
+  <h3>6.6 Reliability</h3>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>reliability_configs</td><td>list[ReliabilityConfig]</td><td>Up to 3 evaluated configurations (A, B, C)</td></tr>
+      <tr><td>selected_config_name</td><td>str</td><td>Name of selected configuration</td></tr>
+    </tbody>
+  </table>
+
+  <h3>6.7 BESS</h3>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Unit</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>use_bess</td><td>bool</td><td>—</td><td>Whether BESS is included</td></tr>
+      <tr><td>bess_strategy</td><td>str</td><td>—</td><td>Selected strategy</td></tr>
+      <tr><td>bess_power_mw</td><td>float</td><td>MW</td><td>Total BESS power</td></tr>
+      <tr><td>bess_energy_mwh</td><td>float</td><td>MWh</td><td>Total BESS energy</td></tr>
+      <tr><td>bess_breakdown</td><td>dict</td><td>—</td><td>Breakdown: step_support, peak_shaving, ramp_support, freq_reg, black_start, spinning_reserve, reliability_backup</td></tr>
+    </tbody>
+  </table>
+
+  <h3>6.8 Electrical</h3>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Unit</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>rec_voltage_kv</td><td>float</td><td>kV</td><td>Recommended voltage</td></tr>
+      <tr><td>freq_hz</td><td>int</td><td>Hz</td><td>Operating frequency</td></tr>
+      <tr><td>stability_ok</td><td>bool</td><td>—</td><td>Passes transient stability check</td></tr>
+      <tr><td>voltage_sag</td><td>float</td><td>%</td><td>Calculated voltage sag</td></tr>
+      <tr><td>net_efficiency</td><td>float</td><td>ratio</td><td>Net efficiency (fleet &times; distribution)</td></tr>
+      <tr><td>system_availability</td><td>float</td><td>ratio</td><td>System availability (year 1)</td></tr>
+      <tr><td>availability_over_time</td><td>list[float]</td><td>—</td><td>Availability curve per year</td></tr>
+    </tbody>
+  </table>
+
+  <h3>6.9 Emissions &amp; Footprint</h3>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>emissions</td><td>dict</td><td>NOx/CO/CO2 in multiple units (lb/hr, tpy, g/kWh, mg/Nm3, ppmvd), aftertreatment, urea, compliance matrix (5 jurisdictions)</td></tr>
+      <tr><td>footprint</td><td>dict</td><td>Areas by component: gen, BESS, LNG, cooling, substation, total, power_density</td></tr>
+    </tbody>
+  </table>
+
+  <h3>6.10 Financial</h3>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Unit</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>lcoe</td><td>float</td><td>$/kWh</td><td>Levelized Cost of Energy</td></tr>
+      <tr><td>npv</td><td>float</td><td>USD</td><td>Net Present Value</td></tr>
+      <tr><td>total_capex</td><td>float</td><td>USD</td><td>Total CAPEX (gen + install + CHP + BESS + AT)</td></tr>
+      <tr><td>annual_fuel_cost</td><td>float</td><td>USD/yr</td><td>Annual fuel cost</td></tr>
+      <tr><td>annual_om_cost</td><td>float</td><td>USD/yr</td><td>Total annual O&amp;M cost</td></tr>
+      <tr><td>simple_payback_years</td><td>float</td><td>years</td><td>Simple payback period</td></tr>
+      <tr><td>annual_savings</td><td>float</td><td>USD/yr</td><td>Annual savings vs grid</td></tr>
+      <tr><td>grid_annual_cost</td><td>float</td><td>USD/yr</td><td>Equivalent grid annual cost</td></tr>
+      <tr><td>breakeven_gas_price</td><td>float</td><td>$/MMBtu</td><td>Breakeven gas price</td></tr>
+      <tr><td>capex_breakdown</td><td>dict</td><td>USD</td><td>CAPEX breakdown (5 categories)</td></tr>
+      <tr><td>om_breakdown</td><td>dict</td><td>USD/yr</td><td>O&amp;M breakdown (7 categories)</td></tr>
+      <tr><td>gas_sensitivity</td><td>list</td><td>—</td><td>20 points gas_price vs LCOE</td></tr>
+      <tr><td>grid_comparison</td><td>dict</td><td>—</td><td>Cumulative costs: grid, CAT gross, CAT w/ tax. Crossover year.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ════════════════════════════════════════════════ -->
+<!-- SECTION 7: TEMPLATES                             -->
+<!-- ════════════════════════════════════════════════ -->
+<div class="section" id="sec7">
+  <h2>7. Predefined Templates — 4 Presets</h2>
+
+  <p>The <code>project_manager.py</code> defines 4 typical project templates that preconfigure input variables with representative values:</p>
+
+  <table>
+    <thead>
+      <tr><th>Template</th><th>IT Load</th><th>PUE</th><th>CF</th><th>Peak/Avg</th><th>Step Load</th><th>Spin. Res.</th><th>Avail.</th><th>Generator</th><th>BESS Strategy</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Edge / Micro</strong></td>
+        <td>2 MW</td><td>1.30</td><td>0.85</td><td>1.20</td><td>50%</td><td>25%</td><td>99.95%</td><td>XGC1900</td><td>Transient Only</td>
+      </tr>
+      <tr>
+        <td><strong>Enterprise</strong></td>
+        <td>20 MW</td><td>1.25</td><td>0.85</td><td>1.20</td><td>40%</td><td>20%</td><td>99.99%</td><td>G3516H</td><td>Hybrid (Balanced)</td>
+      </tr>
+      <tr>
+        <td><strong>Hyperscale</strong></td>
+        <td>100 MW</td><td>1.18</td><td>0.90</td><td>1.15</td><td>30%</td><td>15%</td><td>99.995%</td><td>G20CM34</td><td>Hybrid (Balanced)</td>
+      </tr>
+      <tr>
+        <td><strong>AI Campus</strong></td>
+        <td>500 MW</td><td>1.15</td><td>0.92</td><td>1.10</td><td>25%</td><td>15%</td><td>99.999%</td><td>G20CM34</td><td>Reliability Priority</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="info-box note">
+    <strong>Template Logic:</strong> Each template overrides only the shown variables. All others retain their default values defined in <code>INPUT_DEFAULTS</code>.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════ -->
+<!-- SECTION 8: REGIONAL MULTIPLIERS & O&M            -->
+<!-- ════════════════════════════════════════════════ -->
+<div class="section" id="sec8">
+  <h2>8. Regional Multipliers &amp; O&amp;M Costs</h2>
+
+  <h3>8.1 Regional Cost Multipliers</h3>
+  <p>Applied to generator costs ($/kW) and installation costs to reflect geographic differences.</p>
+
+  <table>
+    <thead><tr><th>Region</th><th>Multiplier</th></tr></thead>
+    <tbody>
+      <tr><td>US - Gulf Coast</td><td><strong>1.00</strong> (baseline)</td></tr>
+      <tr><td>US - Southeast</td><td>1.02</td></tr>
+      <tr><td>US - Midwest</td><td>1.05</td></tr>
+      <tr><td>Asia - East</td><td>1.05</td></tr>
+      <tr><td>US - Northeast</td><td>1.10</td></tr>
+      <tr><td>Africa</td><td>1.10</td></tr>
+      <tr><td>Canada</td><td>1.12</td></tr>
+      <tr><td>US - West Coast</td><td>1.15</td></tr>
+      <tr><td>Europe - South</td><td>1.15</td></tr>
+      <tr><td>Australia</td><td>1.20</td></tr>
+      <tr><td>Europe - West</td><td>1.25</td></tr>
+      <tr><td>Europe - North</td><td>1.30</td></tr>
+      <tr><td>Middle East</td><td>0.95</td></tr>
+      <tr><td>Latin America</td><td>0.90</td></tr>
+      <tr><td>Asia - Southeast</td><td>0.85</td></tr>
+    </tbody>
+  </table>
+
+  <h3>8.2 Scale Factors (Project Size)</h3>
+  <table>
+    <thead><tr><th>Installed Capacity</th><th>Scale Factor</th><th>Rationale</th></tr></thead>
+    <tbody>
+      <tr><td>&lt; 2.5 MW</td><td>1.30</td><td>Very small projects: higher cost per MW due to lack of economies of scale</td></tr>
+      <tr><td>2.5 – 10 MW</td><td>1.15</td><td>Small projects</td></tr>
+      <tr><td>10 – 50 MW</td><td>1.05</td><td>Medium projects</td></tr>
+      <tr><td>&ge; 50 MW</td><td>1.00</td><td>Full economies of scale</td></tr>
+    </tbody>
+  </table>
+
+  <h3>8.3 Default O&amp;M Costs</h3>
+  <table>
+    <thead><tr><th>Item</th><th>Value</th><th>Unit</th></tr></thead>
+    <tbody>
+      <tr><td>Fixed O&amp;M</td><td>$12.00</td><td>$/kW/yr</td></tr>
+      <tr><td>Variable O&amp;M</td><td>$5.00</td><td>$/MWh</td></tr>
+      <tr><td>Labor per Unit</td><td>$50,000</td><td>$/unit/yr</td></tr>
+      <tr><td>Overhaul Cost</td><td>$40,000</td><td>$/MW (every 60,000 hours)</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ════════════════════════════════════════════════ -->
+<!-- SECTION 9: COMPLIANCE MATRIX                     -->
+<!-- ════════════════════════════════════════════════ -->
+<div class="section" id="sec9">
+  <h2>9. Emissions Compliance Matrix — 5 Jurisdictions</h2>
+
+  <p>The emissions engine automatically evaluates compliance against 5 international regulations:</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Regulation</th><th>Region</th><th>NOx Limit</th><th>CO Limit</th><th>Scope</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>US EPA NSPS</strong><br>(40 CFR 60 Subpart JJJJ)</td>
+        <td>United States</td>
+        <td>&le; 1.5 g/kWh</td>
+        <td>&le; 3.7 g/kWh</td>
+        <td>Stationary SI engines &gt;500 hp</td>
+      </tr>
+      <tr>
+        <td><strong>US EPA Major Source</strong><br>(Title V)</td>
+        <td>United States</td>
+        <td>&le; 100 tpy</td>
+        <td>&le; 100 tpy</td>
+        <td>Total site emissions</td>
+      </tr>
+      <tr>
+        <td><strong>EU MCP Directive</strong><br>(Medium Combustion Plant)</td>
+        <td>European Union</td>
+        <td>&le; 95 mg/Nm&sup3;</td>
+        <td>&le; 500 mg/Nm&sup3;</td>
+        <td>1–50 MWth combustion plants</td>
+      </tr>
+      <tr>
+        <td><strong>EU IED</strong><br>(Industrial Emissions Directive, BAT-AEL)</td>
+        <td>European Union</td>
+        <td>&le; 75 mg/Nm&sup3;</td>
+        <td>&le; 100 mg/Nm&sup3;</td>
+        <td>&gt;50 MWth combustion plants</td>
+      </tr>
+      <tr>
+        <td><strong>CARB</strong><br>(California Air Resources Board)</td>
+        <td>California, US</td>
+        <td>&le; 0.11 g/kWh</td>
+        <td>&le; 0.45 g/kWh</td>
+        <td>Stationary engines (strictest in the US)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="info-box critical">
+    <strong>Automatic Aftertreatment:</strong> When emissions exceed 100 tpy (NOx or CO) or concentration limits, the system automatically recommends SCR (90% NOx reduction) and/or OxiCat (85% CO reduction), and calculates associated CAPEX, O&amp;M, and urea/DEF consumption.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════ -->
+<!-- SECTION 10: TECHNICAL SUMMARY                    -->
+<!-- ════════════════════════════════════════════════ -->
+<div class="section" id="sec10">
+  <h2>10. Technical Summary</h2>
+
+  <table>
+    <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr><td>Application Version</td><td>3.1</td></tr>
+      <tr><td>Calculation Engine (engine.py)</td><td>14 functions, 897 lines</td></tr>
+      <tr><td>Sizing Pipeline (sizing_pipeline.py)</td><td>23 steps, 830 lines</td></tr>
+      <tr><td>Generator Library</td><td>8 CAT models, ~20 specs each</td></tr>
+      <tr><td>Input Variables</td><td>76 parameters across 4 categories</td></tr>
+      <tr><td>Output Variables</td><td>55+ typed fields (Pydantic)</td></tr>
+      <tr><td>Predefined Templates</td><td>4 (Edge, Enterprise, Hyperscale, AI Campus)</td></tr>
+      <tr><td>Emissions Regulations</td><td>5 jurisdictions (EPA, Title V, MCP, IED, CARB)</td></tr>
+      <tr><td>Regional Multipliers</td><td>15 global regions</td></tr>
+      <tr><td>BESS Strategies</td><td>3 (Transient Only, Hybrid, Reliability Priority)</td></tr>
+      <tr><td>BESS Sizing Components</td><td>6 independent components</td></tr>
+      <tr><td>Reliability Model</td><td>Binomial N+X with Weibull aging</td></tr>
+      <tr><td>Reliability Configurations</td><td>Up to 3 (A: No BESS, B: Transient, C: Hybrid/Reliability)</td></tr>
+      <tr><td>Depreciation</td><td>MACRS 5-year, 21% tax rate</td></tr>
+      <tr><td>Sensitivity Analysis</td><td>20-point gas price sweep</td></tr>
+      <tr><td>Supported Countries</td><td>150+</td></tr>
+    </tbody>
+  </table>
+
+  <div class="info-box success">
+    <strong>Stateless Architecture:</strong> All engine functions are pure and stateless. This enables consumption from: UI (Streamlit), REST API (FastAPI), CLI scripts, and test suites (pytest) without modification.
+  </div>
+</div>
+
+<!-- Footer -->
+<div style="text-align: center; padding: 40px 0 20px; color: #999; font-size: 0.9em;">
+  <div style="width: 80px; height: 3px; background: var(--cat-yellow); margin: 0 auto 16px; border-radius: 2px;"></div>
+  CAT QuickSize v3.1 &bull; Detailed Technical Manual &bull; 2025<br>
+  Author: Francisco Saraiva &bull; All rights reserved
+</div>
+
+</div><!-- /content -->
+</body>
+</html>

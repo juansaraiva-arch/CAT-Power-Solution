@@ -11,19 +11,62 @@ Docs at:
     http://localhost:8000/api/redoc      (ReDoc)
 """
 
-import os
+import time
+import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+from api.config import get_settings
 from api.routers import health, generators, engine, sizing, projects, reports
+
+# ==============================================================================
+# LOGGING
+# ==============================================================================
+
+logger = logging.getLogger("cat_power_solution")
+
+
+# ==============================================================================
+# RATE LIMITER
+# ==============================================================================
+
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=[f"{get_settings().max_requests_per_hour}/hour"],
+)
+
+
+# ==============================================================================
+# LIFESPAN (startup / shutdown)
+# ==============================================================================
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    settings = get_settings()
+    logging.basicConfig(level=getattr(logging, settings.log_level, logging.INFO))
+    logger.info(
+        "Starting CAT Power Solution v%s [%s]",
+        settings.app_version,
+        settings.environment,
+    )
+    yield
+    logger.info("Shutting down CAT Power Solution")
+
 
 # ==============================================================================
 # APP FACTORY
 # ==============================================================================
+
+settings = get_settings()
 
 app = FastAPI(
     title="CAT Power Solution API",
@@ -32,26 +75,56 @@ app = FastAPI(
         "Provides individual calculation endpoints (efficiency, BESS, fleet, LCOE, etc.) "
         "and a full sizing pipeline that produces comprehensive results from a single request."
     ),
-    version="3.1.0",
+    version=settings.app_version,
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/v1/openapi.json",
     license_info={
         "name": "Proprietary",
     },
+    lifespan=lifespan,
 )
 
+# Attach limiter to app state
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 # ==============================================================================
-# CORS (for future React/Angular frontend)
+# CORS (whitelist from config — no more wildcard)
 # ==============================================================================
+
+origins = [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Restrict in production
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ==============================================================================
+# AUDIT LOGGING MIDDLEWARE
+# ==============================================================================
+
+@app.middleware("http")
+async def audit_middleware(request: Request, call_next):
+    """Log every request with method, endpoint, duration, status, and client IP."""
+    start = time.time()
+    response = await call_next(request)
+    duration_ms = int((time.time() - start) * 1000)
+
+    logger.info(
+        "%s %s → %d (%dms) [%s]",
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration_ms,
+        request.client.host if request.client else "unknown",
+    )
+    return response
+
 
 # ==============================================================================
 # REGISTER ROUTERS

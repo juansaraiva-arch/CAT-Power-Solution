@@ -2,12 +2,14 @@
 CAT Power Solution — Generators Router
 ========================================
 CRUD endpoints for the generator library.
+Requires 'demo' role or higher.
 """
 
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Depends
 from typing import Optional
 from io import BytesIO
 
+from api.auth import require_role, AuthenticatedUser
 from api.schemas.generators import (
     GeneratorSpec,
     GeneratorSummary,
@@ -32,6 +34,7 @@ def list_generators(
         None,
         description="Comma-separated type filter, e.g. 'High Speed,Gas Turbine'",
     ),
+    user: AuthenticatedUser = Depends(require_role("demo")),
 ):
     """List all generators, optionally filtered by type."""
     lib = get_library()
@@ -42,13 +45,18 @@ def list_generators(
 
 
 @router.get("/names", response_model=list[str])
-def list_generator_names():
+def list_generator_names(
+    user: AuthenticatedUser = Depends(require_role("demo")),
+):
     """List all generator model names."""
     return get_model_names()
 
 
 @router.get("/{model_name}", response_model=GeneratorSpec)
-def get_generator(model_name: str):
+def get_generator(
+    model_name: str,
+    user: AuthenticatedUser = Depends(require_role("demo")),
+):
     """Get full specifications for a generator model."""
     lib = get_library()
     if model_name not in lib:
@@ -61,7 +69,10 @@ def get_generator(model_name: str):
 
 
 @router.get("/{model_name}/summary", response_model=GeneratorSummary)
-def get_generator_summary(model_name: str):
+def get_generator_summary(
+    model_name: str,
+    user: AuthenticatedUser = Depends(require_role("demo")),
+):
     """Get a brief summary for a generator model."""
     summary = get_model_summary(model_name)
     if not summary:
@@ -73,7 +84,10 @@ def get_generator_summary(model_name: str):
 
 
 @router.post("/filter", response_model=GeneratorLibraryResponse)
-def filter_generators(req: GeneratorFilterRequest):
+def filter_generators(
+    req: GeneratorFilterRequest,
+    user: AuthenticatedUser = Depends(require_role("demo")),
+):
     """Filter generators by technology type(s)."""
     lib = get_library()
     filtered = filter_by_type(lib, req.types)
@@ -81,7 +95,10 @@ def filter_generators(req: GeneratorFilterRequest):
 
 
 @router.post("/upload-gerp")
-async def upload_gerp(file: UploadFile = File(...)):
+async def upload_gerp(
+    file: UploadFile = File(...),
+    user: AuthenticatedUser = Depends(require_role("demo")),
+):
     """
     Parse a GERP PDF performance report and return extracted generator data.
     Returns model name, site rating (kW), efficiency, heat rejection, and emissions.

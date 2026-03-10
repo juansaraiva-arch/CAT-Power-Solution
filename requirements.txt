@@ -1,23 +1,38 @@
-# CAT Power Solution — Dependencies
-# ====================================
+# CAT Power Solution — Python Dependencies
+# ==========================================
+# Pin versions for reproducible builds.
 
-# Core engine
-numpy>=1.24.0
-pydantic>=2.0.0
-reportlab>=4.0.0
-pdfplumber>=0.10.0
+# Core (calculation engine)
+numpy==1.26.4
+reportlab==4.1.0
+pdfplumber==0.11.0
 
-# Streamlit UI
-streamlit>=1.28.0
-plotly>=5.14.0
-pandas>=2.0.0
+# API Framework
+fastapi==0.110.0
+uvicorn[standard]==0.27.1
+python-multipart==0.0.9
+pydantic==2.6.1
 
-# API (optional — only needed for FastAPI deployment)
-# fastapi>=0.100.0
-# uvicorn>=0.23.0
+# Configuration
+pydantic-settings==2.2.1
 
-# Authentication
-bcrypt>=4.0.0
+# Authentication (Entra ID / Azure AD)
+PyJWT==2.8.0
+cryptography==42.0.5
+
+# HTTP Client
+httpx==0.27.0
+
+# Rate Limiting
+slowapi==0.1.9
+
+# Database (PostgreSQL)
+asyncpg==0.29.0
+sqlalchemy==2.0.29
+
+# Azure Services
+azure-storage-blob==12.19.1
+azure-identity==1.16.0
 
 # Testing
-pytest>=7.0.0
+pytest==8.0.0

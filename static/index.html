@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CAT Power Solution</title>
+    <script type="module" crossorigin src="/assets/index-CgqWGspm.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-BdhELhMV.css">
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- Loading indicator (hidden once React mounts) -->
+    <div id="loading-fallback" style="padding:40px;font-family:system-ui,sans-serif;color:#333;">
+      <h2 style="margin:0 0 8px">CAT Power Solution</h2>
+      <p style="color:#666;margin:0">Loading application...</p>
+    </div>
+    <script>
+      // Global error handler to display runtime errors on-screen
+      window.addEventListener('error', function(e) {
+        var el = document.getElementById('loading-fallback');
+        if (el) {
+          el.innerHTML = '<h2 style="color:#c00;margin:0 0 8px">Runtime Error</h2>' +
+            '<pre style="white-space:pre-wrap;color:#c00;font-size:13px">' +
+            (e.message || 'Unknown error') + '</pre>' +
+            '<pre style="white-space:pre-wrap;color:#888;font-size:11px">' +
+            (e.filename || '') + ':' + (e.lineno || '') + '</pre>';
+        }
+      });
+      window.addEventListener('unhandledrejection', function(e) {
+        var el = document.getElementById('loading-fallback');
+        if (el) {
+          el.innerHTML = '<h2 style="color:#c00;margin:0 0 8px">Unhandled Promise Rejection</h2>' +
+            '<pre style="white-space:pre-wrap;color:#c00;font-size:13px">' +
+            (e.reason && e.reason.message ? e.reason.message : String(e.reason)) + '</pre>';
+        }
+      });
+    </script>
+  </body>
+</html>

@@ -3,13 +3,15 @@ CAT Power Solution — Reports Router
 =====================================
 PDF report generation endpoints.
 Supports two modes: 'executive' (1-page summary) and 'full' (comprehensive design report).
+Requires 'full' role or higher.
 """
 
 from io import BytesIO
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from fastapi.responses import StreamingResponse
 
+from api.auth import require_role, AuthenticatedUser
 from api.schemas.sizing import SizingProjectInput
 from api.services.sizing_pipeline import run_full_sizing
 from core.pdf_report import generate_comprehensive_pdf, generate_executive_pdf
@@ -18,7 +20,11 @@ router = APIRouter()
 
 
 @router.post("/pdf")
-def generate_pdf(data: dict, mode: str = Query("full", enum=["executive", "full"])):
+def generate_pdf(
+    data: dict,
+    mode: str = Query("full", enum=["executive", "full"]),
+    user: AuthenticatedUser = Depends(require_role("full")),
+):
     """
     Generate a PDF report from pre-calculated sizing data.
 
@@ -40,7 +46,11 @@ def generate_pdf(data: dict, mode: str = Query("full", enum=["executive", "full"
 
 
 @router.post("/pdf-from-sizing")
-def generate_pdf_from_sizing(req: SizingProjectInput, mode: str = Query("full", enum=["executive", "full"])):
+def generate_pdf_from_sizing(
+    req: SizingProjectInput,
+    mode: str = Query("full", enum=["executive", "full"]),
+    user: AuthenticatedUser = Depends(require_role("full")),
+):
     """
     Run the full sizing pipeline, then generate a PDF report.
 

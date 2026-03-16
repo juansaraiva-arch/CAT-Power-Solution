@@ -39,7 +39,7 @@ st.set_page_config(
     page_title="CAT Power Solution",
     page_icon=":zap:",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 # =============================================================================
@@ -77,6 +77,15 @@ COLOR_SECONDARY = "#4A90D9"    # Blue
 COLOR_DANGER = "#E74C3C"       # Red
 COLOR_SUCCESS = "#27AE60"      # Green
 COLOR_GREY = "#7F8C8D"
+
+# Wizard step definitions
+WIZARD_STEPS = [
+    {"title": "Project Info",      "icon": ":clipboard:", "short": "Info"},
+    {"title": "Load Profile",      "icon": ":bar_chart:", "short": "Load"},
+    {"title": "Site & Technology",  "icon": ":gear:",      "short": "Site"},
+    {"title": "Economics",         "icon": ":moneybag:",  "short": "Econ"},
+    {"title": "Review & Run",      "icon": ":rocket:",    "short": "Review"},
+]
 
 
 # =============================================================================
@@ -176,6 +185,609 @@ def _safe_get(d: dict, key: str, default=0):
         return default
     val = d.get(key, default)
     return val if val is not None else default
+
+
+# =============================================================================
+# WIZARD — 5-STEP GUIDED SETUP
+# =============================================================================
+
+def _init_wizard_state():
+    """Initialize wizard session state keys to defaults if missing."""
+    defaults = {
+        "_wizard_step": 0,
+        "_wizard_complete": False,
+        "_wizard_running": False,
+        # Step 1: Project Info
+        "_wiz_project_name": HEADER_DEFAULTS.get("project_name", ""),
+        "_wiz_client_name": HEADER_DEFAULTS.get("client_name", ""),
+        "_wiz_contact_name": HEADER_DEFAULTS.get("contact_name", ""),
+        "_wiz_contact_email": HEADER_DEFAULTS.get("contact_email", ""),
+        "_wiz_contact_phone": HEADER_DEFAULTS.get("contact_phone", ""),
+        "_wiz_country": HEADER_DEFAULTS.get("country", ""),
+        "_wiz_state_province": HEADER_DEFAULTS.get("state_province", ""),
+        "_wiz_county_district": HEADER_DEFAULTS.get("county_district", ""),
+        "_wiz_freq_hz": INPUT_DEFAULTS["freq_hz"],
+    }
+    for key, val in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = val
+
+
+def render_wizard_stepper():
+    """Render horizontal step progress indicator."""
+    current = st.session_state.get("_wizard_step", 0)
+    steps_html = '<div style="display:flex;align-items:center;justify-content:center;gap:4px;padding:12px 0;flex-wrap:wrap;">'
+    for i, step in enumerate(WIZARD_STEPS):
+        is_complete = i < current
+        is_current = i == current
+        if is_current:
+            bg, fg, weight = "#FFCC00", "#000", "bold"
+        elif is_complete:
+            bg, fg, weight = "#4A90D9", "#fff", "normal"
+        else:
+            bg, fg, weight = "#ddd", "#888", "normal"
+        txt = "&#10003;" if is_complete else str(i + 1)
+        label_color = "#000" if is_current else "#888"
+        steps_html += (
+            f'<div style="display:flex;align-items:center;gap:4px;">'
+            f'<div style="width:28px;height:28px;border-radius:50%;background:{bg};'
+            f'color:{fg};display:flex;align-items:center;justify-content:center;'
+            f'font-size:13px;font-weight:bold;">{txt}</div>'
+            f'<span style="font-size:13px;font-weight:{weight};color:{label_color};">'
+            f'{step["title"]}</span></div>'
+        )
+        if i < len(WIZARD_STEPS) - 1:
+            line_color = "#4A90D9" if i < current else "#ddd"
+            steps_html += f'<div style="width:40px;height:2px;background:{line_color};margin:0 4px;"></div>'
+    steps_html += '</div>'
+    st.markdown(steps_html, unsafe_allow_html=True)
+
+
+def _render_load_preview():
+    """Show computed Total DC, Average, and Peak loads."""
+    p_it = st.session_state.get("_wiz_p_it", float(INPUT_DEFAULTS["p_it"]))
+    pue = st.session_state.get("_wiz_pue", float(INPUT_DEFAULTS["pue"]))
+    cf = st.session_state.get("_wiz_capacity_factor", float(INPUT_DEFAULTS["capacity_factor"]))
+    par = st.session_state.get("_wiz_peak_avg_ratio", float(INPUT_DEFAULTS["peak_avg_ratio"]))
+    total_dc = p_it * pue
+    avg_load = total_dc * cf
+    peak_load = total_dc * par
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total DC Load", f"{total_dc:.1f} MW")
+    c2.metric("Average Load", f"{avg_load:.1f} MW")
+    c3.metric("Peak Load", f"{peak_load:.1f} MW")
+
+
+# ── Step 1: Project Info ──
+
+def render_wizard_step_1():
+    st.header(":clipboard: Project Info")
+    st.caption("Enter project identification and site location details.")
+
+    st.subheader("Project Details")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.text_input("Project Name", key="_wiz_project_name",
+                       placeholder="Phoenix DC-1 Prime Power",
+                       help=HELP_TEXTS.get("project_name", ""))
+        st.text_input("Contact Name", key="_wiz_contact_name",
+                       help=HELP_TEXTS.get("contact_name", ""))
+        st.text_input("Contact Phone", key="_wiz_contact_phone",
+                       help=HELP_TEXTS.get("contact_phone", ""))
+    with col2:
+        st.text_input("Client Name", key="_wiz_client_name",
+                       placeholder="Acme Corp",
+                       help=HELP_TEXTS.get("client_name", ""))
+        st.text_input("Contact Email", key="_wiz_contact_email",
+                       help=HELP_TEXTS.get("contact_email", ""))
+
+    st.divider()
+    st.subheader("Site Location")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        country_idx = 0
+        wiz_country = st.session_state.get("_wiz_country", "")
+        if wiz_country in COUNTRIES:
+            country_idx = COUNTRIES.index(wiz_country)
+        st.selectbox("Country", COUNTRIES, index=country_idx,
+                      key="_wiz_country", help=HELP_TEXTS.get("country", ""))
+    with col2:
+        st.text_input("State / Province", key="_wiz_state_province",
+                       help=HELP_TEXTS.get("state_province", ""))
+    with col3:
+        st.text_input("County / District", key="_wiz_county_district",
+                       help=HELP_TEXTS.get("county_district", ""))
+
+    st.divider()
+    freq_options = [60, 50]
+    freq_idx = freq_options.index(st.session_state.get("_wiz_freq_hz", 60)) if st.session_state.get("_wiz_freq_hz", 60) in freq_options else 0
+    st.radio("Grid Frequency (Hz)", freq_options, index=freq_idx,
+             horizontal=True, key="_wiz_freq_hz",
+             help=HELP_TEXTS.get("freq_hz", ""))
+
+
+# ── Step 2: Load Profile ──
+
+def render_wizard_step_2():
+    st.header(":bar_chart: Load Profile")
+    st.caption("Define the data center load characteristics.")
+
+    # Unit system toggle
+    unit_options = ["Metric", "Imperial"]
+    unit_sys = st.radio("Unit System", unit_options, index=0,
+                         horizontal=True, key="_wiz_unit_sys",
+                         help=HELP_TEXTS.get("unit_system", ""))
+    st.session_state["_unit_sys"] = unit_sys
+
+    st.divider()
+
+    # Template quick start
+    st.subheader("Quick Start Template")
+    template_options = ["Custom (Manual)"] + list(TEMPLATES.keys())
+    template = st.selectbox("Template", template_options, index=0,
+                             key="_wiz_template",
+                             help="Select a pre-configured template to auto-fill common settings.")
+
+    st.divider()
+
+    # Application
+    st.subheader("Application")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        dc_default = INPUT_DEFAULTS["dc_type"]
+        dc_idx = DC_TYPES.index(dc_default) if dc_default in DC_TYPES else 0
+        st.selectbox("Data Center Type", DC_TYPES, index=dc_idx,
+                      key="_wiz_dc_type", help=HELP_TEXTS.get("dc_type", ""))
+    with col2:
+        st.number_input("Critical IT Load (MW)", min_value=0.1, max_value=2000.0,
+                         value=float(INPUT_DEFAULTS["p_it"]), step=1.0,
+                         key="_wiz_p_it", help=HELP_TEXTS.get("p_it", ""))
+    with col3:
+        st.number_input("Availability (%)", min_value=90.0, max_value=100.0,
+                         value=float(INPUT_DEFAULTS["avail_req"]), step=0.01,
+                         format="%.2f", key="_wiz_avail_req",
+                         help=HELP_TEXTS.get("avail_req", ""))
+
+    st.divider()
+
+    # Load Dynamics
+    st.subheader("Load Dynamics")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.number_input("PUE", min_value=1.0, max_value=3.0,
+                         value=float(INPUT_DEFAULTS["pue"]), step=0.05,
+                         format="%.2f", key="_wiz_pue",
+                         help=HELP_TEXTS.get("pue", ""))
+        st.slider("Capacity Factor", min_value=0.50, max_value=1.0,
+                   value=float(INPUT_DEFAULTS["capacity_factor"]), step=0.01,
+                   key="_wiz_capacity_factor",
+                   help=HELP_TEXTS.get("capacity_factor", ""))
+    with col2:
+        st.number_input("Max Step Load (%)", min_value=0.0, max_value=100.0,
+                         value=float(INPUT_DEFAULTS["load_step_pct"]), step=5.0,
+                         key="_wiz_load_step_pct",
+                         help=HELP_TEXTS.get("load_step_pct", ""))
+        st.number_input("Peak/Avg Ratio", min_value=1.0, max_value=2.0,
+                         value=float(INPUT_DEFAULTS["peak_avg_ratio"]), step=0.05,
+                         format="%.2f", key="_wiz_peak_avg_ratio",
+                         help=HELP_TEXTS.get("peak_avg_ratio", ""))
+    with col3:
+        st.number_input("Spinning Reserve (%)", min_value=0.0, max_value=100.0,
+                         value=float(INPUT_DEFAULTS["spinning_res_pct"]), step=5.0,
+                         key="_wiz_spinning_res_pct",
+                         help=HELP_TEXTS.get("spinning_res_pct", ""))
+        st.number_input("Load Ramp Rate (MW/min)", min_value=0.1, max_value=100.0,
+                         value=float(INPUT_DEFAULTS["load_ramp_req"]), step=0.5,
+                         key="_wiz_load_ramp_req",
+                         help=HELP_TEXTS.get("load_ramp_req", ""))
+
+    st.divider()
+    _render_load_preview()
+
+
+# ── Step 3: Site & Technology ──
+
+def render_wizard_step_3():
+    st.header(":gear: Site & Technology")
+    st.caption("Configure site conditions and technology selections.")
+
+    # Site Conditions
+    st.subheader(":thermometer: Site Conditions")
+    derate_mode = st.radio("Derate Mode", ["Auto-Calculate", "Manual"],
+                            index=0, horizontal=True, key="_wiz_derate_mode",
+                            help=HELP_TEXTS.get("derate_mode", ""))
+
+    if derate_mode == "Auto-Calculate":
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            site_temp_display = st.number_input(
+                f"Ambient Temperature ({_temp_label()})",
+                min_value=_to_display_temp(-40.0),
+                max_value=_to_display_temp(60.0),
+                value=_to_display_temp(float(INPUT_DEFAULTS["site_temp_c"])),
+                step=1.0, key="_wiz_site_temp_display",
+                help=HELP_TEXTS.get("site_temp_c", ""))
+            site_temp_c = _from_display_temp(site_temp_display)
+        with col2:
+            site_alt_display = st.number_input(
+                f"Site Altitude ({_alt_label()})",
+                min_value=0.0, max_value=_to_display_alt(5000.0),
+                value=_to_display_alt(float(INPUT_DEFAULTS["site_alt_m"])),
+                step=50.0, key="_wiz_site_alt_display",
+                help=HELP_TEXTS.get("site_alt_m", ""))
+            site_alt_m = _from_display_alt(site_alt_display)
+        with col3:
+            methane_number = st.number_input(
+                "Methane Number", min_value=0, max_value=100,
+                value=int(INPUT_DEFAULTS["methane_number"]), step=5,
+                key="_wiz_methane_number",
+                help=HELP_TEXTS.get("methane_number", ""))
+
+        _dr = calculate_site_derate(site_temp_c, site_alt_m, methane_number)
+        st.info(
+            f"**Derate Factor: {_dr['derate_factor']:.4f}**  \n"
+            f"Methane: {_dr['methane_deration']:.4f} | "
+            f"Altitude: {_dr['altitude_deration']:.4f} | "
+            f"ACHRF: {_dr['achrf']:.4f}"
+        )
+        if _dr.get('methane_warning'):
+            st.warning(_dr['methane_warning'])
+        st.session_state["_wiz_site_temp_c"] = site_temp_c
+        st.session_state["_wiz_site_alt_m"] = site_alt_m
+    else:
+        st.number_input("Manual Derate Factor", min_value=0.01, max_value=1.0,
+                         value=float(INPUT_DEFAULTS["derate_factor_manual"]),
+                         step=0.05, format="%.2f", key="_wiz_derate_factor_manual",
+                         help=HELP_TEXTS.get("derate_factor_manual", ""))
+
+    st.divider()
+
+    # Generator Selection
+    st.subheader("Generator Selection")
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        gen_filter = st.multiselect("Generator Types", GEN_TYPE_OPTIONS,
+                                     default=INPUT_DEFAULTS["gen_filter"],
+                                     key="_wiz_gen_filter",
+                                     help=HELP_TEXTS.get("gen_filter", ""))
+        available_models = _get_filtered_models(gen_filter)
+        default_gen = INPUT_DEFAULTS["selected_gen_name"]
+        gen_idx = available_models.index(default_gen) if default_gen in available_models else 0
+        generator_model = st.selectbox("Generator Model", available_models,
+                                        index=gen_idx, key="_wiz_generator_model",
+                                        help=HELP_TEXTS.get("selected_gen_name", ""))
+    with col2:
+        gen_data = GENERATOR_LIBRARY.get(generator_model, {})
+        if gen_data:
+            st.metric("ISO Rating", f"{gen_data.get('iso_rating_mw', 0)} MW")
+            st.metric("Efficiency", f"{gen_data.get('electrical_efficiency', 0)*100:.1f}%")
+            st.caption(gen_data.get("description", ""))
+
+    with st.expander(":page_facing_up: Import from GERP PDF"):
+        uploaded_pdf = st.file_uploader("Upload GERP PDF", type=["pdf"], key="_wiz_gerp_pdf")
+        if uploaded_pdf:
+            try:
+                gerp_data = parse_gerp_pdf(uploaded_pdf)
+                if gerp_data:
+                    st.success(f"Parsed: {gerp_data.get('model', 'Unknown')}")
+                    for k, v in gerp_data.items():
+                        st.caption(f"**{k}**: {v}")
+                else:
+                    st.warning("Could not extract data from PDF.")
+            except Exception as e:
+                st.error(f"PDF parse error: {e}")
+
+    st.divider()
+
+    # Technology Options
+    st.subheader("Technology Options")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.checkbox("Include BESS", value=INPUT_DEFAULTS["use_bess"],
+                     key="_wiz_use_bess", help=HELP_TEXTS.get("use_bess", ""))
+    with col2:
+        st.checkbox("Black Start", value=INPUT_DEFAULTS["enable_black_start"],
+                     key="_wiz_enable_black_start",
+                     help=HELP_TEXTS.get("enable_black_start", ""))
+    with col3:
+        st.checkbox("CHP / Tri-Gen", value=False,
+                     key="_wiz_include_chp", help=HELP_TEXTS.get("include_chp", ""))
+
+    if st.session_state.get("_wiz_use_bess", True):
+        bess_idx = BESS_STRATEGIES.index(INPUT_DEFAULTS["bess_strategy"]) if INPUT_DEFAULTS["bess_strategy"] in BESS_STRATEGIES else 1
+        st.selectbox("BESS Strategy", BESS_STRATEGIES, index=bess_idx,
+                      key="_wiz_bess_strategy", help=HELP_TEXTS.get("bess_strategy", ""))
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.radio("Cooling", ["Air-Cooled", "Water-Cooled"], index=0,
+                  horizontal=True, key="_wiz_cooling",
+                  help=HELP_TEXTS.get("cooling_method", ""))
+        fuel_mode = st.radio("Fuel Mode", FUEL_MODES, index=0, horizontal=True,
+                              key="_wiz_fuel_mode",
+                              help=HELP_TEXTS.get("fuel_mode", ""))
+        if fuel_mode in ("LNG", "Dual-Fuel"):
+            st.number_input("LNG Storage (days)", min_value=1, max_value=30,
+                            value=int(INPUT_DEFAULTS["lng_days"]), step=1,
+                            key="_wiz_lng_days", help=HELP_TEXTS.get("lng_days", ""))
+    with col2:
+        st.radio("Voltage Mode", ["Auto-Recommend", "Manual"], index=0,
+                  horizontal=True, key="_wiz_volt_mode",
+                  help=HELP_TEXTS.get("volt_mode", ""))
+        if st.session_state.get("_wiz_volt_mode") == "Manual":
+            st.number_input("Manual Voltage (kV)", min_value=0.48, max_value=69.0,
+                            value=float(INPUT_DEFAULTS["manual_voltage_kv"]),
+                            step=0.1, format="%.1f", key="_wiz_manual_voltage_kv")
+        st.number_input("Distribution Losses (%)", min_value=0.0, max_value=10.0,
+                         value=float(INPUT_DEFAULTS["dist_loss_pct"]), step=0.5,
+                         key="_wiz_dist_loss_pct",
+                         help=HELP_TEXTS.get("dist_loss_pct", ""))
+
+
+# ── Step 4: Economics ──
+
+def render_wizard_step_4():
+    st.header(":moneybag: Economics")
+    st.caption("Set financial parameters and cost assumptions.")
+
+    st.subheader("Fuel & Energy Pricing")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.number_input("Pipeline Gas Price ($/MMBtu)", min_value=0.0, max_value=50.0,
+                         value=float(INPUT_DEFAULTS["gas_price_pipeline"]), step=0.5,
+                         key="_wiz_gas_price",
+                         help=HELP_TEXTS.get("gas_price_pipeline", ""))
+    with col2:
+        st.number_input("Grid Benchmark ($/kWh)", min_value=0.0, max_value=1.0,
+                         value=float(INPUT_DEFAULTS["benchmark_price"]), step=0.01,
+                         format="%.3f", key="_wiz_benchmark_price",
+                         help=HELP_TEXTS.get("benchmark_price", ""))
+
+    st.divider()
+    st.subheader("Financial Parameters")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.number_input("WACC (%)", min_value=0.0, max_value=30.0,
+                         value=float(INPUT_DEFAULTS["wacc"]), step=0.5,
+                         key="_wiz_wacc", help=HELP_TEXTS.get("wacc", ""))
+    with col2:
+        st.number_input("Project Life (years)", min_value=1, max_value=40,
+                         value=int(INPUT_DEFAULTS["project_years"]), step=1,
+                         key="_wiz_project_years",
+                         help=HELP_TEXTS.get("project_years", ""))
+    with col3:
+        region_idx = REGIONS.index(INPUT_DEFAULTS["region"]) if INPUT_DEFAULTS["region"] in REGIONS else 0
+        st.selectbox("Region", REGIONS, index=region_idx,
+                      key="_wiz_region", help=HELP_TEXTS.get("region", ""))
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.checkbox("MACRS Depreciation", value=INPUT_DEFAULTS["enable_depreciation"],
+                     key="_wiz_enable_depreciation",
+                     help=HELP_TEXTS.get("enable_depreciation", ""))
+    with col2:
+        st.number_input("Carbon Price ($/ton CO2)", min_value=0.0, max_value=500.0,
+                         value=float(INPUT_DEFAULTS["carbon_price_per_ton"]), step=5.0,
+                         key="_wiz_carbon_price",
+                         help=HELP_TEXTS.get("carbon_price_per_ton", ""))
+
+    # BESS Costs
+    if st.session_state.get("_wiz_use_bess", INPUT_DEFAULTS["use_bess"]):
+        st.divider()
+        st.subheader("BESS Economics")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.number_input("BESS Power Cost ($/kW)", min_value=0.0,
+                             value=float(INPUT_DEFAULTS["bess_cost_kw"]), step=25.0,
+                             key="_wiz_bess_cost_kw",
+                             help=HELP_TEXTS.get("bess_cost_kw", ""))
+        with col2:
+            st.number_input("BESS Energy Cost ($/kWh)", min_value=0.0,
+                             value=float(INPUT_DEFAULTS["bess_cost_kwh"]), step=25.0,
+                             key="_wiz_bess_cost_kwh",
+                             help=HELP_TEXTS.get("bess_cost_kwh", ""))
+        with col3:
+            st.number_input("BESS O&M ($/kW-yr)", min_value=0.0,
+                             value=float(INPUT_DEFAULTS["bess_om_kw_yr"]), step=1.0,
+                             key="_wiz_bess_om_kw_yr",
+                             help=HELP_TEXTS.get("bess_om_kw_yr", ""))
+
+    # Footprint
+    st.divider()
+    st.subheader("Footprint Constraint")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.checkbox("Limit Site Area", value=INPUT_DEFAULTS["enable_footprint_limit"],
+                     key="_wiz_enable_footprint_limit",
+                     help=HELP_TEXTS.get("enable_footprint_limit", ""))
+    with col2:
+        if st.session_state.get("_wiz_enable_footprint_limit", False):
+            st.number_input(f"Max Area ({_area_label()})",
+                            min_value=_to_display_area(100.0),
+                            value=_to_display_area(float(INPUT_DEFAULTS["max_area_m2"])),
+                            step=500.0, key="_wiz_max_area_display",
+                            help=HELP_TEXTS.get("max_area_m2", ""))
+
+
+# ── Step 5: Review & Run ──
+
+def render_wizard_step_5():
+    st.header(":rocket: Review & Run")
+    st.caption("Verify your inputs before running the sizing calculation.")
+
+    col1, col2, col3 = st.columns(3)
+    ss = st.session_state
+
+    with col1:
+        st.markdown("**Application**")
+        pn = ss.get("_wiz_project_name", "")
+        if pn:
+            st.write(f"Project: **{pn}**")
+        st.write(f"Type: {ss.get('_wiz_dc_type', INPUT_DEFAULTS['dc_type'])}")
+        st.write(f"IT Load: **{ss.get('_wiz_p_it', INPUT_DEFAULTS['p_it']):.1f} MW**")
+        st.write(f"Availability: {ss.get('_wiz_avail_req', INPUT_DEFAULTS['avail_req']):.2f}%")
+        st.write(f"PUE: {ss.get('_wiz_pue', INPUT_DEFAULTS['pue']):.2f}")
+        st.write(f"Capacity Factor: {ss.get('_wiz_capacity_factor', INPUT_DEFAULTS['capacity_factor']):.2f}")
+
+    with col2:
+        st.markdown("**Site & Technology**")
+        st.write(f"Temperature: {ss.get('_wiz_site_temp_c', INPUT_DEFAULTS['site_temp_c']):.0f} \u00b0C")
+        st.write(f"Altitude: {ss.get('_wiz_site_alt_m', INPUT_DEFAULTS['site_alt_m']):.0f} m")
+        st.write(f"Generator: **{ss.get('_wiz_generator_model', INPUT_DEFAULTS['selected_gen_name'])}**")
+        bess_label = "Yes" if ss.get("_wiz_use_bess", INPUT_DEFAULTS["use_bess"]) else "No"
+        st.write(f"BESS: {bess_label}")
+        st.write(f"Fuel: {ss.get('_wiz_fuel_mode', INPUT_DEFAULTS['fuel_mode'])}")
+        st.write(f"Frequency: {ss.get('_wiz_freq_hz', INPUT_DEFAULTS['freq_hz'])} Hz")
+
+    with col3:
+        st.markdown("**Economics**")
+        st.write(f"Gas Price: ${ss.get('_wiz_gas_price', INPUT_DEFAULTS['gas_price_pipeline'])}/MMBtu")
+        st.write(f"Benchmark: ${ss.get('_wiz_benchmark_price', INPUT_DEFAULTS['benchmark_price'])}/kWh")
+        st.write(f"WACC: {ss.get('_wiz_wacc', INPUT_DEFAULTS['wacc'])}%")
+        st.write(f"Project Life: {ss.get('_wiz_project_years', INPUT_DEFAULTS['project_years'])} years")
+        st.write(f"Region: {ss.get('_wiz_region', INPUT_DEFAULTS['region'])}")
+
+    st.divider()
+    _render_load_preview()
+    st.divider()
+    st.info("Click **Run Sizing** below to calculate the optimal fleet configuration.")
+
+
+# ── Navigation ──
+
+def render_wizard_navigation():
+    """Back / Next / Run Sizing buttons."""
+    current = st.session_state.get("_wizard_step", 0)
+    col_left, col_spacer, col_right = st.columns([1, 3, 1])
+    with col_left:
+        if current > 0:
+            if st.button(":arrow_left: Back", use_container_width=True, key="_wiz_nav_back"):
+                st.session_state["_wizard_step"] = current - 1
+                st.rerun()
+    with col_right:
+        if current < 4:
+            if st.button("Next :arrow_right:", use_container_width=True, type="primary",
+                          key="_wiz_nav_next"):
+                st.session_state["_wizard_step"] = current + 1
+                st.rerun()
+        else:
+            if st.button(":zap: Run Sizing", use_container_width=True, type="primary",
+                          key="_wiz_run_sizing"):
+                st.session_state["_wizard_running"] = True
+                st.session_state["_wizard_complete"] = True
+                st.rerun()
+
+
+# ── Input Assembly ──
+
+def _build_inputs_from_wizard():
+    """Build inputs_dict from wizard session state. Returns (inputs_dict, benchmark_price)."""
+    ss = st.session_state
+    gen_model = ss.get("_wiz_generator_model", INPUT_DEFAULTS["selected_gen_name"])
+    gen_data = GENERATOR_LIBRARY.get(gen_model, {})
+
+    max_area_m2 = float(INPUT_DEFAULTS["max_area_m2"])
+    if ss.get("_wiz_enable_footprint_limit", False):
+        max_area_display = ss.get("_wiz_max_area_display", _to_display_area(float(INPUT_DEFAULTS["max_area_m2"])))
+        max_area_m2 = _from_display_area(max_area_display)
+
+    benchmark_price = float(ss.get("_wiz_benchmark_price", INPUT_DEFAULTS["benchmark_price"]))
+
+    inputs_dict = dict(
+        p_it=float(ss.get("_wiz_p_it", INPUT_DEFAULTS["p_it"])),
+        pue=float(ss.get("_wiz_pue", INPUT_DEFAULTS["pue"])),
+        capacity_factor=float(ss.get("_wiz_capacity_factor", INPUT_DEFAULTS["capacity_factor"])),
+        peak_avg_ratio=float(ss.get("_wiz_peak_avg_ratio", INPUT_DEFAULTS["peak_avg_ratio"])),
+        load_step_pct=float(ss.get("_wiz_load_step_pct", INPUT_DEFAULTS["load_step_pct"])),
+        spinning_res_pct=float(ss.get("_wiz_spinning_res_pct", INPUT_DEFAULTS["spinning_res_pct"])),
+        avail_req=float(ss.get("_wiz_avail_req", INPUT_DEFAULTS["avail_req"])),
+        load_ramp_req=float(ss.get("_wiz_load_ramp_req", INPUT_DEFAULTS["load_ramp_req"])),
+        dc_type=ss.get("_wiz_dc_type", INPUT_DEFAULTS["dc_type"]),
+        derate_mode=ss.get("_wiz_derate_mode", INPUT_DEFAULTS["derate_mode"]),
+        site_temp_c=float(ss.get("_wiz_site_temp_c", INPUT_DEFAULTS["site_temp_c"])),
+        site_alt_m=float(ss.get("_wiz_site_alt_m", INPUT_DEFAULTS["site_alt_m"])),
+        methane_number=int(ss.get("_wiz_methane_number", INPUT_DEFAULTS["methane_number"])),
+        derate_factor_manual=float(ss.get("_wiz_derate_factor_manual", INPUT_DEFAULTS["derate_factor_manual"])),
+        generator_model=gen_model,
+        gen_overrides=None,
+        use_bess=ss.get("_wiz_use_bess", INPUT_DEFAULTS["use_bess"]),
+        bess_strategy=ss.get("_wiz_bess_strategy", INPUT_DEFAULTS["bess_strategy"]),
+        enable_black_start=ss.get("_wiz_enable_black_start", INPUT_DEFAULTS["enable_black_start"]),
+        cooling_method=ss.get("_wiz_cooling", INPUT_DEFAULTS["cooling_method"]),
+        freq_hz=int(ss.get("_wiz_freq_hz", INPUT_DEFAULTS["freq_hz"])),
+        dist_loss_pct=float(ss.get("_wiz_dist_loss_pct", INPUT_DEFAULTS["dist_loss_pct"])),
+        aux_load_pct=gen_data.get("aux_load_pct", float(INPUT_DEFAULTS["aux_load_pct"])),
+        volt_mode=ss.get("_wiz_volt_mode", INPUT_DEFAULTS["volt_mode"]),
+        manual_voltage_kv=float(ss.get("_wiz_manual_voltage_kv", INPUT_DEFAULTS["manual_voltage_kv"])),
+        gas_price=float(ss.get("_wiz_gas_price", INPUT_DEFAULTS["gas_price_pipeline"])),
+        gas_price_lng=float(INPUT_DEFAULTS.get("gas_price_lng", 9.5)),
+        wacc=float(ss.get("_wiz_wacc", INPUT_DEFAULTS["wacc"])),
+        project_years=int(ss.get("_wiz_project_years", INPUT_DEFAULTS["project_years"])),
+        benchmark_price=benchmark_price,
+        carbon_price_per_ton=float(ss.get("_wiz_carbon_price", INPUT_DEFAULTS["carbon_price_per_ton"])),
+        enable_depreciation=ss.get("_wiz_enable_depreciation", INPUT_DEFAULTS["enable_depreciation"]),
+        pipeline_cost_usd=float(INPUT_DEFAULTS["pipeline_cost_usd"]),
+        permitting_cost_usd=float(INPUT_DEFAULTS["permitting_cost_usd"]),
+        commissioning_cost_usd=float(INPUT_DEFAULTS["commissioning_cost_usd"]),
+        pipeline_distance_km=float(INPUT_DEFAULTS["pipeline_distance_km"]),
+        pipeline_diameter_inch=float(INPUT_DEFAULTS["pipeline_diameter_inch"]),
+        bess_cost_kw=float(ss.get("_wiz_bess_cost_kw", INPUT_DEFAULTS["bess_cost_kw"])),
+        bess_cost_kwh=float(ss.get("_wiz_bess_cost_kwh", INPUT_DEFAULTS["bess_cost_kwh"])),
+        bess_om_kw_yr=float(ss.get("_wiz_bess_om_kw_yr", INPUT_DEFAULTS["bess_om_kw_yr"])),
+        fuel_mode=ss.get("_wiz_fuel_mode", INPUT_DEFAULTS["fuel_mode"]),
+        lng_days=int(ss.get("_wiz_lng_days", INPUT_DEFAULTS["lng_days"])),
+        lng_backup_pct=float(INPUT_DEFAULTS["lng_backup_pct"]),
+        include_chp=ss.get("_wiz_include_chp", False),
+        chp_recovery_eff=float(INPUT_DEFAULTS["chp_recovery_eff"]),
+        absorption_cop=float(INPUT_DEFAULTS["absorption_cop"]),
+        cooling_load_mw=float(INPUT_DEFAULTS["cooling_load_mw"]),
+        include_scr=False,
+        include_oxicat=False,
+        noise_limit_db=float(INPUT_DEFAULTS["noise_limit_db"]),
+        distance_to_property_m=float(INPUT_DEFAULTS["distance_to_property_m"]),
+        distance_to_residence_m=float(INPUT_DEFAULTS["distance_to_residence_m"]),
+        acoustic_treatment=INPUT_DEFAULTS["acoustic_treatment"],
+        enable_phasing=False,
+        n_phases=3,
+        months_between_phases=6,
+        enable_footprint_limit=ss.get("_wiz_enable_footprint_limit", False),
+        max_area_m2=max_area_m2,
+        region=ss.get("_wiz_region", INPUT_DEFAULTS["region"]),
+        unit_system=ss.get("_wiz_unit_sys", "Metric"),
+    )
+    return inputs_dict, benchmark_price
+
+
+# ── Master Wizard Renderer ──
+
+def render_wizard():
+    """Full wizard experience — hides sidebar, renders steps."""
+    # Hide sidebar during wizard
+    st.markdown("""
+    <style>
+        [data-testid="stSidebar"] { display: none; }
+        [data-testid="stSidebarCollapsedControl"] { display: none; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.title(f":zap: CAT Power Solution v{APP_VERSION}")
+    st.caption("Prime Power Quick-Size Wizard")
+
+    render_wizard_stepper()
+    st.divider()
+
+    step = st.session_state.get("_wizard_step", 0)
+    step_renderers = [
+        render_wizard_step_1,
+        render_wizard_step_2,
+        render_wizard_step_3,
+        render_wizard_step_4,
+        render_wizard_step_5,
+    ]
+    step_renderers[step]()
+
+    st.divider()
+    render_wizard_navigation()
 
 
 # =============================================================================
@@ -2207,7 +2819,7 @@ def render_landing_page():
 # MAIN
 # =============================================================================
 def main():
-    """Main app entry point."""
+    """Main app entry point — wizard-first, then results."""
 
     # ── Auth gate — blocks until authenticated ──
     check_auth()
@@ -2215,9 +2827,41 @@ def main():
     # Initialize session state
     if "result" not in st.session_state:
         st.session_state.result = None
+    _init_wizard_state()
 
-    # Render sidebar and get inputs
+    # ── WIZARD MODE ──
+    if not st.session_state.get("_wizard_complete", False):
+        render_wizard()
+        return
+
+    # ── RESULTS MODE ──
+
+    # First run after wizard completes
+    if st.session_state.get("_wizard_running", False):
+        inputs_dict, benchmark_price = _build_inputs_from_wizard()
+        try:
+            with st.spinner("Running sizing pipeline..."):
+                sizing_input = SizingInput(**inputs_dict)
+                result = run_full_sizing(sizing_input)
+                st.session_state.result = result
+                st.session_state["_wizard_running"] = False
+        except Exception as e:
+            st.error(f"Sizing failed: {e}")
+            import traceback
+            st.code(traceback.format_exc())
+            st.session_state["_wizard_running"] = False
+            st.session_state["_wizard_complete"] = False
+            return
+
+    # Sidebar for post-wizard adjustments
     inputs_dict, benchmark_price = render_sidebar()
+
+    # "Back to Wizard" button in sidebar
+    st.sidebar.divider()
+    if st.sidebar.button(":arrow_left: Back to Wizard", use_container_width=True):
+        st.session_state["_wizard_complete"] = False
+        st.session_state["_wizard_step"] = 4
+        st.rerun()
 
     # Store some values for cross-tab access
     st.session_state["_benchmark_price"] = inputs_dict["benchmark_price"]

@@ -1,38 +1,19 @@
-# CAT Power Solution — Python Dependencies
-# ==========================================
-# Pin versions for reproducible builds.
+# CAT Power Solution — Streamlit App Dependencies
+# =================================================
+# Only what the Streamlit demo needs.
+# For the full FastAPI server, see requirements-api.txt.
 
 # Core (calculation engine)
-numpy==1.26.4
-reportlab==4.1.0
-pdfplumber==0.11.0
+numpy>=1.26.0
+reportlab>=4.1.0
+pdfplumber>=0.11.0
 
-# API Framework
-fastapi==0.110.0
-uvicorn[standard]==0.27.1
-python-multipart==0.0.9
-pydantic==2.6.1
+# Schemas (used by sizing pipeline)
+pydantic>=2.6.0
 
-# Configuration
-pydantic-settings==2.2.1
+# UI / Visualization
+plotly>=5.18.0
+pandas>=2.1.0
 
-# Authentication (Entra ID / Azure AD)
-PyJWT==2.8.0
-cryptography==42.0.5
-
-# HTTP Client
-httpx==0.27.0
-
-# Rate Limiting
-slowapi==0.1.9
-
-# Database (PostgreSQL)
-asyncpg==0.29.0
-sqlalchemy==2.0.29
-
-# Azure Services
-azure-storage-blob==12.19.1
-azure-identity==1.16.0
-
-# Testing
-pytest==8.0.0
+# Authentication (Streamlit auth flow)
+bcrypt>=4.1.0

@@ -77,18 +77,9 @@ def audit_log(event: str, detail: str = ""):
 # ── Login UI header ──────────────────────────────────────────────────────────
 
 def _render_header():
-    st.markdown(
-        """
-        <div style="text-align:center;padding:32px 0 16px 0">
-          <div style="background:#12233A;padding:20px 32px;border-radius:8px;
-                      display:inline-block">
-            <span style="color:#FFCC00;font-size:26px;font-weight:bold">CAT</span>
-            <span style="color:white;font-size:18px;margin-left:8px">Power Solution</span>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.image("assets/logo_caterpillar.png", width=300)
 
 
 # ── Main auth gate ───────────────────────────────────────────────────────────
@@ -119,7 +110,7 @@ def check_auth():
                 "Work Email",
                 placeholder="yourname@cat.com",
                 key="auth_email_input",
-            ).strip().lower()
+            ).replace(" ", "").strip().lower()
 
             col1, col2 = st.columns(2)
             submit_email = col1.button(

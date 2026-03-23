@@ -769,6 +769,8 @@ def _build_inputs_from_wizard():
         commissioning_cost_usd=float(INPUT_DEFAULTS["commissioning_cost_usd"]),
         pipeline_distance_km=float(INPUT_DEFAULTS["pipeline_distance_km"]),
         pipeline_diameter_inch=float(INPUT_DEFAULTS["pipeline_diameter_inch"]),
+        gas_supply_pressure_psia=float(INPUT_DEFAULTS["gas_supply_pressure_psia"]),
+        gas_pipeline_length_miles=float(INPUT_DEFAULTS["gas_pipeline_length_miles"]),
         bess_cost_kw=float(ss.get("_wiz_bess_cost_kw", INPUT_DEFAULTS["bess_cost_kw"])),
         bess_cost_kwh=float(ss.get("_wiz_bess_cost_kwh", INPUT_DEFAULTS["bess_cost_kwh"])),
         bess_om_kw_yr=float(ss.get("_wiz_bess_om_kw_yr", INPUT_DEFAULTS["bess_om_kw_yr"])),
@@ -1327,6 +1329,25 @@ def render_sidebar():
                      "CAPEX adder (2.5% of gen+install).",
             )
 
+            st.markdown("**Gas Supply Parameters**")
+            gas_supply_pressure_psia = st.number_input(
+                "Supply Pressure (psia)", min_value=10.0, max_value=1500.0,
+                value=float(INPUT_DEFAULTS.get('gas_supply_pressure_psia', 100.0)),
+                step=10.0, format="%.0f",
+                help=(
+                    "Gas utility supply pressure at site boundary. "
+                    "Typical values: 60-100 psia (medium pressure industrial distribution), "
+                    "250-500 psia (high pressure transmission). "
+                    "Gas turbines require 200-300 psia — compressor may be needed."
+                ),
+            )
+            gas_pipeline_length_miles = st.number_input(
+                "Pipeline Distance (miles)", min_value=0.1, max_value=50.0,
+                value=float(INPUT_DEFAULTS.get('gas_pipeline_length_miles', 1.0)),
+                step=0.5, format="%.1f",
+                help="Distance from utility tap to site boundary (Weymouth equation).",
+            )
+
     # ---- 10. CHP / Tri-Gen ----
     with st.sidebar.expander(":fire: CHP / Tri-Gen"):
         include_chp = st.checkbox(
@@ -1541,6 +1562,8 @@ def render_sidebar():
         commissioning_cost_usd=commissioning_cost_usd,
         pipeline_distance_km=pipeline_distance_km,
         pipeline_diameter_inch=pipeline_diameter_inch,
+        gas_supply_pressure_psia=gas_supply_pressure_psia,
+        gas_pipeline_length_miles=gas_pipeline_length_miles,
         bess_cost_kw=bess_cost_kw,
         bess_cost_kwh=bess_cost_kwh,
         bess_om_kw_yr=bess_om_kw_yr,
@@ -3167,6 +3190,103 @@ def render_gas_consumption_tab(r):
     c1.metric("Full Load Consumption", f"{mj_values[-1]:.2f} MJ/ekWh")
     c2.metric("At Operating Point", f"{op_mj:.2f} MJ/ekWh")
     c3.metric("Load per Unit", f"{r.load_per_unit_pct:.1f}%")
+
+    # ── Monthly Gas Consumption (P10) ──
+    if hasattr(r, 'gas_pipeline') and r.gas_pipeline:
+        gp = r.gas_pipeline
+
+        st.divider()
+        st.subheader("Monthly Gas Consumption")
+
+        monthly = gp['monthly_consumption']
+        df_monthly = pd.DataFrame(monthly)
+        df_monthly.columns = ['Month', 'Days', 'Energy (MWh)', 'Consumption (MMBtu)', 'Flow rate (MMSCFD)']
+        df_monthly['Consumption (MMBtu)'] = df_monthly['Consumption (MMBtu)'].apply(
+            lambda x: f"{x:,.0f}")
+        df_monthly['Energy (MWh)'] = df_monthly['Energy (MWh)'].apply(
+            lambda x: f"{x:,.0f}")
+
+        st.dataframe(df_monthly, use_container_width=True, hide_index=True)
+
+        gc1, gc2, gc3 = st.columns(3)
+        gc1.metric("Annual consumption", f"{gp['annual_mmbtu']/1e6:.2f}M MMBtu/yr")
+        gc2.metric("Daily average flow", f"{gp['daily_mmscfd']:.2f} MMSCFD")
+        gc3.metric("Annual energy gen.", f"{gp['annual_mwh']/1e6:.3f} TWh/yr")
+
+        st.caption(
+            f"Based on operating heat rate of {op_mj:.2f} MJ/ekWh "
+            f"at {r.load_per_unit_pct:.1f}% load (part-load efficiency applied). "
+            f"LHV assumed: 1,012 BTU/scf (pipeline natural gas)."
+        )
+
+        # ── Pipeline Sizing (P10) ──
+        st.divider()
+        st.subheader("Gas Supply Pipeline Sizing")
+
+        # Inline editable inputs (mirror sidebar)
+        with st.expander("Pipeline parameters", expanded=True):
+            pcol1, pcol2 = st.columns(2)
+            with pcol1:
+                st.number_input(
+                    "Supply pressure (psia)", 10.0, 1500.0,
+                    value=float(gp['P1_supply_psia']), step=10.0,
+                    key="gas_p1_inline",
+                    help="Gas utility pressure at site boundary fence.",
+                )
+            with pcol2:
+                st.number_input(
+                    "Distance to utility tap (miles)", 0.1, 50.0,
+                    value=float(gp['pipeline_length_miles']), step=0.5,
+                    key="gas_dist_inline",
+                    help="Pipeline length from utility main to site.",
+                )
+            st.caption(
+                f"Generator type: **{gp['gen_type_label']}** — "
+                f"minimum site inlet pressure required: **{gp['P2_required_psia']:.0f} psia**. "
+                f"Update sidebar inputs and re-run to recalculate with new values."
+            )
+
+        if gp['needs_compressor']:
+            st.error(
+                f"⛽ **Fuel Gas Booster Compressor Required.** "
+                f"Utility supply pressure ({gp['P1_supply_psia']:.0f} psia) is below "
+                f"the minimum combustor inlet pressure for {gp['gen_type_label']} "
+                f"({gp['P2_required_psia']:.0f} psia). "
+                f"A fuel gas booster compressor must be included in the plant design. "
+                f"Set supply pressure ≥ {gp['P2_required_psia']:.0f} psia and re-run to size the pipeline."
+            )
+        else:
+            pc1, pc2, pc3, pc4 = st.columns(4)
+            pc1.metric("Flow rate",       f"{gp['daily_mmscfd']:.2f} MMSCFD")
+            pc2.metric("Min. diameter",   f"{gp['D_min_inches']:.2f}\"")
+            pc3.metric("Recommended NPS", f"NPS {gp['D_nps_inches']}\"")
+            pc4.metric("Pipe velocity",   f"{gp['velocity_fps']:.0f} ft/s")
+
+            if gp['velocity_fps'] > 60:
+                st.warning(
+                    f"⚠️ Gas velocity {gp['velocity_fps']:.0f} ft/s exceeds 60 ft/s recommended "
+                    f"limit for carbon steel pipe (erosion risk). Consider larger NPS or "
+                    f"verify supply pressure assumptions."
+                )
+
+            st.caption(
+                f"Weymouth equation  ·  "
+                f"P1={gp['P1_supply_psia']:.0f} psia → P2={gp['P2_required_psia']:.0f} psia  ·  "
+                f"L={gp['pipeline_length_miles']:.1f} mi  ·  "
+                f"E={gp['assumptions']['pipe_efficiency_E']}  ·  "
+                f"Sg={gp['assumptions']['gas_sg']}  ·  "
+                f"T={gp['assumptions']['gas_temp_f']:.0f}°F  ·  "
+                f"Z={gp['assumptions']['gas_z_factor']}"
+            )
+            st.warning(
+                "⚠️ **Engineering disclaimer:** Pipeline diameter is a preliminary estimate "
+                "for conceptual design only. The Weymouth equation assumes fully turbulent "
+                "flow and is conservative vs Panhandle A/B. Actual design requires: "
+                "(1) gas composition analysis for LHV and Sg, "
+                "(2) utility supply pressure verification, "
+                "(3) detailed hydraulic simulation per ASME B31.8. "
+                "Consult the gas utility and a licensed pipeline engineer before procurement."
+            )
 
     st.caption(
         "Source: CAT Gas Consumption data sheet. "

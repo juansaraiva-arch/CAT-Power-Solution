@@ -193,13 +193,25 @@ The Streamlit UI displays all three H components separately with a warning if `H
 | H10: CAPEX missing BOS | 7 new line items (~1.72× multiplier) | All-in ~$2,000/kW |
 | H10: LCOE double-CF | `mwh_year = p_avg × 8760` | LCOE drops ~11% |
 
-### Generator Library Fields (added P05/P06)
+### Generator Library Fields (added P05/P06/P10)
 Each of the 10 models now includes:
 - `prime_power_kw` — continuous prime power rating (kW)
 - `standby_kw` — standby/nameplate rating (kW)
 - `mtbf_hours` — mean time between failures (hours)
 - `mttr_hours` — mean time to repair (hours)
 - `inertia_h` — rotating mass inertia constant (seconds)
+- `gas_inlet_pressure_psia` — minimum gas inlet pressure (psia): 5 for high-speed recip, 15 for medium-speed, 200-300 for turbines
+
+### Gas Pipeline Sizing Module (P10)
+`calculate_gas_pipeline()` in `core/engine.py` — standalone function (no existing functions modified).
+
+**Parameters:** `p_total_avg_mw`, `hr_op_mj_kwh` (operating-point heat rate from fuel curve), `gen_data`, gas supply/pipeline inputs.
+
+**Monthly Consumption:** Flat model based on capacity factor × days-in-month. Uses operating-point heat rate (part-load), not ISO full-load.
+
+**Pipeline Sizing — Weymouth Equation (US customary):** Solves for minimum diameter D, selects next standard NPS from [2–24] inches. P2 = generator `gas_inlet_pressure_psia`. Velocity check warns if > 60 ft/s. Compressor warning if P1 < P2 (common for gas turbines).
+
+**Result field:** `gas_pipeline: Optional[dict]` on `SizingResult` — contains `monthly_consumption`, `annual_mmbtu`, `daily_mmscfd`, `D_nps_inches`, `needs_compressor`, etc.
 
 ### CAPEX BOS Defaults (INPUT_DEFAULTS, added P06)
 Applied as % of (generator + installation) base cost:

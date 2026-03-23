@@ -2070,3 +2070,120 @@ def footprint_optimization_recommendations(
     })
 
     return recommendations
+
+
+# ==============================================================================
+# GAS CONSUMPTION & PIPELINE SIZING (P10)
+# ==============================================================================
+
+def calculate_gas_pipeline(
+    p_total_avg_mw: float,
+    hr_op_mj_kwh: float,
+    gen_data: dict,
+    gas_supply_pressure_psia: float = 100.0,
+    pipeline_length_miles: float = 1.0,
+    pipe_efficiency: float = 0.92,
+    gas_sg: float = 0.65,
+    gas_temp_f: float = 60.0,
+    gas_z_factor: float = 0.90,
+) -> dict:
+    """
+    Calculate monthly gas consumption and pipeline sizing.
+
+    Uses Weymouth equation (US customary) solved for minimum pipe diameter.
+    P2 (minimum site inlet pressure) is read from the generator library field
+    'gas_inlet_pressure_psia'. Gas turbines typically require a booster
+    compressor if utility supply pressure < combustor inlet requirement.
+
+    Returns a dict with monthly consumption table, annual totals,
+    daily flow rate, recommended NPS, and a compressor warning flag.
+    """
+    from math import sqrt
+
+    # Constants
+    LHV_BTU_SCF  = 1012.0     # BTU/scf — LHV pipeline natural gas
+    MJ_PER_MMBTU = 1055.06    # MJ/MMBtu
+    Tb = 520.0                 # °R base temp (60°F)
+    Pb = 14.73                 # psia base pressure
+
+    NPS_STANDARDS = [2, 3, 4, 6, 8, 10, 12, 16, 20, 24]
+
+    T_rankine = gas_temp_f + 459.67
+    P1 = gas_supply_pressure_psia
+    P2 = float(gen_data.get('gas_inlet_pressure_psia', 5.0))
+
+    # Monthly consumption
+    DAYS_PER_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    MONTH_NAMES    = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+    monthly = []
+    for name, days in zip(MONTH_NAMES, DAYS_PER_MONTH):
+        mwh    = p_total_avg_mw * 24.0 * days
+        mmbtu  = mwh * 1000.0 * hr_op_mj_kwh / MJ_PER_MMBTU
+        mmscfd = (mmbtu / days * 1e6) / (LHV_BTU_SCF * 1e6)
+        monthly.append({
+            'month':  name,
+            'days':   days,
+            'mwh':    round(mwh, 0),
+            'mmbtu':  round(mmbtu, 0),
+            'mmscfd': round(mmscfd, 3),
+        })
+
+    annual_mmbtu  = sum(m['mmbtu'] for m in monthly)
+    annual_mwh    = sum(m['mwh']   for m in monthly)
+    daily_mmbtu   = annual_mmbtu / 365.0
+    daily_mmscfd  = daily_mmbtu * 1e6 / (LHV_BTU_SCF * 1e6)
+    Q_scfd        = daily_mmscfd * 1e6   # convert to SCFD for Weymouth
+
+    # Compressor warning
+    needs_compressor = P1 < P2
+
+    # Weymouth diameter (only if P1 > P2)
+    if not needs_compressor and pipeline_length_miles > 0:
+        coeff  = 433.5 * pipe_efficiency * (Tb / Pb)
+        pterm  = sqrt((P1**2 - P2**2) / (gas_sg * T_rankine * gas_z_factor
+                                          * pipeline_length_miles))
+        D_min  = (Q_scfd / (coeff * pterm)) ** (3.0 / 8.0)
+        D_nps  = next((n for n in NPS_STANDARDS if n >= D_min), NPS_STANDARDS[-1])
+    else:
+        D_min = 0.0
+        D_nps = 0
+
+    # Velocity check at selected NPS (ft/s at average operating pressure)
+    if D_nps > 0:
+        import math
+        P_avg = (P1 + P2) / 2.0
+        A_ft2 = math.pi * ((D_nps / 12.0) / 2.0) ** 2
+        Q_actual_ft3s = Q_scfd * (Pb / P_avg) / 86400.0
+        velocity_fps = Q_actual_ft3s / A_ft2
+    else:
+        velocity_fps = 0.0
+
+    gen_type_label = 'Gas turbine' if P2 > 50 else (
+        'Medium-speed reciprocating' if P2 > 10 else 'High-speed reciprocating')
+
+    return {
+        'monthly_consumption':   monthly,
+        'annual_mmbtu':          round(annual_mmbtu, 0),
+        'annual_mwh':            round(annual_mwh, 0),
+        'daily_mmbtu':           round(daily_mmbtu, 0),
+        'daily_mmscfd':          round(daily_mmscfd, 3),
+        'Q_scfd':                round(Q_scfd, 0),
+        'D_min_inches':          round(D_min, 2),
+        'D_nps_inches':          D_nps,
+        'velocity_fps':          round(velocity_fps, 1),
+        'needs_compressor':      needs_compressor,
+        'P1_supply_psia':        P1,
+        'P2_required_psia':      P2,
+        'gen_type_label':        gen_type_label,
+        'pipeline_length_miles': pipeline_length_miles,
+        'assumptions': {
+            'equation':          'Weymouth (US customary)',
+            'pipe_efficiency_E': pipe_efficiency,
+            'gas_sg':            gas_sg,
+            'gas_temp_f':        gas_temp_f,
+            'gas_z_factor':      gas_z_factor,
+            'LHV_btu_scf':       LHV_BTU_SCF,
+        }
+    }

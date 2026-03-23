@@ -19,6 +19,7 @@ from core.engine import (
     calculate_bess_reliability_credit,
     calculate_availability_weibull,
     optimize_fleet_size,
+    pod_fleet_optimizer,
     calculate_macrs_depreciation,
     noise_at_distance,
     calculate_combined_noise,
@@ -202,7 +203,8 @@ def run_full_sizing(inputs: SizingInput) -> dict:
     # ── Step 2: Load calculations ──
     p_total_dc = inputs.p_it * inputs.pue
     p_total_avg = p_total_dc * inputs.capacity_factor
-    p_total_peak = p_total_dc * inputs.peak_avg_ratio
+    # CORRECT — PAR = Peak / Average  →  Peak = Average × PAR
+    p_total_peak = p_total_avg * inputs.peak_avg_ratio
 
     # Generator terminal load (after distribution losses)
     dist_loss_factor = 1 - inputs.dist_loss_pct / 100
@@ -254,20 +256,58 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         use_bess=inputs.use_bess,
         bess_power_mw=bess_power_transient if inputs.use_bess else 0,
         gen_step_capability_pct=gen_data["step_load_pct"],
+        p_total_peak=p_total_peak,
+        load_step_pct=inputs.load_step_pct,
+        bess_energy_mwh=bess_energy_transient if inputs.use_bess else 0,
     )
 
-    # ── Step 6: Fleet optimization ──
-    n_running_opt, fleet_options = optimize_fleet_size(
-        p_avg_at_gen, p_peak_at_gen,
-        unit_site_cap, inputs.load_step_pct,
-        gen_data, inputs.use_bess,
-    )
-    n_running_from_load = max(n_running_opt, spinning_result["n_units_running"])
-
-    # ── Step 7: Availability target ──
+    # ── Step 6: Pod Architecture Fleet Optimization (P05) ──
     avail_decimal = inputs.avail_req / 100
+
+    # Derive a_gen from generator library MTBF/MTTR
+    mtbf = gen_data.get('mtbf_hours', 3000.0)
+    mttr_hours = gen_data.get('mttr_hours', 16.0)
+    a_gen = mtbf / (mtbf + mttr_hours)
+
+    # Max normal loading from prime/standby ratio
+    prime_kw   = gen_data.get('prime_power_kw', gen_data.get('standby_kw', unit_site_cap * 1000) * 0.90)
+    standby_kw = gen_data.get('standby_kw', unit_site_cap * 1000)
+    max_normal_loading = prime_kw / standby_kw  # ≈ 0.90 for CAT
+
+    pod_result = pod_fleet_optimizer(
+        p_total_peak       = p_total_peak,
+        unit_site_cap      = unit_site_cap,
+        a_gen              = a_gen,
+        avail_req          = avail_decimal,
+        max_normal_loading = max_normal_loading,
+    )
+
+    if pod_result is None:
+        raise ValueError(
+            f"Pod optimizer found no valid solution for "
+            f"p_peak={p_total_peak:.1f} MW, unit={unit_site_cap:.2f} MW, "
+            f"avail_req={avail_decimal*100:.3f}%"
+        )
+
+    # Map pod result to existing result fields (backward compat)
+    n_running            = pod_result['n_running']
+    n_reserve            = pod_result['n_reserve']
+    n_total_pod          = pod_result['n_total']
+    installed_cap_pod    = pod_result['installed_cap']
+    load_per_unit_pct    = pod_result['loading_normal_pct']
+
+    # New pod-specific result fields (additive)
+    n_pods               = pod_result['n_pods']
+    n_per_pod            = pod_result['n_per_pod']
+    cap_contingency      = pod_result['cap_contingency']
+    loading_contingency_pct = pod_result['loading_contingency_pct']
+    a_system_calculated  = pod_result['a_system_calculated']
+    a_gen_derived        = a_gen
+    max_normal_loading_pct = max_normal_loading * 100.0
+
+    # Legacy compatibility — keep old variable names used downstream
+    n_running_from_load  = n_running
     unit_availability = gen_data.get("unit_availability", 0.93)
-    mttr_hours = 48
 
     # ── Step 8: Reliability configurations A/B/C ──
     reliability_configs = []
@@ -280,6 +320,9 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         use_bess=False,
         bess_power_mw=0,
         gen_step_capability_pct=gen_data["step_load_pct"],
+        p_total_peak=p_total_peak,
+        load_step_pct=inputs.load_step_pct,
+        bess_energy_mwh=0,
     )
     n_running_peak = math.ceil(p_total_peak / unit_site_cap)
     n_running_no_bess = max(spinning_no_bess["n_units_running"], n_running_peak)
@@ -308,6 +351,9 @@ def run_full_sizing(inputs: SizingInput) -> dict:
             use_bess=True,
             bess_power_mw=bess_power_transient,
             gen_step_capability_pct=gen_data["step_load_pct"],
+            p_total_peak=p_total_peak,
+            load_step_pct=inputs.load_step_pct,
+            bess_energy_mwh=bess_energy_transient,
         )
         n_running_with_bess = spinning_with_bess["n_units_running"]
 
@@ -403,13 +449,13 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         }
 
     # ── Step 10: Extract final values ──
-    n_running = selected_config["n_running"]
-    n_reserve = selected_config["n_reserve"]
-    n_total = selected_config["n_total"]
+    # Pod optimizer (P05) provides n_running, n_reserve, n_total, installed_cap
+    n_total = n_total_pod
+    installed_cap = installed_cap_pod
+    # n_running and n_reserve already set from pod_result above
     bess_power_total = selected_config["bess_mw"]
     bess_energy_total = selected_config["bess_mwh"]
-    load_per_unit_pct = selected_config["load_pct"]
-    installed_cap = n_total * unit_site_cap
+    # load_per_unit_pct already set from pod_result above
 
     # BESS breakdown
     if inputs.use_bess and bess_power_total > 0:
@@ -441,7 +487,8 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         rec_voltage_kv = inputs.manual_voltage_kv
 
     # ── Step 13: Transient stability ──
-    step_load_mw = p_avg_at_gen * (inputs.load_step_pct / 100)
+    # Use the same load_step_mw from the SR calculation (P03/P04) — not re-derived
+    step_load_mw = spinning_result["load_step_mw"]
     stability_ok, voltage_sag = transient_stability_check(
         gen_data["reactance_xd_2"], n_running, step_load_mw, unit_site_cap
     )
@@ -514,24 +561,47 @@ def run_full_sizing(inputs: SizingInput) -> dict:
     idx_install = gen_install_cost / gen_unit_cost if gen_unit_cost > 0 else 0.5
     idx_chp = 0.20 if inputs.include_chp else 0
 
-    # Infrastructure line items (pipeline, permits, commissioning)
+    # Infrastructure line items (pipeline, permits, commissioning — user inputs)
     pipeline_cost = getattr(inputs, 'pipeline_cost_usd', 0) or 0
     permitting_cost = getattr(inputs, 'permitting_cost_usd', 0) or 0
-    commissioning_cost = getattr(inputs, 'commissioning_cost_usd', 0) or 0
-    infra_capex_m = (pipeline_cost + permitting_cost + commissioning_cost) / 1e6
+    commissioning_cost_user = getattr(inputs, 'commissioning_cost_usd', 0) or 0
+    infra_capex_m = (pipeline_cost + permitting_cost + commissioning_cost_user) / 1e6
+
+    # Fix M (P06) — CAPEX BOS components
+    capex_gen_m = gen_cost_total_m                        # generators
+    capex_install_m = gen_cost_total_m * idx_install      # installation
+    capex_chp_m = gen_cost_total_m * idx_chp              # CHP (if enabled)
+    capex_base_m = capex_gen_m + capex_install_m          # base for BOS adders
+
+    # BOS adders as fraction of gen+install base
+    bos_pct          = getattr(inputs, 'bos_pct',         0.17)
+    civil_pct        = getattr(inputs, 'civil_pct',       0.13)
+    fuel_system_pct  = getattr(inputs, 'fuel_system_pct', 0.06)
+    electrical_pct   = getattr(inputs, 'electrical_pct',  0.06)
+    epc_pct          = getattr(inputs, 'epc_pct',         0.12)
+    commissioning_pct = getattr(inputs, 'commissioning_pct', 0.025)
+    contingency_pct  = getattr(inputs, 'contingency_pct', 0.10)
+
+    capex_bos_m         = capex_base_m * bos_pct
+    capex_civil_m       = capex_base_m * civil_pct
+    capex_fuel_sys_m    = capex_base_m * fuel_system_pct
+    capex_electrical_m  = capex_base_m * electrical_pct
+    capex_epc_m         = capex_base_m * epc_pct
+    capex_commission_m  = capex_base_m * commissioning_pct
+
+    capex_subtotal_m = (capex_base_m + capex_chp_m + capex_bos_m + capex_civil_m
+                        + capex_fuel_sys_m + capex_electrical_m + capex_epc_m
+                        + capex_commission_m + bess_capex_m + infra_capex_m)
+    capex_contingency_m = capex_subtotal_m * contingency_pct
 
     # Total CAPEX
-    total_capex_m = (
-        gen_cost_total_m
-        + gen_cost_total_m * idx_install
-        + gen_cost_total_m * idx_chp
-        + bess_capex_m
-        + infra_capex_m
-    )
+    total_capex_m = capex_subtotal_m + capex_contingency_m
 
     # Effective hours and energy
-    effective_hours = 8760 * inputs.capacity_factor
-    mwh_year = p_total_avg * effective_hours
+    # Fix K (P06): p_total_avg = p_total_dc × CF already — no further CF
+    # Annual energy = average power × hours in a year
+    effective_hours = 8760  # used for fuel cost calculation below
+    mwh_year = p_total_avg * 8760
 
     # O&M costs
     om = _DEFAULT_OM
@@ -699,8 +769,9 @@ def run_full_sizing(inputs: SizingInput) -> dict:
     }
 
     # ── Step 18i: Design Validation Scorecard ──
-    spinning_required = p_avg_at_gen * (inputs.spinning_res_pct / 100)
-    step_load_mw_actual = p_avg_at_gen * (inputs.load_step_pct / 100)
+    # Use physical SR requirement from P03 redesign, not legacy user input
+    spinning_required = spinning_result.get("sr_required_mw", p_avg_at_gen * (inputs.spinning_res_pct / 100))
+    step_load_mw_actual = spinning_result.get("load_step_mw", p_avg_at_gen * (inputs.load_step_pct / 100))
     scorecard = design_validation_scorecard(
         system_availability, inputs.avail_req,
         selected_config.get("spinning_reserve_mw", 0), spinning_required,
@@ -747,17 +818,25 @@ def run_full_sizing(inputs: SizingInput) -> dict:
             inputs.n_phases, inputs.months_between_phases,
         )
 
-    # ── Step 18n: CAPEX & O&M Breakdown ──
+    # ── Step 18n: CAPEX & O&M Breakdown (Fix M — P06) ──
     capex_breakdown = {
-        'generators': gen_cost_total_m * 1e6,
-        'installation': gen_cost_total_m * idx_install * 1e6,
-        'bess': bess_capex_m * 1e6,
-        'chp': chp_results.get('chp_capex_usd', 0) if inputs.include_chp else 0,
+        # existing
+        'generators':        capex_gen_m * 1e6,
+        'installation':      capex_install_m * 1e6,
+        'bess':              bess_capex_m * 1e6,
+        'chp':               chp_results.get('chp_capex_usd', 0) if inputs.include_chp else 0,
         'emissions_control': emissions_control.get('total_capex', 0),
         'lng_infrastructure': lng_logistics.get('lng_capex_usd', 0),
-        'pipeline': pipeline_cost,
-        'permitting': permitting_cost,
-        'commissioning': commissioning_cost,
+        'pipeline':          pipeline_cost,
+        'permitting':        permitting_cost,
+        # new BOS components (P06)
+        'bos':               capex_bos_m * 1e6,
+        'civil':             capex_civil_m * 1e6,
+        'fuel_system':       capex_fuel_sys_m * 1e6,
+        'electrical':        capex_electrical_m * 1e6,
+        'epc':               capex_epc_m * 1e6,
+        'commissioning':     capex_commission_m * 1e6,
+        'contingency':       capex_contingency_m * 1e6,
     }
     capex_assumptions = {
         'generators': f"${gen_unit_cost:,.0f}/kW x {installed_cap * 1000:,.0f} kW",
@@ -773,7 +852,13 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         'lng_infrastructure': "Tanks + vaporizer + piping" if lng_logistics.get('lng_capex_usd', 0) > 0 else "N/A",
         'pipeline': "User input",
         'permitting': "User input",
-        'commissioning': "User input",
+        'bos':           f"{bos_pct*100:.1f}% of gen+install",
+        'civil':         f"{civil_pct*100:.1f}% of gen+install",
+        'fuel_system':   f"{fuel_system_pct*100:.1f}% of gen+install",
+        'electrical':    f"{electrical_pct*100:.1f}% of gen+install",
+        'epc':           f"{epc_pct*100:.1f}% of gen+install",
+        'commissioning': f"{commissioning_pct*100:.1f}% of gen+install",
+        'contingency':   f"{contingency_pct*100:.1f}% of subtotal",
     }
     om_breakdown_dict = {
         'fixed': om_fixed_annual,
@@ -842,11 +927,33 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         installed_cap=installed_cap,
         load_per_unit_pct=load_per_unit_pct,
         fleet_efficiency=fleet_efficiency,
+        # Pod Architecture (P05)
+        n_pods=n_pods,
+        n_per_pod=n_per_pod,
+        cap_contingency=cap_contingency,
+        loading_normal_pct=load_per_unit_pct,
+        loading_contingency_pct=loading_contingency_pct,
+        a_system_calculated=a_system_calculated,
+        a_gen_derived=a_gen_derived,
+        max_normal_loading_pct=max_normal_loading_pct,
+        unit_site_cap=unit_site_cap,
         # Spinning
         spinning_reserve_mw=selected_config.get("spinning_reserve_mw", 0),
         spinning_from_gens=selected_config.get("spinning_from_gens", 0),
         spinning_from_bess=selected_config.get("spinning_from_bess", 0),
         headroom_mw=selected_config.get("headroom_mw", 0),
+        # SR diagnostics (P03/P04)
+        sr_required_mw=spinning_result.get("sr_required_mw", 0),
+        sr_user_mw=spinning_result.get("sr_user_mw", 0),
+        sr_user_below_physical=spinning_result.get("sr_user_below_physical", False),
+        sr_dominant_contingency=spinning_result.get("sr_dominant_contingency", "N-1"),
+        load_step_mw=spinning_result.get("load_step_mw", 0),
+        n1_mw=spinning_result.get("n1_mw", 0),
+        bess_sr_credit_valid=spinning_result.get("bess_sr_credit_valid", False),
+        bess_sr_response_ok=spinning_result.get("bess_sr_response_ok", False),
+        bess_sr_energy_ok=spinning_result.get("bess_sr_energy_ok", False),
+        bess_sr_available_mws=spinning_result.get("bess_sr_available_mws", 0),
+        bess_sr_required_mws=spinning_result.get("bess_sr_required_mws", 0),
         # Reliability
         reliability_configs=rel_configs,
         selected_config_name=selected_config["name"],

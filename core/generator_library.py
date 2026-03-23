@@ -53,6 +53,10 @@ GENERATOR_LIBRARY = {
         "aux_load_pct": 4.0,
         "overhaul_hours": 80000,
         "overhaul_duration_weeks": 4,
+        "prime_power_kw": 1710,            # 90% of 1900 kW standby
+        "standby_kw": 1900,
+        "mtbf_hours": 2500,               # conservative — mobile unit
+        "mttr_hours": 12,
     },
     "G3520FR": {
         "description": "Fast Response Gen Set (High Speed)",
@@ -86,6 +90,10 @@ GENERATOR_LIBRARY = {
         "aux_load_pct": 4.0,
         "overhaul_hours": 80000,
         "overhaul_duration_weeks": 4,
+        "prime_power_kw": 2250,
+        "standby_kw": 2500,
+        "mtbf_hours": 3000,
+        "mttr_hours": 16,
     },
     "G3520K": {
         "description": "High Efficiency Gen Set (High Speed)",
@@ -119,6 +127,10 @@ GENERATOR_LIBRARY = {
         "aux_load_pct": 4.0,
         "overhaul_hours": 80000,
         "overhaul_duration_weeks": 4,
+        "prime_power_kw": 2250,
+        "standby_kw": 2500,
+        "mtbf_hours": 3000,
+        "mttr_hours": 16,
     },
     "G3516H": {
         "description": "Data Center Workhorse (High Speed, 2.5 MW)",
@@ -152,6 +164,10 @@ GENERATOR_LIBRARY = {
         "aux_load_pct": 4.0,
         "overhaul_hours": 80000,
         "overhaul_duration_weeks": 4,
+        "prime_power_kw": 2250,
+        "standby_kw": 2500,
+        "mtbf_hours": 3000,
+        "mttr_hours": 16,
     },
     "CG260-16": {
         "description": "Cogeneration Specialist (High Speed)",
@@ -185,6 +201,10 @@ GENERATOR_LIBRARY = {
         "aux_load_pct": 3.5,
         "overhaul_hours": 80000,
         "overhaul_duration_weeks": 1,      # 1 week
+        "prime_power_kw": 3560,
+        "standby_kw": 3957,
+        "mtbf_hours": 3500,
+        "mttr_hours": 12,
     },
     "C175-20": {
         "description": "High Power Gas Gen Set (4 MW, High Speed)",
@@ -218,6 +238,10 @@ GENERATOR_LIBRARY = {
         "aux_load_pct": 4.0,
         "overhaul_hours": 80000,
         "overhaul_duration_weeks": 4,
+        "prime_power_kw": 3600,
+        "standby_kw": 4000,
+        "mtbf_hours": 3000,
+        "mttr_hours": 16,
     },
     "Titan 130": {
         "description": "Solar Gas Turbine (16.5 MW)",
@@ -248,6 +272,10 @@ GENERATOR_LIBRARY = {
         "aux_load_pct": 3.0,
         "overhaul_hours": 40000,
         "overhaul_duration_weeks": 1,      # 3-5 days (swap program)
+        "prime_power_kw": 14850,
+        "standby_kw": 16500,
+        "mtbf_hours": 4000,
+        "mttr_hours": 24,
     },
     "Titan 250": {
         "description": "Solar Gas Turbine (23.2 MW)",
@@ -278,6 +306,10 @@ GENERATOR_LIBRARY = {
         "aux_load_pct": 3.0,
         "overhaul_hours": 40000,
         "overhaul_duration_weeks": 1,
+        "prime_power_kw": 20880,
+        "standby_kw": 23200,
+        "mtbf_hours": 4000,
+        "mttr_hours": 24,
     },
     "Titan 350": {
         "description": "Solar Gas Turbine (38 MW)",
@@ -308,6 +340,10 @@ GENERATOR_LIBRARY = {
         "aux_load_pct": 3.0,
         "overhaul_hours": 40000,
         "overhaul_duration_weeks": 1,
+        "prime_power_kw": 34200,
+        "standby_kw": 38000,
+        "mtbf_hours": 4000,
+        "mttr_hours": 24,
     },
     "G20CM34": {
         "description": "Medium Speed Baseload Platform",
@@ -338,6 +374,10 @@ GENERATOR_LIBRARY = {
         "aux_load_pct": 3.5,
         "overhaul_hours": 80000,
         "overhaul_duration_weeks": 1,
+        "prime_power_kw": 8784,
+        "standby_kw": 9760,
+        "mtbf_hours": 3500,
+        "mttr_hours": 18,
     },
 }
 

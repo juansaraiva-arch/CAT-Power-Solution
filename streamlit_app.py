@@ -261,11 +261,16 @@ def _render_load_preview():
     par = st.session_state.get("_wiz_peak_avg_ratio", float(INPUT_DEFAULTS["peak_avg_ratio"]))
     total_dc = p_it * pue
     avg_load = total_dc * cf
-    peak_load = total_dc * par
+    peak_load = avg_load * par  # PAR = Peak/Average, so Peak = Average × PAR
     c1, c2, c3 = st.columns(3)
     c1.metric("Total DC Load", f"{total_dc:.1f} MW")
     c2.metric("Average Load", f"{avg_load:.1f} MW")
     c3.metric("Peak Load", f"{peak_load:.1f} MW")
+    if peak_load > total_dc:
+        st.caption(
+            f"ℹ️ Peak ({peak_load:.1f} MW) > Total DC Load ({total_dc:.1f} MW) "
+            f"— expected when CF < 1.0 and PAR > CF. Fleet must cover peak."
+        )
 
 
 # ── Step 1: Project Info ──
@@ -382,10 +387,7 @@ def render_wizard_step_2():
                          format="%.2f", key="_wiz_peak_avg_ratio",
                          help=HELP_TEXTS.get("peak_avg_ratio", ""))
     with col3:
-        st.number_input("Spinning Reserve (%)", min_value=0.0, max_value=100.0,
-                         value=float(INPUT_DEFAULTS["spinning_res_pct"]), step=5.0,
-                         key="_wiz_spinning_res_pct",
-                         help=HELP_TEXTS.get("spinning_res_pct", ""))
+        # spinning_res_pct removed — now derived from physical contingencies (P04)
         st.number_input("Load Ramp Rate (MW/min)", min_value=0.1, max_value=100.0,
                          value=float(INPUT_DEFAULTS["load_ramp_req"]), step=0.5,
                          key="_wiz_load_ramp_req",
@@ -602,6 +604,32 @@ def render_wizard_step_4():
                              key="_wiz_bess_om_kw_yr",
                              help=HELP_TEXTS.get("bess_om_kw_yr", ""))
 
+    # CAPEX BOS Adders (Fix M — P06)
+    st.divider()
+    with st.expander("Advanced CAPEX Adders", expanded=False):
+        st.caption("As % of (generator equipment + installation) base cost.")
+        c1, c2 = st.columns(2)
+        with c1:
+            st.number_input("BOS / Switchgear + Xfmr (%)", 0.0, 50.0,
+                            INPUT_DEFAULTS['bos_pct']*100, 1.0,
+                            key="_wiz_bos_pct")
+            st.number_input("Civil / Site Work (%)", 0.0, 50.0,
+                            INPUT_DEFAULTS['civil_pct']*100, 1.0,
+                            key="_wiz_civil_pct")
+            st.number_input("Fuel System (%)", 0.0, 30.0,
+                            INPUT_DEFAULTS['fuel_system_pct']*100, 0.5,
+                            key="_wiz_fuel_system_pct")
+        with c2:
+            st.number_input("MV Electrical (%)", 0.0, 30.0,
+                            INPUT_DEFAULTS['electrical_pct']*100, 0.5,
+                            key="_wiz_electrical_pct")
+            st.number_input("EPC Management (%)", 0.0, 30.0,
+                            INPUT_DEFAULTS['epc_pct']*100, 1.0,
+                            key="_wiz_epc_pct")
+            st.number_input("Contingency (%)", 0.0, 30.0,
+                            INPUT_DEFAULTS['contingency_pct']*100, 1.0,
+                            key="_wiz_contingency_pct")
+
     # Footprint
     st.divider()
     st.subheader("Footprint Constraint")
@@ -709,7 +737,7 @@ def _build_inputs_from_wizard():
         capacity_factor=float(ss.get("_wiz_capacity_factor", INPUT_DEFAULTS["capacity_factor"])),
         peak_avg_ratio=float(ss.get("_wiz_peak_avg_ratio", INPUT_DEFAULTS["peak_avg_ratio"])),
         load_step_pct=float(ss.get("_wiz_load_step_pct", INPUT_DEFAULTS["load_step_pct"])),
-        spinning_res_pct=float(ss.get("_wiz_spinning_res_pct", INPUT_DEFAULTS["spinning_res_pct"])),
+        spinning_res_pct=0.0,  # deprecated — engine now uses physical SR calculation (P04)
         avail_req=float(ss.get("_wiz_avail_req", INPUT_DEFAULTS["avail_req"])),
         load_ramp_req=float(ss.get("_wiz_load_ramp_req", INPUT_DEFAULTS["load_ramp_req"])),
         dc_type=ss.get("_wiz_dc_type", INPUT_DEFAULTS["dc_type"]),
@@ -744,6 +772,14 @@ def _build_inputs_from_wizard():
         bess_cost_kw=float(ss.get("_wiz_bess_cost_kw", INPUT_DEFAULTS["bess_cost_kw"])),
         bess_cost_kwh=float(ss.get("_wiz_bess_cost_kwh", INPUT_DEFAULTS["bess_cost_kwh"])),
         bess_om_kw_yr=float(ss.get("_wiz_bess_om_kw_yr", INPUT_DEFAULTS["bess_om_kw_yr"])),
+        # CAPEX BOS adders (Fix M — P06)
+        bos_pct=float(ss.get("_wiz_bos_pct", INPUT_DEFAULTS["bos_pct"]*100)) / 100,
+        civil_pct=float(ss.get("_wiz_civil_pct", INPUT_DEFAULTS["civil_pct"]*100)) / 100,
+        fuel_system_pct=float(ss.get("_wiz_fuel_system_pct", INPUT_DEFAULTS["fuel_system_pct"]*100)) / 100,
+        electrical_pct=float(ss.get("_wiz_electrical_pct", INPUT_DEFAULTS["electrical_pct"]*100)) / 100,
+        epc_pct=float(ss.get("_wiz_epc_pct", INPUT_DEFAULTS["epc_pct"]*100)) / 100,
+        commissioning_pct=float(INPUT_DEFAULTS["commissioning_pct"]),
+        contingency_pct=float(ss.get("_wiz_contingency_pct", INPUT_DEFAULTS["contingency_pct"]*100)) / 100,
         fuel_mode=ss.get("_wiz_fuel_mode", INPUT_DEFAULTS["fuel_mode"]),
         lng_days=int(ss.get("_wiz_lng_days", INPUT_DEFAULTS["lng_days"])),
         lng_backup_pct=float(INPUT_DEFAULTS["lng_backup_pct"]),
@@ -894,11 +930,8 @@ def render_sidebar():
             value=float(INPUT_DEFAULTS["load_step_pct"]), step=5.0,
             help=HELP_TEXTS.get("load_step_pct", ""),
         )
-        spinning_res_pct = st.number_input(
-            "Spinning Reserve (%)", min_value=0.0, max_value=100.0,
-            value=float(INPUT_DEFAULTS["spinning_res_pct"]), step=5.0,
-            help=HELP_TEXTS.get("spinning_res_pct", ""),
-        )
+        # spinning_res_pct removed — now derived from physical contingencies (P04)
+        spinning_res_pct = 0.0
         avail_req = st.number_input(
             "Availability Requirement (%)", min_value=90.0, max_value=100.0,
             value=float(INPUT_DEFAULTS["avail_req"]), step=0.01,
@@ -1644,6 +1677,17 @@ def render_summary_tab(r):
         else:
             st.warning(f"{passed}/{total} design checks passed. Review items marked with \u274c.")
 
+        # Fix G — SR vs physical requirement (P04)
+        if hasattr(r, 'sr_required_mw'):
+            sr_available = r.spinning_from_gens + r.spinning_from_bess
+            sr_ok = sr_available >= r.sr_required_mw
+            if not sr_ok:
+                st.error(
+                    f"\u274c Spinning reserve insufficient: {sr_available:.1f} MW available "
+                    f"< {r.sr_required_mw:.1f} MW required "
+                    f"(dominant: {r.sr_dominant_contingency.replace('_', ' ')} event)."
+                )
+
 
 # =============================================================================
 # TAB 2: RELIABILITY
@@ -1699,6 +1743,23 @@ def render_reliability_tab(r):
         title=f"Load Distribution Across {r.n_running} Running Units{suffix}",
     )
     st.plotly_chart(fig_dist, use_container_width=True)
+
+    # ---- Pod Architecture (P05) ----
+    if hasattr(r, 'n_pods'):
+        st.divider()
+        st.subheader("Pod Architecture")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Pods", f"{r.n_pods}")
+        c2.metric("Gens / Pod", f"{r.n_per_pod}")
+        c3.metric("Normal Loading", f"{r.loading_normal_pct:.1f}%")
+        c4.metric("Contingency Load", f"{r.loading_contingency_pct:.1f}%")
+        st.caption(
+            f"All {r.n_total} generators operate simultaneously. "
+            f"Redundancy: N+1 pod \u2014 loss of any single pod ({r.n_per_pod} gens, "
+            f"{r.n_per_pod * r.unit_site_cap:.1f} MW) leaves "
+            f"{r.cap_contingency:.1f} MW available at "
+            f"{r.loading_contingency_pct:.1f}% loading."
+        )
 
     st.divider()
 
@@ -1804,6 +1865,26 @@ def render_bess_tab(r):
     c2.metric("From Generators", f"{r.spinning_from_gens:.2f} MW")
     c3.metric("From BESS", f"{r.spinning_from_bess:.2f} MW")
 
+    # Fix I — BESS SR Credit Status (P04)
+    if r.use_bess and hasattr(r, 'bess_sr_credit_valid'):
+        if r.bess_sr_credit_valid:
+            st.success(
+                f"\u2705 BESS SR credit validated \u2014 "
+                f"{r.bess_sr_available_mws:.0f} MWs available "
+                f"\u2265 {r.bess_sr_required_mws:.0f} MWs required"
+            )
+        else:
+            reasons = []
+            if not r.bess_sr_response_ok:
+                reasons.append("response time > 10 s")
+            if not r.bess_sr_energy_ok:
+                reasons.append(
+                    f"energy insufficient "
+                    f"({r.bess_sr_available_mws:.0f} MWs < {r.bess_sr_required_mws:.0f} MWs)"
+                )
+            st.error(f"\u274c BESS SR credit invalidated: {'; '.join(reasons)}. "
+                     f"spinning_from_bess forced to 0 MW.")
+
     # BESS Function Checklist
     st.divider()
     st.subheader("BESS Function Checklist")
@@ -1900,19 +1981,44 @@ def render_electrical_tab(r):
 
     c2.metric("Voltage Sag", f"{r.voltage_sag:.1f}%")
 
+    # Fix J — Transient Stability Disclaimer (P04)
+    st.caption(
+        "\u26a0\ufe0f Preliminary estimate only. Voltage sag calculated from active power balance. "
+        "A dynamic stability study (EMT/PSCAD or PSS/E) is required before detailed design."
+    )
+
     st.divider()
 
-    # ---- Spinning Reserve Detail ----
+    # ---- Spinning Reserve Detail (Fix H — P04) ----
     st.subheader("Spinning Reserve Detail")
-    data = {
-        "Component": ["Spinning Reserve Requirement", "From Generators", "From BESS", "Generator Headroom"],
-        "MW": [
-            f"{r.spinning_reserve_mw:.2f}",
-            f"{r.spinning_from_gens:.2f}",
-            f"{r.spinning_from_bess:.2f}",
-            f"{r.headroom_mw:.2f}",
-        ],
-    }
+    if hasattr(r, 'sr_required_mw'):
+        data = {
+            "Component": [
+                "SR required \u2014 physical",
+                "  \u21b3 load step contingency",
+                "  \u21b3 N-1 contingency",
+                "SR from generators",
+                "SR from BESS (validated)",
+                "SR total available",
+                "Generator headroom",
+            ],
+            "MW": [
+                f"{r.sr_required_mw:.2f}",
+                f"{r.load_step_mw:.2f}",
+                f"{r.n1_mw:.2f}",
+                f"{r.spinning_from_gens:.2f}",
+                f"{r.spinning_from_bess:.2f}",
+                f"{r.spinning_from_gens + r.spinning_from_bess:.2f}",
+                f"{r.headroom_mw:.2f}",
+            ],
+        }
+    else:
+        # Fallback for old result objects
+        data = {
+            "Component": ["Spinning Reserve", "From Generators", "From BESS", "Headroom"],
+            "MW": [f"{r.spinning_reserve_mw:.2f}", f"{r.spinning_from_gens:.2f}",
+                   f"{r.spinning_from_bess:.2f}", f"{r.headroom_mw:.2f}"],
+        }
     st.table(pd.DataFrame(data).set_index("Component"))
 
 

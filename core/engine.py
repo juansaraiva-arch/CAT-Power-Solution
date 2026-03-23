@@ -379,6 +379,8 @@ def frequency_screening(n_running: int, unit_cap_mw: float,
         'rocof_limit': rocof_limit,
         'H_total': H_total,
         'H_bess': H_bess,
+        'H_per_unit': H_mech,       # Fix L (P06) — expose per-unit inertia
+        'H_system': H_total,        # Fix L (P06) — system inertia (mech + BESS)
         'P_step_pu': P_step_pu,
         'notes': notes,
     }
@@ -395,13 +397,25 @@ def calculate_spinning_reserve_units(
     use_bess: bool = False,
     bess_power_mw: float = 0,
     gen_step_capability_pct: float = 0,
+    p_total_peak: float = 0,
+    load_step_pct: float = 0,
+    bess_energy_mwh: float = 0,
 ) -> dict:
     """
     Calculate number of running units considering spinning reserve.
 
+    Spinning reserve is now derived from physical contingencies:
+      1. Worst load step: load_step_pct × p_total_peak
+      2. N-1 contingency: loss of largest online generator at operating load
+    The effective SR is the maximum of these two and the legacy user input.
+
+    BESS SR credit is validated against:
+      - Response time ≤ 10 s (Li-ion: ~200 ms — always passes)
+      - Energy availability: available MWs ≥ required MWs over governor gap
+
     WITHOUT BESS:
       Generators must provide ALL spinning reserve as HEADROOM.
-    WITH BESS:
+    WITH BESS (validated):
       BESS provides instant response; fewer generators needed.
 
     Returns
@@ -409,14 +423,63 @@ def calculate_spinning_reserve_units(
     dict
         n_units_running, load_per_unit_pct, spinning_reserve_mw,
         spinning_from_gens, spinning_from_bess, total_online_capacity,
-        headroom_available, required_online_capacity
+        headroom_available, required_online_capacity,
+        sr_required_mw, sr_user_mw, sr_user_below_physical,
+        sr_dominant_contingency, load_step_mw, n1_mw,
+        bess_sr_credit_valid, bess_sr_response_ok, bess_sr_energy_ok,
+        bess_sr_available_mws, bess_sr_required_mws
     """
-    spinning_reserve_mw = p_avg_load * (spinning_reserve_pct / 100)
+    # ── Physical SR requirement ──
+    # Contingency 1: worst load step the system must absorb
+    load_step_mw = (load_step_pct / 100.0) * p_total_peak if p_total_peak > 0 else 0
+
+    # Contingency 2: N-1 — loss of the largest online generator
+    # Use unit_capacity as proxy (exact load per unit determined after fleet sizing)
+    n1_mw = unit_capacity
+
+    # Physically required SR = worst of the two contingencies
+    sr_required_mw = max(load_step_mw, n1_mw) if p_total_peak > 0 else 0
+
+    # Legacy user input (deprecated as UI control in P04, kept as floor)
+    sr_user_mw = p_avg_load * (spinning_reserve_pct / 100.0)
+
+    # Effective SR: physical requirement cannot be overridden downward
+    if p_total_peak > 0 and load_step_pct > 0:
+        spinning_reserve_mw = max(sr_required_mw, sr_user_mw)
+    else:
+        # Fallback to legacy behavior when new params not provided
+        spinning_reserve_mw = sr_user_mw
+
+    # Diagnostic fields
+    sr_user_below_physical = sr_user_mw < sr_required_mw
+    sr_dominant_contingency = "load_step" if load_step_mw >= n1_mw else "N-1"
+
+    # ── BESS SR credit: physical validation (Fix D — P04) ──
+    BESS_RESPONSE_TIME_S    = 0.2    # Li-ion: ~200ms — always passes
+    GOVERNOR_RESPONSE_GAP_S = 20.0   # Seconds until generators reach full governor response
+    BESS_MIN_SOC_CREDIT     = 0.20   # Reserve 20% SoC for SR duty
 
     if use_bess and bess_power_mw > 0:
-        spinning_from_bess = min(bess_power_mw, spinning_reserve_mw)
+        bess_response_ok = BESS_RESPONSE_TIME_S <= 10.0  # always True for Li-ion
+
+        bess_available_mws = bess_energy_mwh * (1.0 - BESS_MIN_SOC_CREDIT) * 3600.0
+        bess_required_mws  = bess_power_mw * GOVERNOR_RESPONSE_GAP_S
+        bess_energy_ok     = bess_available_mws >= bess_required_mws
+
+        spinning_from_bess    = min(bess_power_mw, spinning_reserve_mw) \
+                                if (bess_response_ok and bess_energy_ok) else 0.0
+        bess_sr_credit_valid  = bess_response_ok and bess_energy_ok
+        bess_sr_response_ok   = bess_response_ok
+        bess_sr_energy_ok     = bess_energy_ok
+        bess_sr_available_mws = bess_available_mws
+        bess_sr_required_mws  = bess_required_mws
     else:
-        spinning_from_bess = 0
+        spinning_from_bess    = 0.0
+        bess_sr_credit_valid  = False
+        bess_sr_response_ok   = False
+        bess_sr_energy_ok     = False
+        bess_sr_available_mws = 0.0
+        bess_sr_required_mws  = 0.0
 
     spinning_from_gens = spinning_reserve_mw - spinning_from_bess
 
@@ -440,6 +503,17 @@ def calculate_spinning_reserve_units(
         'total_online_capacity': total_online_capacity,
         'headroom_available': headroom_available,
         'required_online_capacity': required_online_capacity,
+        'sr_required_mw': sr_required_mw,
+        'sr_user_mw': sr_user_mw,
+        'sr_user_below_physical': sr_user_below_physical,
+        'sr_dominant_contingency': sr_dominant_contingency,
+        'load_step_mw': load_step_mw,
+        'n1_mw': n1_mw,
+        'bess_sr_credit_valid': bess_sr_credit_valid,
+        'bess_sr_response_ok': bess_sr_response_ok,
+        'bess_sr_energy_ok': bess_sr_energy_ok,
+        'bess_sr_available_mws': bess_sr_available_mws,
+        'bess_sr_required_mws': bess_sr_required_mws,
     }
 
 
@@ -611,7 +685,117 @@ def calculate_availability_weibull(
 
 
 # ==============================================================================
-# 8. FLEET SIZE OPTIMIZATION
+# 8a. POD ARCHITECTURE FLEET OPTIMIZER (P05)
+# ==============================================================================
+
+def _binomial_availability(n_total: int, n_required: int, a_gen: float) -> float:
+    """P(at least n_required of n_total generators available)."""
+    q = 1.0 - a_gen
+    return sum(
+        math.comb(n_total, k) * (a_gen ** k) * (q ** (n_total - k))
+        for k in range(n_required, n_total + 1)
+    )
+
+
+def pod_fleet_optimizer(
+    p_total_peak: float,
+    unit_site_cap: float,
+    a_gen: float,
+    avail_req: float,
+    max_normal_loading: float,
+    max_pods: int = 20,
+    max_per_pod: int = 40,
+) -> dict:
+    """
+    Pod architecture fleet optimizer for prime power data centers.
+
+    All generators run simultaneously at partial load. Redundancy is via
+    N+1 pod: losing one full pod leaves (N_pods-1) pods covering 100%
+    of the DC load.
+
+    Constraints:
+      1. Physical N+1 pod: (N_pods-1) * n_per_pod * unit_site_cap >= p_total_peak
+      2. Normal loading:   p_total_peak / (n_total * unit_site_cap) <= max_normal_loading
+      3. Statistical:      binomial(n_total, n_required, a_gen) >= avail_req
+
+    Sorted by (n_total ASC, N_pods ASC) — minimum fleet first.
+
+    Parameters
+    ----------
+    p_total_peak : float
+        Corrected peak load in MW (from P03).
+    unit_site_cap : float
+        Single generator site-rated capacity in MW.
+    a_gen : float
+        Generator availability (MTBF/(MTBF+MTTR)), fractional.
+    avail_req : float
+        System availability target, fractional (e.g. 0.9999).
+    max_normal_loading : float
+        Maximum sustainable loading fraction (prime_power_kw / standby_kw).
+    max_pods : int
+        Maximum pods to search (default 20).
+    max_per_pod : int
+        Maximum generators per pod to search (default 40).
+
+    Returns
+    -------
+    dict or None
+        Pod fleet result with n_pods, n_per_pod, n_total, etc.
+        None if no valid solution found.
+    """
+    n_required = math.ceil(p_total_peak / unit_site_cap)
+    best = None
+
+    for n_pods in range(2, max_pods + 1):
+        for n_per in range(1, max_per_pod + 1):
+            n_total = n_pods * n_per
+
+            if n_total < n_required:
+                continue
+
+            # Constraint 1: Physical N+1 pod
+            contingency_cap = (n_pods - 1) * n_per * unit_site_cap
+            if contingency_cap < p_total_peak:
+                continue
+
+            # Constraint 2: Normal loading cap
+            norm_loading = p_total_peak / (n_total * unit_site_cap)
+            if norm_loading > max_normal_loading:
+                continue
+
+            # Constraint 3: Statistical availability
+            a_sys = _binomial_availability(n_total, n_required, a_gen)
+            if a_sys < avail_req:
+                continue
+
+            # First valid solution found at minimum n_total
+            if best is None or n_total < best['n_total']:
+                best = {
+                    'n_pods':               n_pods,
+                    'n_per_pod':            n_per,
+                    'n_total':              n_total,
+                    'n_running':            n_total,   # all pods run simultaneously
+                    'n_reserve':            0,         # no cold standby — redundancy via pods
+                    'installed_cap':        n_total * unit_site_cap,
+                    'cap_contingency':      contingency_cap,
+                    'loading_normal_pct':   norm_loading * 100.0,
+                    'loading_contingency_pct': (p_total_peak / contingency_cap) * 100.0,
+                    'a_system_calculated':  a_sys,
+                    'n_required_min':       n_required,
+                }
+            # Once n_total starts increasing, we have the minimum — break inner loop
+            elif n_total > best['n_total']:
+                break
+
+        if best and n_pods > best['n_pods'] + 2:
+            # Safety: stop outer loop once solutions get worse
+            break
+
+    return best
+
+
+# ==============================================================================
+# 8b. LEGACY FLEET SIZE OPTIMIZATION (preserved for backward compatibility)
 # ==============================================================================
 
 def optimize_fleet_size(

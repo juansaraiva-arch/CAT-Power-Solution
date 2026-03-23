@@ -137,6 +137,15 @@ INPUT_DEFAULTS = {
     "enable_lcoe_target": False,
     "target_lcoe": 0.08,
 
+    # CAPEX BOS adders — as fraction of (generator equipment + installation) subtotal
+    "bos_pct":           0.17,   # BOS: MV switchgear, transformers (~17%)
+    "civil_pct":         0.13,   # Civil: foundations, grading, drainage (~13%)
+    "fuel_system_pct":   0.06,   # Fuel: gas piping, regulators, metering (~6%)
+    "electrical_pct":    0.06,   # MV electrical: cables, protection relays (~6%)
+    "epc_pct":           0.12,   # EPC management fee (~12%)
+    "commissioning_pct": 0.025,  # Commissioning and startup (~2.5%)
+    "contingency_pct":   0.10,   # Contingency allowance (~10%)
+
     # Dual-Fuel / LNG
     "lng_backup_pct": 30.0,
 

@@ -305,6 +305,20 @@ def run_full_sizing(inputs: SizingInput) -> dict:
     a_gen_derived        = a_gen
     max_normal_loading_pct = max_normal_loading * 100.0
 
+    # ── Electrical Sizing (P08) ──
+    from api.services.electrical_sizing import calculate_electrical_sizing
+    electrical = calculate_electrical_sizing(
+        n_pods               = n_pods,
+        n_per_pod            = n_per_pod,
+        P_gen_mw             = unit_site_cap,
+        V_gen_kv             = 13.8,
+        pf                   = getattr(inputs, 'pf_electrical', 0.80),
+        z_trafo_pu           = getattr(inputs, 'z_trafo_pu', 0.0575),
+        xd_subtrans_pu       = getattr(inputs, 'xd_subtrans_pu', 0.20),
+        isc_asymmetry_factor = getattr(inputs, 'isc_asymmetry_factor', 1.30),
+        preferred_hv_kv      = getattr(inputs, 'preferred_hv_kv', None),
+    )
+
     # Legacy compatibility — keep old variable names used downstream
     n_running_from_load  = n_running
     unit_availability = gen_data.get("unit_availability", 0.93)
@@ -782,6 +796,8 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         freq_result.get('rocof_hz_s', 0),
         freq_result.get('rocof_limit', 2.0),
         n_reserve,
+        n_pods=pod_result.get('n_pods', 0) if pod_result else 0,
+        n_per_pod=pod_result.get('n_per_pod', 0) if pod_result else 0,
     )
 
     # ── Step 18j: Gas Price Sensitivity ──
@@ -1020,6 +1036,8 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         frequency_screening=freq_result,
         # Grid comparison
         grid_comparison=grid_comparison,
+        # Electrical sizing (P08)
+        electrical_sizing=electrical,
     )
 
 

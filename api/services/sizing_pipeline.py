@@ -711,7 +711,7 @@ def run_full_sizing(inputs: SizingInput) -> dict:
             inputs.pipeline_distance_km, inputs.pipeline_diameter_inch
         )
         # Recalculate infra
-        infra_capex_m = (pipeline_cost + permitting_cost + commissioning_cost) / 1e6
+        infra_capex_m = (pipeline_cost + permitting_cost + commissioning_cost_user) / 1e6
 
     # ── Step 18d: CHP / Tri-Generation ──
     chp_results = {}
@@ -936,7 +936,7 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         a_system_calculated=a_system_calculated,
         a_gen_derived=a_gen_derived,
         max_normal_loading_pct=max_normal_loading_pct,
-        unit_site_cap=unit_site_cap,
+        # unit_site_cap already set above (line 917)
         # Spinning
         spinning_reserve_mw=selected_config.get("spinning_reserve_mw", 0),
         spinning_from_gens=selected_config.get("spinning_from_gens", 0),
@@ -999,7 +999,7 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         breakeven_gas_price=gas_sens.get('breakeven_gas_price', 0),
         pipeline_cost_usd=pipeline_cost,
         permitting_cost_usd=permitting_cost,
-        commissioning_cost_usd=commissioning_cost,
+        commissioning_cost_usd=commissioning_cost_user,
         # Financial extras
         capex_breakdown=capex_breakdown,
         capex_assumptions=capex_assumptions,

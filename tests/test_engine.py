@@ -94,13 +94,13 @@ class TestTransientStability:
 
     def test_pass_with_many_units(self):
         """Many units reduce equivalent reactance → passes."""
-        ok, sag = transient_stability_check(0.14, 50, 25)
+        ok, sag = transient_stability_check(0.14, 50, 25, 2.5)
         assert ok is True
         assert sag < 10
 
     def test_fail_with_few_units(self):
         """Few units with high step load → fails."""
-        ok, sag = transient_stability_check(0.14, 1, 100)
+        ok, sag = transient_stability_check(0.14, 1, 100, 2.5)
         assert ok is False
         assert sag > 10
 

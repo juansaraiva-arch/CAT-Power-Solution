@@ -185,6 +185,14 @@ INPUT_DEFAULTS = {
     "pipeline_distance_km": 0.0,
     "pipeline_diameter_inch": 6.0,
 
+    # Gas Pipeline Sizing (Weymouth)
+    "gas_supply_pressure_psia": 100.0,   # psia — utility supply pressure at site boundary
+    "gas_pipeline_length_miles": 1.0,    # miles — distance from utility tap to site
+    "gas_pipe_efficiency": 0.92,         # Weymouth pipe efficiency factor
+    "gas_sg": 0.65,                      # specific gravity (pipeline nat gas, CH4-dominant)
+    "gas_temp_f": 60.0,                  # °F — average gas temperature
+    "gas_z_factor": 0.90,               # compressibility factor (<300 psia)
+
     # Aux Load
     "aux_load_pct": 4.0,
 }

@@ -39,6 +39,7 @@ from core.engine import (
     design_validation_scorecard,
     lcoe_gap_recommender,
     footprint_optimization_recommendations,
+    calculate_gas_pipeline,
 )
 from core.generator_library import GENERATOR_LIBRARY
 from api.services.generator_resolver import resolve_generator
@@ -911,6 +912,28 @@ def run_full_sizing(inputs: SizingInput) -> dict:
             'savings_20yr': cum_grid - cum_gas,
         }
 
+    # ── Step 18g: Gas Pipeline Sizing (P10) ──
+    gas_pipeline = None
+    fuel_curve = gen_data.get('fuel_consumption_curve')
+    if fuel_curve and p_total_avg > 0:
+        # Interpolate operating-point heat rate from fuel curve
+        curve_load_pcts = fuel_curve['load_pct']
+        curve_mj_vals   = fuel_curve['mj_per_ekwh']
+        clamped_load = min(max(load_per_unit_pct, curve_load_pcts[0]), curve_load_pcts[-1])
+        hr_op_mj_kwh = float(np.interp(clamped_load, curve_load_pcts, curve_mj_vals))
+
+        gas_pipeline = calculate_gas_pipeline(
+            p_total_avg_mw           = p_total_avg,
+            hr_op_mj_kwh            = hr_op_mj_kwh,
+            gen_data                 = gen_data,
+            gas_supply_pressure_psia = getattr(inputs, 'gas_supply_pressure_psia', 100.0),
+            pipeline_length_miles    = getattr(inputs, 'gas_pipeline_length_miles', 1.0),
+            pipe_efficiency          = getattr(inputs, 'gas_pipe_efficiency', 0.92),
+            gas_sg                   = getattr(inputs, 'gas_sg', 0.65),
+            gas_temp_f               = getattr(inputs, 'gas_temp_f', 60.0),
+            gas_z_factor             = getattr(inputs, 'gas_z_factor', 0.90),
+        )
+
     # ── Step 19: Assemble result ──
     rel_configs = [ReliabilityConfig(**c) for c in reliability_configs]
 
@@ -1039,6 +1062,8 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         grid_comparison=grid_comparison,
         # Electrical sizing (P08)
         electrical_sizing=electrical,
+        # Gas pipeline (P10)
+        gas_pipeline=gas_pipeline,
     )
 
 

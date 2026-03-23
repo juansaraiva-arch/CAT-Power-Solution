@@ -63,6 +63,14 @@ class SizingInput(BaseModel):
     pipeline_distance_km: float = Field(0.0, ge=0, description="Pipeline distance in km (0=skip auto-calc)")
     pipeline_diameter_inch: float = Field(6.0, ge=2, le=48, description="Pipeline diameter in inches")
 
+    # ── Gas Pipeline Sizing (Weymouth, P10) ──
+    gas_supply_pressure_psia: float = Field(100.0, ge=10, le=1500, description="Gas utility supply pressure at site boundary (psia)")
+    gas_pipeline_length_miles: float = Field(1.0, ge=0.1, le=50, description="Distance from utility tap to site (miles)")
+    gas_pipe_efficiency: float = Field(0.92, ge=0.5, le=1.0, description="Weymouth pipe efficiency factor")
+    gas_sg: float = Field(0.65, ge=0.4, le=1.0, description="Gas specific gravity")
+    gas_temp_f: float = Field(60.0, ge=-20, le=150, description="Average gas temperature (°F)")
+    gas_z_factor: float = Field(0.90, ge=0.5, le=1.0, description="Gas compressibility factor")
+
     # ── BESS Economics ──
     bess_cost_kw: float = Field(250.0, ge=0)
     bess_cost_kwh: float = Field(400.0, ge=0)
@@ -296,6 +304,9 @@ class SizingResult(BaseModel):
 
     # ── Electrical Sizing (P08) ──
     electrical_sizing: dict = {}
+
+    # ── Gas Pipeline Sizing (P10) ──
+    gas_pipeline: Optional[dict] = None
 
     # ── Off-Grid vs Grid ──
     grid_comparison: dict = {}

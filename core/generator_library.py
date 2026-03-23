@@ -57,6 +57,7 @@ GENERATOR_LIBRARY = {
         "standby_kw": 1900,
         "mtbf_hours": 2500,               # conservative — mobile unit
         "mttr_hours": 12,
+        "gas_inlet_pressure_psia": 5.0,
     },
     "G3520FR": {
         "description": "Fast Response Gen Set (High Speed)",
@@ -94,6 +95,7 @@ GENERATOR_LIBRARY = {
         "standby_kw": 2500,
         "mtbf_hours": 3000,
         "mttr_hours": 16,
+        "gas_inlet_pressure_psia": 5.0,
     },
     "G3520K": {
         "description": "High Efficiency Gen Set (High Speed)",
@@ -131,6 +133,7 @@ GENERATOR_LIBRARY = {
         "standby_kw": 2500,
         "mtbf_hours": 3000,
         "mttr_hours": 16,
+        "gas_inlet_pressure_psia": 5.0,
     },
     "G3516H": {
         "description": "Data Center Workhorse (High Speed, 2.5 MW)",
@@ -168,6 +171,7 @@ GENERATOR_LIBRARY = {
         "standby_kw": 2500,
         "mtbf_hours": 3000,
         "mttr_hours": 16,
+        "gas_inlet_pressure_psia": 5.0,
     },
     "CG260-16": {
         "description": "Cogeneration Specialist (High Speed)",
@@ -205,6 +209,7 @@ GENERATOR_LIBRARY = {
         "standby_kw": 3957,
         "mtbf_hours": 3500,
         "mttr_hours": 12,
+        "gas_inlet_pressure_psia": 5.0,
     },
     "C175-20": {
         "description": "High Power Gas Gen Set (4 MW, High Speed)",
@@ -242,6 +247,7 @@ GENERATOR_LIBRARY = {
         "standby_kw": 4000,
         "mtbf_hours": 3000,
         "mttr_hours": 16,
+        "gas_inlet_pressure_psia": 15.0,
     },
     "Titan 130": {
         "description": "Solar Gas Turbine (16.5 MW)",
@@ -276,6 +282,7 @@ GENERATOR_LIBRARY = {
         "standby_kw": 16500,
         "mtbf_hours": 4000,
         "mttr_hours": 24,
+        "gas_inlet_pressure_psia": 200.0,
     },
     "Titan 250": {
         "description": "Solar Gas Turbine (23.2 MW)",
@@ -310,6 +317,7 @@ GENERATOR_LIBRARY = {
         "standby_kw": 23200,
         "mtbf_hours": 4000,
         "mttr_hours": 24,
+        "gas_inlet_pressure_psia": 250.0,
     },
     "Titan 350": {
         "description": "Solar Gas Turbine (38 MW)",
@@ -344,6 +352,7 @@ GENERATOR_LIBRARY = {
         "standby_kw": 38000,
         "mtbf_hours": 4000,
         "mttr_hours": 24,
+        "gas_inlet_pressure_psia": 300.0,
     },
     "G20CM34": {
         "description": "Medium Speed Baseload Platform",
@@ -378,6 +387,7 @@ GENERATOR_LIBRARY = {
         "standby_kw": 9760,
         "mtbf_hours": 3500,
         "mttr_hours": 18,
+        "gas_inlet_pressure_psia": 15.0,
     },
 }
 

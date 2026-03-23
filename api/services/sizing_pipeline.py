@@ -936,7 +936,7 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         a_system_calculated=a_system_calculated,
         a_gen_derived=a_gen_derived,
         max_normal_loading_pct=max_normal_loading_pct,
-        unit_site_cap=unit_site_cap,
+        # unit_site_cap already set above (line 917)
         # Spinning
         spinning_reserve_mw=selected_config.get("spinning_reserve_mw", 0),
         spinning_from_gens=selected_config.get("spinning_from_gens", 0),

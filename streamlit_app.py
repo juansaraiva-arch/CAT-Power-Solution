@@ -2173,6 +2173,29 @@ def render_electrical_tab(r):
             f"{e['xfmr_loading_normal_pct']:.0f}% (~50% expected — contingency is the design basis)."
         )
 
+        if 'mv_isc' in e:
+            mi = e['mv_isc']
+            st.markdown("**Short circuit — 13.8 kV bus (ring bus topology)**")
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Local contribution",   f"{mi['I_local_ka']:.1f} kA")
+            c2.metric("Remote (ring infeed)",  f"{mi['I_remote_ka']:.1f} kA")
+            c3.metric("ISC asymmetric",        f"{mi['I_isc_asym_ka']:.1f} kA")
+            c4.metric("Gen breaker required",  f"{mi['mv_breaker_ka']} kA (ANSI C37)")
+            st.caption(
+                f"Ring bus: fault at 13.8 kV bus receives own generators "
+                f"({mi['I_local_ka']:.1f} kA direct) plus all other pods "
+                f"through two transformers in series "
+                f"({mi['I_remote_ka']:.1f} kA). Remote contribution dominates."
+            )
+            if mi['mv_breaker_ka'] >= 63:
+                st.warning(
+                    f"⚠️ ISC asymmetric = {mi['I_isc_asym_ka']:.1f} kA requires "
+                    f"{mi['mv_breaker_ka']} kA switchgear at 13.8 kV. "
+                    "Verify availability with switchgear manufacturer. "
+                    "For plants > 150 MW consider current-limiting reactors "
+                    "or split-bus topology to reduce fault levels."
+                )
+
         st.divider()
         st.subheader(f"HV Collector Bus — {e['hv_voltage_kv']:.1f} kV")
 

@@ -317,6 +317,7 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         xd_subtrans_pu       = getattr(inputs, 'xd_subtrans_pu', 0.20),
         isc_asymmetry_factor = getattr(inputs, 'isc_asymmetry_factor', 1.30),
         preferred_hv_kv      = getattr(inputs, 'preferred_hv_kv', None),
+        p_load_mw            = p_total_peak,
     )
 
     # Legacy compatibility — keep old variable names used downstream

@@ -932,6 +932,28 @@ def render_sidebar():
         )
         # spinning_res_pct removed — now derived from physical contingencies (P04)
         spinning_res_pct = 0.0
+
+        st.markdown("**Protection Limits**")
+        voltage_sag_limit_pct = st.number_input(
+            "Max Voltage Sag (%)", min_value=5.0, max_value=35.0,
+            value=float(INPUT_DEFAULTS.get('voltage_sag_limit_pct', 15.0)), step=1.0,
+            help="Maximum acceptable voltage sag at generator bus during a load step event. "
+                 "Typical data center requirement: 10-20%.",
+        )
+        freq_nadir_limit_hz = st.number_input(
+            "Min Frequency Nadir (Hz)", min_value=55.0, max_value=float(freq_hz) - 0.1,
+            value=float(INPUT_DEFAULTS.get('freq_nadir_limit_hz', freq_hz - 0.5)),
+            step=0.1, format="%.1f",
+            help="Minimum acceptable frequency during a contingency event. "
+                 "IEEE 1547 / NERC: 59.5 Hz for 60 Hz systems.",
+        )
+        freq_rocof_limit_hz_s = st.number_input(
+            "Max RoCoF (Hz/s)", min_value=0.1, max_value=10.0,
+            value=float(INPUT_DEFAULTS.get('freq_rocof_limit_hz_s', 2.0)),
+            step=0.1, format="%.1f",
+            help="Maximum rate of change of frequency. IEEE 1547: 2.0 Hz/s.",
+        )
+
         avail_req = st.number_input(
             "Availability Requirement (%)", min_value=90.0, max_value=100.0,
             value=float(INPUT_DEFAULTS["avail_req"]), step=0.01,
@@ -1124,6 +1146,15 @@ def render_sidebar():
             value=float(gen_data_params.get('est_install_kw', 600)),
             step=25.0, format="%.0f",
         )
+        override_inertia = st.number_input(
+            "Inertia Constant H (s)", min_value=0.1, max_value=10.0,
+            value=float(gen_data_params.get('inertia_constant_H', 1.0)),
+            step=0.1, format="%.1f",
+            help="Generator rotating mass inertia constant (H). "
+                 "Reciprocating gas engines: 0.5–1.5 s. "
+                 "Synchronous machines: 2–8 s. "
+                 "Lower H → faster frequency drop after a contingency.",
+        )
 
         # Build overrides dict (only include changed values)
         gen_overrides = {}
@@ -1158,6 +1189,10 @@ def render_sidebar():
         lib_install = gen_data_params.get('est_install_kw', 600)
         if abs(override_install - lib_install) > 0.001:
             gen_overrides['est_install_kw'] = override_install
+
+        lib_inertia = gen_data_params.get('inertia_constant_H', 1.0)
+        if abs(override_inertia - lib_inertia) > 0.01:
+            gen_overrides['inertia_constant_H'] = override_inertia
 
         if gen_overrides:
             st.info(f"{len(gen_overrides)} parameter(s) overridden")
@@ -1230,6 +1265,66 @@ def render_sidebar():
             value=float(INPUT_DEFAULTS["bess_om_kw_yr"]), step=1.0,
             help=HELP_TEXTS.get("bess_om_kw_yr", ""),
         )
+
+        st.markdown("**CAPEX Adders** *(% of gen + install base)*")
+        with st.expander("Advanced CAPEX Adders", expanded=False):
+            st.caption(
+                "Applied as a percentage of (generator equipment + installation) subtotal. "
+                "Defaults calibrated to CAT prime power data center projects."
+            )
+            col1, col2 = st.columns(2)
+            with col1:
+                bos_pct = st.number_input(
+                    "BOS / Switchgear + Xfmr (%)", 0.0, 50.0,
+                    value=float(INPUT_DEFAULTS.get('bos_pct', 0.17)) * 100, step=1.0,
+                    help="MV switchgear, transformers, protection relays.",
+                ) / 100.0
+                civil_pct = st.number_input(
+                    "Civil / Site Work (%)", 0.0, 50.0,
+                    value=float(INPUT_DEFAULTS.get('civil_pct', 0.13)) * 100, step=1.0,
+                    help="Foundations, grading, drainage, fencing.",
+                ) / 100.0
+                fuel_system_pct = st.number_input(
+                    "Fuel System (%)", 0.0, 30.0,
+                    value=float(INPUT_DEFAULTS.get('fuel_system_pct', 0.06)) * 100, step=0.5,
+                    help="Gas piping, regulators, metering.",
+                ) / 100.0
+            with col2:
+                epc_pct = st.number_input(
+                    "EPC Management (%)", 0.0, 30.0,
+                    value=float(INPUT_DEFAULTS.get('epc_pct', 0.12)) * 100, step=1.0,
+                    help="Engineering, procurement, construction management.",
+                ) / 100.0
+                contingency_pct = st.number_input(
+                    "Contingency (%)", 0.0, 30.0,
+                    value=float(INPUT_DEFAULTS.get('contingency_pct', 0.10)) * 100, step=1.0,
+                    help="Project contingency allowance.",
+                ) / 100.0
+
+            # Infrastructure costs (absolute $)
+            st.markdown("**Infrastructure (absolute $)**")
+            col3, col4 = st.columns(2)
+            with col3:
+                pipeline_cost_usd = st.number_input(
+                    "Gas Pipeline ($)", min_value=0.0,
+                    value=float(INPUT_DEFAULTS.get('pipeline_cost_usd', 500000.0)),
+                    step=50000.0, format="%.0f",
+                    help="Gas supply pipeline to site. Default: $500k (typical short run).",
+                )
+            with col4:
+                permitting_cost_usd = st.number_input(
+                    "Permitting ($)", min_value=0.0,
+                    value=float(INPUT_DEFAULTS.get('permitting_cost_usd', 250000.0)),
+                    step=25000.0, format="%.0f",
+                    help="Environmental, electrical, and construction permits.",
+                )
+            commissioning_cost_usd = st.number_input(
+                "Commissioning ($)", min_value=0.0,
+                value=float(INPUT_DEFAULTS.get('commissioning_cost_usd', 0.0)),
+                step=50000.0, format="%.0f",
+                help="Startup and commissioning. If 0, calculated automatically from "
+                     "CAPEX adder (2.5% of gen+install).",
+            )
 
     # ---- 10. CHP / Tri-Gen ----
     with st.sidebar.expander(":fire: CHP / Tri-Gen"):
@@ -1468,6 +1563,16 @@ def render_sidebar():
         max_area_m2=max_area_m2,
         region=region,
         unit_system=unit_sys,
+        # Protection limits (P08 Fix 4)
+        voltage_sag_limit_pct=voltage_sag_limit_pct,
+        freq_nadir_limit_hz=freq_nadir_limit_hz,
+        freq_rocof_limit_hz_s=freq_rocof_limit_hz_s,
+        # CAPEX BOS adders (P08 Fix 6)
+        bos_pct=bos_pct,
+        civil_pct=civil_pct,
+        fuel_system_pct=fuel_system_pct,
+        epc_pct=epc_pct,
+        contingency_pct=contingency_pct,
     )
 
     # ── Proposal Information (commercial fields for DOCX generation) ──
@@ -1566,6 +1671,16 @@ def render_sidebar():
 
 
 # =============================================================================
+# HELPERS
+# =============================================================================
+def _fleet_size_label(r) -> str:
+    """Format fleet size for pod architecture or legacy N+reserve."""
+    if hasattr(r, 'n_pods') and hasattr(r, 'n_per_pod') and r.n_pods > 0:
+        return f"{r.n_pods}pods × {r.n_per_pod} = {r.n_total}"
+    return f"{r.n_running}+{r.n_reserve} = {r.n_total}"
+
+
+# =============================================================================
 # EXECUTIVE SUMMARY (before tabs)
 # =============================================================================
 def render_executive_summary(r, benchmark_price: float):
@@ -1575,7 +1690,7 @@ def render_executive_summary(r, benchmark_price: float):
 
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     c1.metric("Total DC Load", f"{r.p_total_dc:.1f} MW")
-    c2.metric("Fleet Size", f"{r.n_running}+{r.n_reserve} = {r.n_total}")
+    c2.metric("Fleet Size", _fleet_size_label(r))
     c3.metric("LCOE", f"${r.lcoe:.4f}/kWh")
     c4.metric("Availability", f"{r.system_availability * 100:.3f}%")
     c5.metric("BESS Power", f"{r.bess_power_mw:.2f} MW")
@@ -1613,7 +1728,7 @@ def render_summary_tab(r):
     # Headline metrics
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Total DC Load", f"{r.p_total_dc:.1f} MW")
-    c2.metric("Fleet Size", f"{r.n_running}+{r.n_reserve} = {r.n_total}")
+    c2.metric("Fleet Size", _fleet_size_label(r))
     c3.metric("LCOE", f"${r.lcoe:.4f}/kWh")
     c4.metric("Availability", f"{r.system_availability * 100:.3f}%")
 
@@ -1694,6 +1809,26 @@ def render_summary_tab(r):
 # =============================================================================
 def render_reliability_tab(r):
     """Spinning reserve visualization and reliability configuration comparison."""
+
+    # ---- Pod Architecture (if applicable) ----
+    if hasattr(r, 'n_pods') and r.n_pods > 0:
+        st.subheader("Pod Architecture")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Number of Pods",        f"{r.n_pods}")
+        c2.metric("Generators / Pod",      f"{r.n_per_pod}")
+        c3.metric("Normal Loading",        f"{r.loading_normal_pct:.1f}%")
+        c4.metric("Contingency Loading",   f"{r.loading_contingency_pct:.1f}%")
+
+        cap_contingency = getattr(r, 'cap_contingency', (r.n_pods - 1) * r.n_per_pod * r.unit_site_cap)
+        st.caption(
+            f"All {r.n_total} generators operate simultaneously across {r.n_pods} pods. "
+            f"**N+1 pod redundancy:** loss of any single pod ({r.n_per_pod} gens, "
+            f"{r.n_per_pod * r.unit_site_cap:.1f} MW) leaves {cap_contingency:.1f} MW "
+            f"available at {r.loading_contingency_pct:.1f}% loading. "
+            f"Normal loading {r.loading_normal_pct:.1f}% ≤ prime/standby ratio — "
+            f"thermal margin maintained in all operating conditions."
+        )
+        st.divider()
 
     # ---- Spinning Reserve Distribution ----
     st.subheader("Load Distribution per Running Unit")
@@ -1781,7 +1916,8 @@ def render_reliability_tab(r):
 
         configs_data.append({
             "Configuration": cfg.name,
-            "Fleet": f"{cfg.n_running}+{cfg.n_reserve}",
+            "Fleet": f"{r.n_pods}p×{r.n_per_pod}" if hasattr(r, 'n_pods') and r.n_pods > 0
+                     else f"{cfg.n_running}+{cfg.n_reserve}",
             "Total": cfg.n_total,
             "BESS (MW/MWh)": f"{cfg.bess_mw:.0f}/{cfg.bess_mwh:.0f}" if cfg.bess_mw > 0 else "None",
             "BESS Credit": f"{cfg.bess_credit:.1f}",
@@ -2021,6 +2157,68 @@ def render_electrical_tab(r):
         }
     st.table(pd.DataFrame(data).set_index("Component"))
 
+    # ---- Electrical Sizing (P08) ----
+    if hasattr(r, 'electrical_sizing'):
+        e = r.electrical_sizing
+        st.divider()
+        st.subheader("MV Generator Bus — 13.8 kV")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Normal Current",      f"{e['mv_I_normal_a']:.0f} A")
+        c2.metric("Contingency Current", f"{e['mv_I_contingency_a']:.0f} A")
+        c3.metric("Bus Rating",          f"{e['mv_bus_rating_a']:,} A")
+        c4.metric(f"{e['xfmr_count']} Transformers", f"{e['xfmr_mva_selected']:.1f} MVA each")
+        st.caption(
+            f"Bus sized for N+1 pod contingency (both pods routing to one transformer). "
+            f"Transformer {e['xfmr_voltage_ratio']} — normal loading: "
+            f"{e['xfmr_loading_normal_pct']:.0f}% (~50% expected — contingency is the design basis)."
+        )
+
+        st.divider()
+        st.subheader(f"HV Collector Bus — {e['hv_voltage_kv']:.1f} kV")
+
+        levels_data = []
+        for V, d in e['hv_all_levels'].items():
+            levels_data.append({
+                "Voltage": f"{V:.1f} kV",
+                "I normal": f"{d['I_normal_a']:.0f} A",
+                "Bus rating": f"{d['bus_rating_a']:,} A",
+                "Ampacity": "✅ OK" if d['bus_ok'] else "❌ EXCEEDS",
+                "ISC sym": f"{d['I_isc_sym_ka']:.1f} kA",
+                "ISC asym": f"{d['I_isc_asym_ka']:.1f} kA",
+                "Breaker": f"{d['breaker_ka']} kA",
+                "": "← SELECTED" if V == e['hv_voltage_kv'] else "",
+            })
+        st.table(pd.DataFrame(levels_data).set_index("Voltage"))
+
+        if e['hv_voltage_kv'] > 34.5:
+            i_34 = e['hv_all_levels'][34.5]['I_normal_a']
+            st.info(
+                f"ℹ️ 34.5 kV bus would require {i_34:.0f} A — exceeds 3,000 A "
+                f"practical limit. Escalated to {e['hv_voltage_kv']:.1f} kV automatically."
+            )
+
+        st.divider()
+        st.subheader("Short Circuit Analysis")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("ISC Symmetric",    f"{e['isc_sym_ka']:.1f} kA")
+        c2.metric("ISC Asymmetric",   f"{e['isc_asym_ka']:.1f} kA")
+        c3.metric("Breaker Required", f"{e['hv_breaker_ka']} kA (ANSI C37)")
+        st.caption(
+            f"Generator X''d contributes {e['isc_z_gen_pct']:.0f}% of fault impedance "
+            f"(transformer: {e['isc_z_trafo_pct']:.0f}%). In off-grid prime power systems, "
+            f"generators self-limit fault current — ISC is typically 9–20 kA at 34.5 kV, "
+            f"always within 25 kA standard breakers."
+        )
+        st.warning(
+            "⚠️ **Engineering disclaimer:** ISC values are preliminary estimates for "
+            "conceptual design and equipment pre-selection only. Assumptions: "
+            f"Z_trafo={e['assumptions']['z_trafo_pu']*100:.2f}% (ANSI typical 5.5–7.5%), "
+            f"X''d={e['assumptions']['xd_subtrans_pu']*100:.0f}% per unit, "
+            f"cable impedance {e['assumptions']['cable_impedance']}. "
+            "A formal short-circuit study (IEC 60909 or ANSI/IEEE C37) is required "
+            "before equipment purchase and protection relay settings."
+        )
+
 
 # =============================================================================
 # TAB 5: LOAD PROFILE
@@ -2217,8 +2415,8 @@ def render_financial_tab(r, benchmark_price: float):
     # ---- Annual Costs ----
     st.subheader("Annual Operating Costs")
     c1, c2 = st.columns(2)
-    c1.metric("Annual Fuel Cost", f"${r.annual_fuel_cost:,.2f}")
-    c2.metric("Annual O&M Cost", f"${r.annual_om_cost:,.2f}")
+    c1.metric("Annual Fuel Cost", f"${r.annual_fuel_cost / 1e6:.2f}M / yr")
+    c2.metric("Annual O&M Cost", f"${r.annual_om_cost / 1e6:.2f}M / yr")
 
     st.divider()
 
@@ -2229,10 +2427,11 @@ def render_financial_tab(r, benchmark_price: float):
         capex_items = []
         for key, val in r.capex_breakdown.items():
             label = key.replace("_", " ").title()
+            cost_m = round(float(val) / 1_000_000, 2) if val else 0.00
             capex_items.append({
                 "Component": label,
                 "Assumption": assumptions.get(key, ""),
-                "Cost ($)": round(float(val), 2) if val else 0.00,
+                "Cost ($M)": cost_m,
             })
 
         df_capex = pd.DataFrame(capex_items)
@@ -2240,18 +2439,19 @@ def render_financial_tab(r, benchmark_price: float):
             df_capex,
             use_container_width=True,
             hide_index=True,
-            disabled=["Component"],
+            disabled=["Component", "Assumption"],
             column_config={
-                "Cost ($)": st.column_config.NumberColumn(
-                    format="%.2f",
+                "Cost ($M)": st.column_config.NumberColumn(
+                    format="$%.2fM",
                     min_value=0.0,
+                    step=0.01,
                 ),
             },
             num_rows="fixed",
             key="capex_editor",
         )
-        capex_total = edited_capex["Cost ($)"].sum()
-        st.metric("Total CAPEX (Edited)", f"${capex_total:,.2f}")
+        capex_total = edited_capex["Cost ($M)"].sum() * 1_000_000
+        st.metric("Total CAPEX", f"${capex_total / 1_000_000:,.2f}M")
 
     st.divider()
 

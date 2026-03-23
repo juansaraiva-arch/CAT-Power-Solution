@@ -116,10 +116,22 @@ INPUT_DEFAULTS = {
     "bess_life_batt": 10,
     "bess_life_inv": 15,
 
-    # Infrastructure costs (optional — if 0, assumed in BOP/install multiplier)
-    "pipeline_cost_usd": 0,
-    "permitting_cost_usd": 0,
-    "commissioning_cost_usd": 0,
+    # Infrastructure costs
+    "pipeline_cost_usd": 500_000,       # $ — typical short run ~$500k
+    "permitting_cost_usd": 250_000,     # $ — typical data center ~$200-500k
+    "commissioning_cost_usd": 0,        # $ — keep 0; calculated from commissioning_pct
+
+    # Protection Limits (P08)
+    "voltage_sag_limit_pct": 15.0,      # % — max acceptable voltage sag at gen bus
+    "freq_nadir_limit_hz": 59.5,        # Hz — min acceptable frequency (60 Hz system)
+    "freq_rocof_limit_hz_s": 2.0,       # Hz/s — max rate of change of frequency
+
+    # CAPEX BOS Adders (% of gen + install base)
+    "bos_pct": 0.17,
+    "civil_pct": 0.13,
+    "fuel_system_pct": 0.06,
+    "epc_pct": 0.12,
+    "contingency_pct": 0.10,
 
     # Fuel Infrastructure
     "fuel_infra_mult": 1.0,

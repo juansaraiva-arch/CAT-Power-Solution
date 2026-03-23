@@ -1820,6 +1820,8 @@ def design_validation_scorecard(
     rocof_hz_s: float,
     rocof_limit: float,
     n_reserve: int,
+    n_pods: int = 0,
+    n_per_pod: int = 0,
 ) -> list:
     """
     8-point design validation scorecard.
@@ -1912,14 +1914,24 @@ def design_validation_scorecard(
         'notes': '',
     })
 
-    # 8. N+X Redundancy
-    checks.append({
-        'check': 'N+X Redundancy',
-        'passed': n_reserve >= 1,
-        'actual': f'N+{n_reserve}',
-        'requirement': '>= N+1',
-        'notes': '' if n_reserve >= 1 else 'No reserve units — single point of failure',
-    })
+    # 8. N+X Redundancy (pod-level or legacy)
+    if n_pods > 0:
+        pod_redundancy_ok = n_pods >= 2
+        checks.append({
+            'check': 'N+1 Pod Redundancy',
+            'passed': pod_redundancy_ok,
+            'actual': f'{n_pods} pods × {n_per_pod} gens',
+            'requirement': 'N≥2 pods',
+            'notes': '' if pod_redundancy_ok else 'Single pod — no redundancy',
+        })
+    else:
+        checks.append({
+            'check': 'N+X Redundancy',
+            'passed': n_reserve >= 1,
+            'actual': f'N+{n_reserve}',
+            'requirement': '>= N+1',
+            'notes': '' if n_reserve >= 1 else 'No reserve units — single point of failure',
+        })
 
     return checks
 

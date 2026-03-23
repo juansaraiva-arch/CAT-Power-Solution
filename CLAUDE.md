@@ -3,21 +3,21 @@
 ## Project Overview
 Prime power sizing platform for AI Data Centers and Industrial projects.
 **Owner:** Francisco Saraiva — LEPS Global, Caterpillar Electric Power
-**Version:** 4.0 | **Python:** 3.11+ | **Framework:** FastAPI + Streamlit
+**Version:** 5.0 | **Python:** 3.11+ | **Framework:** FastAPI + Streamlit
 
 ## Critical Rules
-- **NEVER modify files in `core/`** — This is validated CAT IP. Any change requires full test suite re-validation.
+- **NEVER modify files in `core/`** — This is validated CAT IP. Any change requires full test suite re-validation and Francisco's explicit authorization.
 - **NEVER commit `.env`** — Only `.env.example` goes in the repo. Secrets stay local.
 - **NEVER modify `api/schemas/`** unless absolutely necessary — These define the API contract.
 
 ## Architecture
 
 ```
-core/                  ← Calculation engine (16 functions) — DO NOT TOUCH (except proposal modules)
-  engine.py            ← Derating tables, LCOE, availability, emissions, etc.
-  generator_library.py ← 10 CAT generator models with full specs
+core/                  ← Calculation engine — DO NOT TOUCH without authorization
+  engine.py            ← Derating, LCOE, availability, emissions, pod fleet optimizer, SR calculation
+  generator_library.py ← 10 CAT generator models with full specs (incl. prime_power_kw, mtbf, mttr)
   pdf_report.py        ← ReportLab PDF generation (executive + comprehensive)
-  project_manager.py   ← INPUT_DEFAULTS (76 inputs), TEMPLATES, COUNTRIES, HELP_TEXTS
+  project_manager.py   ← INPUT_DEFAULTS (83+ inputs incl. CAPEX BOS adders), TEMPLATES, COUNTRIES, HELP_TEXTS
   proposal_defaults.py ← Default values, dropdown options for proposal form (PROPOSAL_DEFAULTS, INCOTERM_OPTIONS, etc.)
   proposal_generator.py← DOCX proposal generation with Caterpillar branding, uses python-docx
 
@@ -35,7 +35,7 @@ api/                   ← FastAPI REST API
     reports.py         ← require_role("full") — PDF generation
   schemas/             ← Pydantic models (SizingInput, SizingResult, etc.)
   services/
-    sizing_pipeline.py ← Full sizing orchestration (resolve → derate → BESS → fleet → LCOE)
+    sizing_pipeline.py ← Full sizing orchestration (resolve → derate → BESS → pod fleet → LCOE)
     generator_resolver.py ← Resolve model name + overrides to gen_data dict
 
 streamlit_app.py       ← Streamlit Cloud demo app (calls core directly, no API needed)
@@ -52,8 +52,8 @@ assets/
   logo_caterpillar.png ← Official Caterpillar logo used in DOCX proposals and Streamlit UI
 
 tests/
-  test_engine.py       ← 48 unit tests for core engine (2 pre-existing failures)
-  test_api.py          ← 7 API smoke tests (auth, RBAC, health, sizing integration)
+  test_engine.py       ← 48 unit tests for core engine (2 pre-existing TransientStability failures)
+  test_api.py          ← 7 API smoke tests (require python-multipart — environmental errors in local dev)
   test_proposal.py     ← 43 tests for proposal defaults + DOCX generation
   conftest.py          ← Mock auth fixtures (client_admin, client_full, client_demo, client_anonymous)
 
@@ -75,7 +75,7 @@ After login, users see a 5-step guided wizard before results:
 1. **Project Info** — name, client, location, grid frequency
 2. **Load Profile** — template, DC type, IT load, PUE, dynamics, live preview
 3. **Site & Technology** — derate (auto/manual), generator, BESS, fuel, voltage
-4. **Economics** — gas price, WACC, region, BESS costs, footprint
+4. **Economics** — gas price, WACC, region, BESS costs, CAPEX BOS adders, footprint
 5. **Review & Run** — summary + "Run Sizing" button
 
 After wizard: full sidebar available for fine-tuning, reactive re-sizing on changes.
@@ -93,6 +93,7 @@ After sizing completes, users can generate a professional DOCX proposal:
 - `_wizard_step` (int 0-4), `_wizard_complete` (bool), `_wizard_running` (bool)
 - All wizard inputs use `_wiz_` prefix (e.g., `_wiz_p_it`, `_wiz_dc_type`)
 - Sidebar widgets use their own keys — no collision since wizard and sidebar never render together
+- `spinning_res_pct` removed from UI (P04) — SR now derived from physical contingencies
 
 ## Running the Project
 
@@ -107,8 +108,9 @@ start-dev.bat
 streamlit run streamlit_app.py
 
 # Tests
-pytest tests/test_engine.py -v      # Engine tests (46/48 pass)
-pytest tests/test_api.py -v         # API smoke tests (7/7 pass)
+pytest tests/test_engine.py -v      # Engine tests (46/48 pass — 2 pre-existing)
+pytest tests/test_api.py -v         # API smoke tests (require python-multipart)
+pytest tests/test_proposal.py -v    # Proposal tests (43/43 pass)
 
 # Share publicly
 start-share.bat                     # Uses ngrok or localtunnel
@@ -140,21 +142,54 @@ Use fixtures from `conftest.py`:
 - `client_admin` / `client_full` / `client_demo` — mock users with specific roles
 - `client_anonymous` — no token, REQUIRE_AUTH=true (tests 401)
 
-## Sizing Pipeline Flow
-1. Resolve generator → 2. Calculate loads → 3. Site derating (CAT tables) →
-4. BESS sizing → 5. Spinning reserve → 6. Fleet optimization →
-7. Three reliability configs (A/B/C) → 8. Availability (Binomial N+X) →
-9. Voltage recommendation → 10. Transient stability → 11. Emissions →
-12. Footprint → 13. Financial (CAPEX/OPEX/LCOE/NPV)
+## Sizing Pipeline Flow (v5.0 — post-audit)
+1. Resolve generator → 2. Calculate loads (p_total_peak = p_avg × PAR) →
+3. Site derating (CAT tables) → 4. BESS sizing →
+5. Spinning reserve (physical: max(load_step, N-1) — BESS credit validated) →
+6. **Pod fleet optimizer** (N+1 pod architecture, prime/standby loading) →
+7. Availability (Binomial) → 8. Voltage recommendation →
+9. Transient stability (coupled to SR load_step_mw) →
+10. Frequency screening (inertia H from library) → 11. Emissions →
+12. Footprint → 13. Financial (CAPEX with BOS + LCOE corrected denominator)
+
+### Key Engine Changes (Audit Series P02-P06, March 2026)
+| Finding | Fix | Impact |
+|---------|-----|--------|
+| H1: PAR applied to total DC | `p_peak = p_avg × PAR` | -11% fleet over-sizing |
+| H3: SR was free user input | `SR = max(load_step_MW, N-1)` | Physics-based SR |
+| H4: BESS SR unconditional | Response time + energy check | Validated credit |
+| H5: No pod architecture | Pod fleet optimizer (N+1 pod) | Matches CAT schemas |
+| H6: Stability decoupled | Uses same load_step_mw as SR | Coupled |
+| H10: CAPEX missing BOS | 7 new line items (~1.72× multiplier) | All-in ~$2,000/kW |
+| H10: LCOE double-CF | `mwh_year = p_avg × 8760` | LCOE drops ~11% |
+
+### Generator Library Fields (added P05/P06)
+Each of the 10 models now includes:
+- `prime_power_kw` — continuous prime power rating (kW)
+- `standby_kw` — standby/nameplate rating (kW)
+- `mtbf_hours` — mean time between failures (hours)
+- `mttr_hours` — mean time to repair (hours)
+- `inertia_h` — rotating mass inertia constant (seconds)
+
+### CAPEX BOS Defaults (INPUT_DEFAULTS, added P06)
+Applied as % of (generator + installation) base cost:
+- `bos_pct`: 17% — MV switchgear, transformers
+- `civil_pct`: 13% — foundations, grading, drainage
+- `fuel_system_pct`: 6% — gas piping, regulators, metering
+- `electrical_pct`: 6% — MV cables, protection relays
+- `epc_pct`: 12% — EPC management fee
+- `commissioning_pct`: 2.5% — startup
+- `contingency_pct`: 10% — applied on subtotal
 
 ## Common Tasks
-- **Add a new generator:** Edit `core/generator_library.py` GENERATOR_LIBRARY dict
+- **Add a new generator:** Edit `core/generator_library.py` GENERATOR_LIBRARY dict (include prime_power_kw, mtbf, mttr)
 - **Add a new template:** Edit `core/project_manager.py` TEMPLATES dict
 - **Add a new endpoint:** Create in appropriate router, add Pydantic schema, add auth
 - **Change default inputs:** Edit `core/project_manager.py` INPUT_DEFAULTS
 - **Add a wizard step field:** Add widget in `render_wizard_step_N()`, add key to `_build_inputs_from_wizard()`
 - **Change proposal defaults:** Edit `core/proposal_defaults.py` PROPOSAL_DEFAULTS dict
 - **Modify proposal document:** Edit `core/proposal_generator.py` section builders (`_build_section_*`)
+- **Change CAPEX BOS defaults:** Edit `core/project_manager.py` INPUT_DEFAULTS (bos_pct, civil_pct, etc.)
 - **Run full sizing test:** `pytest tests/test_api.py::TestSizingIntegration -v`
 - **Run proposal tests:** `pytest tests/test_proposal.py -v` (43 tests)
 

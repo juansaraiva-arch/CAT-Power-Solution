@@ -179,11 +179,34 @@ class SizingResult(BaseModel):
     load_per_unit_pct: float
     fleet_efficiency: float
 
+    # ── Pod Architecture (P05) ──
+    n_pods: int = 0
+    n_per_pod: int = 0
+    cap_contingency: float = 0.0
+    loading_normal_pct: float = 0.0
+    loading_contingency_pct: float = 0.0
+    a_system_calculated: float = 0.0
+    a_gen_derived: float = 0.0
+    max_normal_loading_pct: float = 0.0
+
     # ── Spinning Reserve ──
     spinning_reserve_mw: float
     spinning_from_gens: float
     spinning_from_bess: float
     headroom_mw: float
+
+    # ── SR Diagnostics (P03/P04) ──
+    sr_required_mw: float = 0.0
+    sr_user_mw: float = 0.0
+    sr_user_below_physical: bool = False
+    sr_dominant_contingency: str = "N-1"
+    load_step_mw: float = 0.0
+    n1_mw: float = 0.0
+    bess_sr_credit_valid: bool = False
+    bess_sr_response_ok: bool = False
+    bess_sr_energy_ok: bool = False
+    bess_sr_available_mws: float = 0.0
+    bess_sr_required_mws: float = 0.0
 
     # ── Reliability ──
     reliability_configs: list[ReliabilityConfig]
@@ -270,6 +293,9 @@ class SizingResult(BaseModel):
 
     # ── Frequency Screening ──
     frequency_screening: dict = {}
+
+    # ── Electrical Sizing (P08) ──
+    electrical_sizing: dict = {}
 
     # ── Off-Grid vs Grid ──
     grid_comparison: dict = {}

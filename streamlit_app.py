@@ -940,9 +940,10 @@ def render_sidebar():
             help="Maximum acceptable voltage sag at generator bus during a load step event. "
                  "Typical data center requirement: 10-20%.",
         )
+        _freq_default = float(INPUT_DEFAULTS.get("freq_hz", 60))
         freq_nadir_limit_hz = st.number_input(
-            "Min Frequency Nadir (Hz)", min_value=55.0, max_value=float(freq_hz) - 0.1,
-            value=float(INPUT_DEFAULTS.get('freq_nadir_limit_hz', freq_hz - 0.5)),
+            "Min Frequency Nadir (Hz)", min_value=55.0, max_value=_freq_default - 0.1,
+            value=float(INPUT_DEFAULTS.get('freq_nadir_limit_hz', _freq_default - 0.5)),
             step=0.1, format="%.1f",
             help="Minimum acceptable frequency during a contingency event. "
                  "IEEE 1547 / NERC: 59.5 Hz for 60 Hz systems.",

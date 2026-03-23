@@ -1149,7 +1149,7 @@ def render_sidebar():
         )
         override_inertia = st.number_input(
             "Inertia Constant H (s)", min_value=0.1, max_value=10.0,
-            value=float(gen_data_params.get('inertia_constant_H', 1.0)),
+            value=float(gen_data_params.get('inertia_h', 1.0)),
             step=0.1, format="%.1f",
             help="Generator rotating mass inertia constant (H). "
                  "Reciprocating gas engines: 0.5–1.5 s. "
@@ -1191,9 +1191,9 @@ def render_sidebar():
         if abs(override_install - lib_install) > 0.001:
             gen_overrides['est_install_kw'] = override_install
 
-        lib_inertia = gen_data_params.get('inertia_constant_H', 1.0)
+        lib_inertia = gen_data_params.get('inertia_h', 1.0)
         if abs(override_inertia - lib_inertia) > 0.01:
-            gen_overrides['inertia_constant_H'] = override_inertia
+            gen_overrides['inertia_h'] = override_inertia
 
         if gen_overrides:
             st.info(f"{len(gen_overrides)} parameter(s) overridden")
@@ -1880,17 +1880,9 @@ def render_reliability_tab(r):
     )
     st.plotly_chart(fig_dist, use_container_width=True)
 
-    # ---- Pod Architecture (P05) ----
-    if hasattr(r, 'n_pods'):
-        st.divider()
-        st.subheader("Pod Architecture")
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Pods", f"{r.n_pods}")
-        c2.metric("Gens / Pod", f"{r.n_per_pod}")
-        c3.metric("Normal Loading", f"{r.loading_normal_pct:.1f}%")
-        c4.metric("Contingency Load", f"{r.loading_contingency_pct:.1f}%")
+    # Pod Architecture — rendered at top of tab (P08), removed duplicate here
+    if False:
         st.caption(
-            f"All {r.n_total} generators operate simultaneously. "
             f"Redundancy: N+1 pod \u2014 loss of any single pod ({r.n_per_pod} gens, "
             f"{r.n_per_pod * r.unit_site_cap:.1f} MW) leaves "
             f"{r.cap_contingency:.1f} MW available at "
@@ -2088,7 +2080,14 @@ def render_electrical_tab(r):
         c1, c2, c3 = st.columns(3)
         c1.metric("Frequency Nadir", f"{_safe_get(fs, 'nadir_hz', 0):.2f} Hz")
         c2.metric("RoCoF", f"{_safe_get(fs, 'rocof_hz_s', 0):.3f} Hz/s")
-        c3.metric("System Inertia (H)", f"{_safe_get(fs, 'H_total', 0):.2f} s")
+        h_val = _safe_get(fs, 'H_total', 0)
+        c3.metric("System Inertia (H)", f"{h_val:.2f} s")
+        if h_val > 2.0:
+            st.warning(
+                f"⚠️ System Inertia H = {h_val:.2f} s is higher than typical for "
+                f"reciprocating gas engines (0.5–1.5 s). Verify the Inertia Constant H "
+                f"in Generator Parameters matches the manufacturer data for this model."
+            )
 
         fc1, fc2 = st.columns(2)
         nadir_ok = fs.get('nadir_ok', True)

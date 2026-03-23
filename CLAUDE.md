@@ -173,6 +173,15 @@ Called from `sizing_pipeline.py` after pod fleet optimizer. Parameters:
 
 Validated against 5 CAT schemas: S1–S5 (25.5 kA to 52.2 kA symmetrical). Breaker selection per ANSI C37 ratings [16, 25, 31.5, 40, 50, 63, 80 kA].
 
+### Frequency Screening — Inertia Fields
+The `frequency_screening` dict returned by `calculate_frequency_screening()` in `core/engine.py` includes:
+- `H_per_unit` — mechanical inertia constant from the generator library (e.g., 1.2 s for G3516H)
+- `H_bess` — virtual inertia from BESS (0 if no BESS; up to 4.0 s via heuristic `4.0 × min(1, bess_ratio/0.2)`)
+- `H_total` — sum of `H_per_unit + H_bess` (system-level inertia for swing equation screening)
+- `H_system` — alias for `H_total` (backward compat from P06)
+
+The Streamlit UI displays all three H components separately with a warning if `H_per_unit > 2.0 s` (atypical for recip gas engines).
+
 ### Key Engine Changes (Audit Series P02-P06, March 2026)
 | Finding | Fix | Impact |
 |---------|-----|--------|

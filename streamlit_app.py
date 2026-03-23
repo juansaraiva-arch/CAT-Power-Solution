@@ -2077,16 +2077,26 @@ def render_electrical_tab(r):
     if r.frequency_screening:
         st.subheader("Frequency Screening")
         fs = r.frequency_screening
-        c1, c2, c3 = st.columns(3)
+        c1, c2, c3, c4, c5 = st.columns(5)
         c1.metric("Frequency Nadir", f"{_safe_get(fs, 'nadir_hz', 0):.2f} Hz")
         c2.metric("RoCoF", f"{_safe_get(fs, 'rocof_hz_s', 0):.3f} Hz/s")
-        h_val = _safe_get(fs, 'H_total', 0)
-        c3.metric("System Inertia (H)", f"{h_val:.2f} s")
-        if h_val > 2.0:
+        h_mech  = _safe_get(fs, 'H_per_unit', 0)   # mechanical H from generator
+        h_bess  = _safe_get(fs, 'H_bess', 0)        # virtual inertia from BESS
+        h_total = _safe_get(fs, 'H_total', 0)       # total system H
+        c3.metric("H mech (gen)", f"{h_mech:.2f} s")
+        c4.metric("H virtual (BESS)", f"{h_bess:.2f} s")
+        c5.metric("H total (system)", f"{h_total:.2f} s")
+        if h_mech > 2.0:
             st.warning(
-                f"⚠️ System Inertia H = {h_val:.2f} s is higher than typical for "
-                f"reciprocating gas engines (0.5–1.5 s). Verify the Inertia Constant H "
-                f"in Generator Parameters matches the manufacturer data for this model."
+                f"⚠️ Generator mechanical inertia H = {h_mech:.2f} s is higher than "
+                f"typical for reciprocating gas engines (0.5–1.5 s). "
+                f"Verify with manufacturer data."
+            )
+        if h_bess > 0:
+            st.info(
+                f"ℹ️ BESS virtual inertia contribution: {h_bess:.2f} s "
+                f"(grid-forming inverter emulation). "
+                f"Total system inertia H = {h_total:.2f} s."
             )
 
         fc1, fc2 = st.columns(2)

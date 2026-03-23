@@ -150,7 +150,28 @@ Use fixtures from `conftest.py`:
 7. Availability (Binomial) → 8. Voltage recommendation →
 9. Transient stability (coupled to SR load_step_mw) →
 10. Frequency screening (inertia H from library) → 11. Emissions →
-12. Footprint → 13. Financial (CAPEX with BOS + LCOE corrected denominator)
+12. Footprint → 13. Financial (CAPEX with BOS + LCOE corrected denominator) →
+14. **Electrical sizing** (P08/P09 — see below)
+
+### Electrical Sizing Module (`api/services/electrical_sizing.py`)
+Called from `sizing_pipeline.py` after pod fleet optimizer. Parameters:
+- `n_pods`, `n_per_pod`, `P_gen_mw` — from pod fleet result
+- `p_load_mw` — actual peak load (`p_total_peak`), **not** nameplate (P09 fix)
+- `V_gen_kv` (13.8), `pf` (0.8), `z_trafo_pu` (0.0575), `xd_subtrans_pu` (0.20)
+
+**MV Bus (13.8 kV):** Sized for pod-pair contingency transfer (N+1 pod architecture).
+
+**Transformers:** One per pod pair (`n_t = n_pods // 2`), MVA = `P_pod_pair / pf`.
+
+**HV Collector Bus:** Evaluated at 34.5 / 69 / 138 kV. Bus current uses `p_load_mw` (actual load), not installed nameplate. Auto-selects lowest voltage where both ampacity and ISC are within limits.
+
+**HV ISC Model (`_isc_one_group`):** Each trafo+gen group referred to HV bus. All groups in parallel for total fault current.
+
+**MV ISC Ring Bus Model (`_isc_mv_ring_bus`, P09):** Fault at 13.8 kV bus receives:
+1. LOCAL — own pod's generators in parallel (direct connection)
+2. REMOTE — all other pods via 2 transformers in series (step-up → ring → step-down)
+
+Validated against 5 CAT schemas: S1–S5 (25.5 kA to 52.2 kA symmetrical). Breaker selection per ANSI C37 ratings [16, 25, 31.5, 40, 50, 63, 80 kA].
 
 ### Key Engine Changes (Audit Series P02-P06, March 2026)
 | Finding | Fix | Impact |

@@ -416,15 +416,18 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         # BESS sizing for reliability
         if inputs.bess_strategy == "Hybrid (Balanced)":
             target_gensets_covered = 5
-            bess_coverage_hrs = 2.0
         else:  # Reliability Priority
             target_gensets_covered = 8
-            bess_coverage_hrs = 2.5
+
+        # Autonomy-based energy sizing (P13)
+        bess_autonomy_min = getattr(inputs, 'bess_autonomy_min', 10.0)
+        bess_autonomy_h = bess_autonomy_min / 60.0
+        bess_dod = getattr(inputs, 'bess_dod', 0.85)
 
         bess_power_hybrid = max(bess_power_transient, target_gensets_covered * unit_site_cap)
         bess_energy_hybrid = max(
-            bess_power_hybrid * bess_coverage_hrs,
-            target_gensets_covered * unit_site_cap * bess_coverage_hrs,
+            bess_power_hybrid * bess_autonomy_h / bess_dod,
+            target_gensets_covered * unit_site_cap * bess_autonomy_h / bess_dod,
         )
 
         # BESS reliability credit — how many genset-equivalents BESS can bridge
@@ -1021,6 +1024,8 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         bess_power_mw=bess_power_total,
         bess_energy_mwh=bess_energy_total,
         bess_breakdown=bess_breakdown,
+        bess_autonomy_min=getattr(inputs, 'bess_autonomy_min', 10.0),
+        bess_dod=getattr(inputs, 'bess_dod', 0.85),
         # Electrical
         rec_voltage_kv=rec_voltage_kv,
         freq_hz=inputs.freq_hz,

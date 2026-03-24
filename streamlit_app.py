@@ -776,6 +776,8 @@ def _build_inputs_from_wizard():
         bess_cost_kw=float(ss.get("_wiz_bess_cost_kw", INPUT_DEFAULTS["bess_cost_kw"])),
         bess_cost_kwh=float(ss.get("_wiz_bess_cost_kwh", INPUT_DEFAULTS["bess_cost_kwh"])),
         bess_om_kw_yr=float(ss.get("_wiz_bess_om_kw_yr", INPUT_DEFAULTS["bess_om_kw_yr"])),
+        bess_autonomy_min=float(ss.get("_bess_autonomy_min", INPUT_DEFAULTS.get("bess_autonomy_min", 10.0))),
+        bess_dod=float(INPUT_DEFAULTS.get("bess_dod", 0.85)),
         # CAPEX BOS adders (Fix M — P06)
         bos_pct=float(ss.get("_wiz_bos_pct", INPUT_DEFAULTS["bos_pct"]*100)) / 100,
         civil_pct=float(ss.get("_wiz_civil_pct", INPUT_DEFAULTS["civil_pct"]*100)) / 100,
@@ -1055,11 +1057,45 @@ def render_sidebar():
             help=HELP_TEXTS.get("use_bess", ""),
         )
         bess_strategy = INPUT_DEFAULTS["bess_strategy"]
+        bess_autonomy_min = float(INPUT_DEFAULTS.get("bess_autonomy_min", 10.0))
+        bess_dod = float(INPUT_DEFAULTS.get("bess_dod", 0.85))
         if use_bess:
             bess_strategy = st.selectbox(
                 "BESS Strategy", BESS_STRATEGIES,
                 index=BESS_STRATEGIES.index(INPUT_DEFAULTS["bess_strategy"]),
                 help=HELP_TEXTS.get("bess_strategy", ""),
+            )
+            # Default autonomy depends on selected strategy
+            _autonomy_defaults = {
+                'Transient Only':        INPUT_DEFAULTS.get('bess_autonomy_min_transient', 1.0),
+                'Hybrid (Balanced)':     INPUT_DEFAULTS.get('bess_autonomy_min_hybrid', 10.0),
+                'Reliability Priority':  INPUT_DEFAULTS.get('bess_autonomy_min_reliability', 30.0),
+            }
+            _autonomy_default = _autonomy_defaults.get(bess_strategy, 10.0)
+            bess_autonomy_min = st.number_input(
+                "BESS autonomy (minutes)",
+                min_value=0.5,
+                max_value=120.0,
+                value=float(st.session_state.get('_bess_autonomy_min', _autonomy_default)),
+                step=0.5,
+                format="%.1f",
+                key='_bess_autonomy_min',
+                help=(
+                    "Time the BESS must sustain its rated power output. "
+                    "Drives energy capacity: MWh = MW × (min ÷ 60) ÷ DoD.\n\n"
+                    "Typical values by role:\n"
+                    "• 1 min — Transient only (governor gap cover)\n"
+                    "• 10 min — Hybrid (time to start and sync one unit)\n"
+                    "• 30 min — Reliability priority (operator response window)\n"
+                    "• 60–120 min — Short-term backup (client-specific requirement)"
+                ),
+            )
+            bess_dod = st.number_input(
+                "BESS Depth of Discharge",
+                min_value=0.50, max_value=1.00,
+                value=float(INPUT_DEFAULTS.get("bess_dod", 0.85)),
+                step=0.05, format="%.2f",
+                help="Usable fraction of total battery capacity (0.85 = 85% DoD typical for Li-ion).",
             )
         enable_black_start = st.checkbox(
             "Black Start Capable", value=INPUT_DEFAULTS["enable_black_start"],
@@ -1581,6 +1617,8 @@ def render_sidebar():
         bess_cost_kw=bess_cost_kw,
         bess_cost_kwh=bess_cost_kwh,
         bess_om_kw_yr=bess_om_kw_yr,
+        bess_autonomy_min=bess_autonomy_min,
+        bess_dod=bess_dod,
         fuel_mode=fuel_mode,
         lng_days=lng_days,
         lng_backup_pct=lng_backup_pct,
@@ -1999,9 +2037,24 @@ def render_reliability_tab(r):
                     f"{sel_cfg['n_total']} generators · "
                     f"{sel_cfg['n_total'] * r.unit_site_cap:.1f} MW installed · "
                     f"Combined contingency: {sel_cfg['cap_combined']:.1f} MW "
-                    f"({sel_cfg['maintenance_margin_mw']:+.1f} MW margin). "
-                    f"Re-run sizing to apply this configuration to CAPEX."
+                    f"({sel_cfg['maintenance_margin_mw']:+.1f} MW margin)."
                 )
+
+                # Re-run button — applies selected maintenance config to CAPEX
+                col_btn, col_note = st.columns([1, 3])
+                with col_btn:
+                    if st.button(
+                        "▶ Apply & Re-run Sizing",
+                        type="primary",
+                        key="rerun_fleet_config",
+                        help="Applies the selected fleet configuration and recalculates all results including CAPEX.",
+                    ):
+                        st.rerun()
+                with col_note:
+                    st.caption(
+                        "Applies the selected maintenance configuration and recalculates "
+                        "CAPEX, LCOE, and all dependent results."
+                    )
 
     elif maint_n == 0:
         st.caption(
@@ -2083,6 +2136,14 @@ def render_bess_tab(r):
     c1, c2 = st.columns(2)
     c1.metric("Total Power", f"{r.bess_power_mw:.2f} MW")
     c2.metric("Total Energy", f"{r.bess_energy_mwh:.2f} MWh")
+
+    # Autonomy formula caption (P13)
+    autonomy_min = getattr(r, 'bess_autonomy_min', 10.0) or 10.0
+    dod = getattr(r, 'bess_dod', 0.85) or 0.85
+    st.caption(
+        f"Energy = {r.bess_power_mw:.1f} MW × {autonomy_min:.1f} min ÷ 60 ÷ {dod:.2f} DoD"
+        f" = {r.bess_energy_mwh:.2f} MWh"
+    )
 
     st.markdown(f"**Strategy:** {r.bess_strategy}")
 

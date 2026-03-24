@@ -197,6 +197,14 @@ INPUT_DEFAULTS = {
     "max_maintenance_units":       1,    # gens in simultaneous scheduled maintenance (0=strict, 1=realistic)
     "selected_fleet_config_maint": "B",  # A/B/C — which maintenance config drives CAPEX
 
+    # BESS Autonomy (P13)
+    # Formula: bess_energy_mwh = bess_power_mw × (autonomy_min / 60) / bess_dod
+    "bess_autonomy_min": 10.0,                   # minutes — default for Hybrid (Balanced)
+    "bess_autonomy_min_transient":    1.0,        # minutes — Transient Only
+    "bess_autonomy_min_hybrid":      10.0,        # minutes — Hybrid (Balanced)
+    "bess_autonomy_min_reliability": 30.0,        # minutes — Reliability Priority
+    "bess_dod": 0.85,                             # depth of discharge
+
     # Aux Load
     "aux_load_pct": 4.0,
 }

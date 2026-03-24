@@ -193,6 +193,10 @@ INPUT_DEFAULTS = {
     "gas_temp_f": 60.0,                  # °F — average gas temperature
     "gas_z_factor": 0.90,               # compressibility factor (<300 psia)
 
+    # Fleet Maintenance (P12)
+    "max_maintenance_units":       1,    # gens in simultaneous scheduled maintenance (0=strict, 1=realistic)
+    "selected_fleet_config_maint": "B",  # A/B/C — which maintenance config drives CAPEX
+
     # Aux Load
     "aux_load_pct": 4.0,
 }

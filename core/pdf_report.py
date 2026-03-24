@@ -202,8 +202,8 @@ def generate_comprehensive_pdf(data: dict) -> bytes:
     bess_text = ""
     if use_bess:
         bess_text = (
-            f'<br/><br/>Includes <b>{g("bess_power_total", 0):.1f} MW / '
-            f'{g("bess_energy_total", 0):.1f} MWh</b> BESS for transient support.'
+            f'<br/><br/>Includes <b>{g("bess_power_mw", 0):.1f} MW / '
+            f'{g("bess_energy_mwh", 0):.1f} MWh</b> BESS for transient support.'
         )
 
     summary_text = f"""
@@ -212,10 +212,10 @@ def generate_comprehensive_pdf(data: dict) -> bytes:
     data center with <b>PUE {g('pue', 1.2):.2f}</b>. The recommended solution:
     <b>{g('n_total', 0)} x {g('selected_gen', 'N/A')}</b> in
     <b>N+{g('n_reserve', 0)}</b> configuration achieving
-    <b>{g('prob_gen', 0) * 100:.3f}%</b> availability.{bess_text}
+    <b>{g('system_availability', 0) * 100:.3f}%</b> availability.{bess_text}
     <br/><br/>
     <b>Key Metrics:</b> LCOE ${g('lcoe', 0):.4f}/kWh |
-    CAPEX ${g('initial_capex_sum', 0):.1f}M | Payback {g('payback_str', 'N/A')}
+    CAPEX ${g('total_capex', 0):.1f}M | Payback {g('simple_payback_years', 0):.1f} years
     """
     story.append(Paragraph(summary_text, styles['CustomBody']))
     story.append(PageBreak())
@@ -234,7 +234,7 @@ def generate_comprehensive_pdf(data: dict) -> bytes:
         ['Capacity Factor', f'{g("capacity_factor", 0.9) * 100:.1f}', '%'],
         ['Required Availability', f'{g("avail_req", 99.99):.4f}', '%'],
         ['Step Load Requirement', f'{g("load_step_pct", 0):.0f}', '%'],
-        ['Spinning Reserve Policy', f'{g("spinning_res_pct", 0):.0f}', '%'],
+        ['Spinning Reserve', f'{g("spinning_reserve_mw", 0):.1f}', 'MW'],
     ]
     t = Table(load_data, colWidths=[2.8 * inch, 2 * inch, 1.5 * inch])
     t.setStyle(ts)
@@ -259,8 +259,17 @@ def generate_comprehensive_pdf(data: dict) -> bytes:
         ['Heat Rate (LHV)', f"{gen_data.get('heat_rate_lhv', 0):,.0f} BTU/kWh"],
         ['Step Load Capability', f"{gen_data.get('step_load_pct', 0):.0f}%"],
         ['Ramp Rate', f"{gen_data.get('ramp_rate_mw_s', 0):.1f} MW/s"],
-        ['Unit Availability', f"{gen_data.get('unit_availability', 0.93) * 100:.1f}%"],
+        ['Unit Availability', f"{gen_data.get('unit_availability', 0.965) * 100:.1f}%"],
     ]
+    # Derate table source note
+    dts = g('derate_table_source', '')
+    if dts:
+        dts_label = {
+            'validated_gerp_em7206': 'Validated (GERP EM7206-05-001)',
+            'typical_estimate': '⚠ Typical Estimate — OEM data pending',
+            'placeholder_pending': '⚠ Placeholder — validate before use',
+        }.get(dts, dts)
+        gen_table_data.append(['Derate Table Source', dts_label])
     t = Table(gen_table_data, colWidths=[3 * inch, 3.3 * inch])
     t.setStyle(ts)
     story.append(t)
@@ -286,22 +295,43 @@ def generate_comprehensive_pdf(data: dict) -> bytes:
     # 3. FLEET CONFIGURATION
     # =====================================================================
     story.append(Paragraph("3. FLEET CONFIGURATION", styles['SectionHeader']))
-    target_met = g('target_met', False)
     fleet_data = [
         ['Parameter', 'Value'],
+        ['Pod Architecture', f'{g("n_pods", "—")} pods × {g("n_per_pod", "—")} gens'],
         ['Running Units (N)', f'{g("n_running", 0)}'],
         ['Reserve Units (+X)', f'{g("n_reserve", 0)}'],
         ['Total Fleet', f'{g("n_total", 0)}'],
         ['Installed Capacity', f'{g("installed_cap", 0):.1f} MW'],
+        ['Normal Loading', f'{g("loading_normal_pct", 0):.1f}%'],
         ['Load per Unit', f'{g("load_per_unit_pct", 0):.1f}%'],
         ['Fleet Efficiency', f'{g("fleet_efficiency", 0) * 100:.2f}%'],
-        ['Configuration', f'N+{g("n_reserve", 0)}'],
-        ['Achieved Availability', f'{g("prob_gen", 0) * 100:.4f}%'],
-        ['Target Met', 'YES ✓' if target_met else 'NO ✗'],
+        ['Configuration', f'N+{g("n_reserve", 0)} (N+1 pod)'],
+        ['System Availability', f'{g("system_availability", 0) * 100:.4f}%'],
     ]
     t = Table(fleet_data, colWidths=[3 * inch, 3.3 * inch])
     t.setStyle(ts)
     story.append(t)
+    story.append(Spacer(1, 0.15 * inch))
+
+    # Uptime tier classification
+    sys_avail = g('system_availability', 0)
+    if sys_avail > 0:
+        _tiers = [
+            ("Tier I — Basic", 0.99671),
+            ("Tier II — Redundant", 0.99741),
+            ("Tier III — Concurrently Maint.", 0.99982),
+            ("Tier IV — Fault Tolerant", 0.99995),
+        ]
+        achieved_tier = "Below Tier I"
+        for label, threshold in _tiers:
+            if sys_avail >= threshold:
+                achieved_tier = label
+        downtime_hr = (1 - sys_avail) * 8760
+        story.append(Paragraph(
+            f"<b>Uptime Classification:</b> {achieved_tier} — "
+            f"Projected downtime: {downtime_hr:.1f} hr/yr",
+            styles['CustomBody'],
+        ))
     story.append(Spacer(1, 0.25 * inch))
 
     # =====================================================================
@@ -312,8 +342,8 @@ def generate_comprehensive_pdf(data: dict) -> bytes:
     spin_data = [
         ['Parameter', 'Value', 'Notes'],
         ['Spinning Reserve Required',
-         f"{sc.get('spinning_reserve_mw', 0):.1f} MW",
-         f"{g('spinning_res_pct', 0):.0f}% of avg load"],
+         f"{g('spinning_reserve_mw', sc.get('spinning_reserve_mw', 0)):.1f} MW",
+         f"max(load_step, N-1)"],
         ['From Generators (Headroom)',
          f"{sc.get('spinning_from_gens', 0):.1f} MW",
          'Running units headroom'],
@@ -361,8 +391,8 @@ def generate_comprehensive_pdf(data: dict) -> bytes:
     # =====================================================================
     if use_bess:
         story.append(Paragraph("6. BESS SYSTEM", styles['SectionHeader']))
-        bpt = g('bess_power_total', 0)
-        bet = g('bess_energy_total', 0)
+        bpt = g('bess_power_mw', 0)
+        bet = g('bess_energy_mwh', 0)
         bb = g('bess_breakdown', {})
         bess_data = [
             ['Parameter', 'Value'],
@@ -406,9 +436,10 @@ def generate_comprehensive_pdf(data: dict) -> bytes:
     # 8. FOOTPRINT
     # =====================================================================
     story.append(Paragraph("8. FOOTPRINT & INFRASTRUCTURE", styles['SectionHeader']))
-    area_gen = g('area_gen', 0)
-    area_bess = g('area_bess', 0)
-    total_area = g('total_area_m2', 0)
+    _fp = g('footprint', {})
+    area_gen = _fp.get('gen_area_m2', g('area_gen', 0))
+    area_bess = _fp.get('bess_area_m2', g('area_bess', 0))
+    total_area = _fp.get('total_area_m2', g('total_area_m2', 0))
     foot_data = [
         ['Component', 'Area (m²)', 'Area (Acres)'],
         ['Generators', f'{area_gen:,.0f}', f'{area_gen * 0.000247105:.2f}'],
@@ -448,17 +479,13 @@ def generate_comprehensive_pdf(data: dict) -> bytes:
     story.append(Paragraph("10. FINANCIAL ANALYSIS", styles['SectionHeader']))
     fin_data = [
         ['Metric', 'Value'],
-        ['Total CAPEX', f'${g("initial_capex_sum", 0):.2f}M'],
+        ['Total CAPEX', f'${g("total_capex", 0):.2f}M'],
         ['LCOE', f'${g("lcoe", 0):.4f}/kWh'],
-        ['Annual Fuel Cost', f'${g("fuel_cost_year", 0) / 1e6:.2f}M'],
-        ['Annual O&M Cost', f'${g("om_cost_year", 0) / 1e6:.2f}M'],
+        ['Annual Fuel Cost', f'${g("annual_fuel_cost", 0) / 1e6:.2f}M'],
+        ['Annual O&M Cost', f'${g("annual_om_cost", 0) / 1e6:.2f}M'],
         ['Annual Savings vs Grid', f'${g("annual_savings", 0) / 1e6:.2f}M'],
         ['NPV (Project Life)', f'${g("npv", 0) / 1e6:.2f}M'],
-        ['Simple Payback', g('payback_str', 'N/A')],
-        ['WACC', f'{g("wacc", 0.08) * 100:.1f}%'],
-        ['Project Life', f'{g("project_years", 20)} years'],
-        ['Gas Price', f'${g("total_gas_price", 0):.2f}/MMBtu'],
-        ['Benchmark Electricity', f'${g("benchmark_price", 0):.3f}/kWh'],
+        ['Simple Payback', f'{g("simple_payback_years", 0):.1f} years'],
     ]
     t = Table(fin_data, colWidths=[3 * inch, 3.3 * inch])
     t.setStyle(ts)

@@ -228,6 +228,14 @@ Each of the 10 models now includes:
 - `mttr_hours` — mean time to repair (hours)
 - `inertia_h` — rotating mass inertia constant (seconds)
 - `gas_inlet_pressure_psia` — minimum gas inlet pressure (psia): 5 for high-speed recip, 15 for medium-speed, 200-300 for turbines
+- `derate_type` — ADF table selector: `high_speed_recip` (validated GERP), `medium_speed_recip` (typical estimate), `gas_turbine` (placeholder)
+
+**Derate type mapping:**
+| derate_type | Models | Status |
+|---|---|---|
+| `high_speed_recip` | G3516H, G3520FR, G3520K, XGC1900, CG260-16 | Validated (GERP EM7206-05-001) |
+| `medium_speed_recip` | C175-20, G20CM34 | Typical estimate — OEM data pending |
+| `gas_turbine` | Titan 130/250/350 | Placeholder — uses high_speed table |
 
 ### Gas Pipeline Sizing Module (P10)
 `calculate_gas_pipeline()` in `core/engine.py` — standalone function (no existing functions modified).

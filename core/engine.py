@@ -36,7 +36,7 @@ _MN_YS = [0.70, 0.72, 0.74, 0.77, 0.84, 0.90, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
 # Cols: Altitude (meters above sea level)
 _ADF_TEMPS = [10, 15, 20, 25, 30, 35, 40, 45, 50]
 _ADF_ALTS = [0, 250, 500, 750, 1000, 1250, 1500, 1750, 2000, 2250, 2500, 2750, 3000]
-_ADF_TABLE = [
+_ADF_TABLE_HIGH_SPEED_RECIP = [
     # 10°C  (corrected P11 — derate starts at 1750m per EM7206-05-001)
     [1, 1, 1, 1, 1, 1, 1, 1, 0.97, 0.93, 0.89, 0.86, 0.82],
     # 15°C  (corrected P11 — derate starts at 1750m per EM7206-05-001)
@@ -56,6 +56,37 @@ _ADF_TABLE = [
     # 50°C
     [1, 0.95, 0.91, 0.86, 0.81, 0.77, 0.73, 0.70, 0.67, 0.64, 0.61, 0.58, 0.55],
 ]
+
+# Medium-speed reciprocating — typical/conservative estimate
+# Sources: published MAN Energy Solutions and Wärtsilä medium-speed application data
+# ⚠️ OEM-specific data for CAT C175-20 and G20CM34 not yet available.
+#    This table is conservative and will be replaced with validated GERP data.
+#    Temperature derate begins at ~25°C; altitude derate begins at ~250m.
+_ADF_TABLE_MEDIUM_SPEED_RECIP = [
+    # 10°C
+    [1.00, 1.00, 1.00, 1.00, 1.00, 0.99, 0.97, 0.95, 0.93, 0.90, 0.87, 0.84, 0.81],
+    # 15°C
+    [1.00, 1.00, 1.00, 1.00, 0.99, 0.97, 0.95, 0.93, 0.91, 0.88, 0.85, 0.82, 0.79],
+    # 20°C
+    [1.00, 1.00, 1.00, 0.99, 0.97, 0.95, 0.93, 0.91, 0.89, 0.86, 0.83, 0.80, 0.77],
+    # 25°C
+    [1.00, 1.00, 0.99, 0.97, 0.95, 0.93, 0.91, 0.89, 0.87, 0.84, 0.81, 0.78, 0.75],
+    # 30°C
+    [1.00, 0.98, 0.96, 0.94, 0.92, 0.90, 0.88, 0.86, 0.84, 0.81, 0.78, 0.75, 0.72],
+    # 35°C
+    [0.98, 0.96, 0.94, 0.92, 0.90, 0.87, 0.85, 0.83, 0.81, 0.78, 0.75, 0.72, 0.69],
+    # 40°C
+    [0.96, 0.94, 0.92, 0.90, 0.87, 0.85, 0.82, 0.80, 0.78, 0.75, 0.72, 0.69, 0.66],
+    # 45°C
+    [0.94, 0.92, 0.89, 0.87, 0.84, 0.82, 0.79, 0.77, 0.74, 0.71, 0.68, 0.65, 0.62],
+    # 50°C
+    [0.91, 0.89, 0.86, 0.84, 0.81, 0.78, 0.76, 0.73, 0.70, 0.67, 0.64, 0.61, 0.58],
+]
+
+# Gas turbines — placeholder, uses high_speed_recip table until OEM data available
+# Titan series have very different derate characteristics (inlet guide vanes, etc.)
+# This will be corrected in a future prompt with manufacturer-specific data.
+_ADF_TABLE_GAS_TURBINE = _ADF_TABLE_HIGH_SPEED_RECIP  # temporary alias
 
 # ── Aftercooler Heat Rejection Factor (2D) ──
 # Same row/col structure as ADF table
@@ -1037,7 +1068,8 @@ def noise_setback_distance(combined_db: float, noise_limit_db: float) -> float:
 # ==============================================================================
 
 def calculate_site_derate(site_temp_c: float, site_alt_m: float,
-                          methane_number: int = 80) -> dict:
+                          methane_number: int = 80,
+                          derate_type: str = 'high_speed_recip') -> dict:
     """
     Calculate generator derating using official Caterpillar lookup tables
     with bilinear interpolation.
@@ -1083,12 +1115,27 @@ def calculate_site_derate(site_temp_c: float, site_alt_m: float,
             f"CAT Methane Number {methane_number} is below 60: "
             "significant power derating applied. Consider fuel conditioning."
         )
-    else:
-        methane_deration = _interp_1d(float(methane_number), _MN_XS, _MN_YS)
+    else:  # mn >= 60 → no derate
+        methane_deration = 1.0
+
+    # ── Select ADF table by generator type ──
+    _ADF_TABLES = {
+        'high_speed_recip':   _ADF_TABLE_HIGH_SPEED_RECIP,
+        'medium_speed_recip': _ADF_TABLE_MEDIUM_SPEED_RECIP,
+        'gas_turbine':        _ADF_TABLE_GAS_TURBINE,
+    }
+    adf_table = _ADF_TABLES.get(derate_type, _ADF_TABLE_HIGH_SPEED_RECIP)
+
+    # Determine data source for UI warning
+    derate_table_source = (
+        'validated_gerp_em7206'  if derate_type == 'high_speed_recip' else
+        'typical_estimate'       if derate_type == 'medium_speed_recip' else
+        'placeholder_pending'    # gas_turbine
+    )
 
     # ── Altitude Deration Factor (bilinear) ──
     altitude_deration = _interp_2d(
-        site_temp_c, site_alt_m, _ADF_TEMPS, _ADF_ALTS, _ADF_TABLE
+        site_temp_c, site_alt_m, _ADF_TEMPS, _ADF_ALTS, adf_table
     )
 
     # ── Aftercooler Heat Rejection Factor (bilinear) ──
@@ -1105,6 +1152,8 @@ def calculate_site_derate(site_temp_c: float, site_alt_m: float,
         "altitude_deration": round(altitude_deration, 6),
         "achrf": round(achrf, 6),
         "methane_warning": methane_warning,
+        "derate_type": derate_type,
+        "derate_table_source": derate_table_source,
     }
 
 

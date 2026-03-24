@@ -24,6 +24,7 @@ GENERATOR_LIBRARY = {
     "XGC1900": {
         "description": "Mobile Power Module (High Speed)",
         "type": "High Speed",
+        "derate_type": "high_speed_recip",
         "iso_rating_mw": 1.9,
         "electrical_efficiency": 0.392,
         "heat_rate_lhv": 8780,
@@ -62,6 +63,7 @@ GENERATOR_LIBRARY = {
     "G3520FR": {
         "description": "Fast Response Gen Set (High Speed)",
         "type": "High Speed",
+        "derate_type": "high_speed_recip",
         "iso_rating_mw": 2.5,
         "electrical_efficiency": 0.386,
         "heat_rate_lhv": 8836,
@@ -100,6 +102,7 @@ GENERATOR_LIBRARY = {
     "G3520K": {
         "description": "High Efficiency Gen Set (High Speed)",
         "type": "High Speed",
+        "derate_type": "high_speed_recip",
         "iso_rating_mw": 2.5,
         "electrical_efficiency": 0.453,
         "heat_rate_lhv": 7638,
@@ -138,6 +141,7 @@ GENERATOR_LIBRARY = {
     "G3516H": {
         "description": "Data Center Workhorse (High Speed, 2.5 MW)",
         "type": "High Speed",
+        "derate_type": "high_speed_recip",
         "iso_rating_mw": 2.5,
         "electrical_efficiency": 0.441,
         "heat_rate_lhv": 7740,
@@ -176,6 +180,7 @@ GENERATOR_LIBRARY = {
     "CG260-16": {
         "description": "Cogeneration Specialist (High Speed)",
         "type": "High Speed",
+        "derate_type": "high_speed_recip",
         "iso_rating_mw": 3.957,
         "electrical_efficiency": 0.434,
         "heat_rate_lhv": 7860,
@@ -212,8 +217,9 @@ GENERATOR_LIBRARY = {
         "gas_inlet_pressure_psia": 5.0,
     },
     "C175-20": {
-        "description": "High Power Gas Gen Set (4 MW, High Speed)",
-        "type": "High Speed",
+        "description": "High Power Gas Gen Set (4 MW, Medium Speed)",
+        "type": "Medium Speed",
+        "derate_type": "medium_speed_recip",
         "iso_rating_mw": 4.0,
         "electrical_efficiency": 0.420,
         "heat_rate_lhv": 8120,
@@ -252,6 +258,7 @@ GENERATOR_LIBRARY = {
     "Titan 130": {
         "description": "Solar Gas Turbine (16.5 MW)",
         "type": "Gas Turbine",
+        "derate_type": "gas_turbine",
         "iso_rating_mw": 16.5,
         "electrical_efficiency": 0.3543,
         "heat_rate_lhv": 9630,
@@ -287,6 +294,7 @@ GENERATOR_LIBRARY = {
     "Titan 250": {
         "description": "Solar Gas Turbine (23.2 MW)",
         "type": "Gas Turbine",
+        "derate_type": "gas_turbine",
         "iso_rating_mw": 23.2,
         "electrical_efficiency": 0.386,
         "heat_rate_lhv": 8670,
@@ -322,6 +330,7 @@ GENERATOR_LIBRARY = {
     "Titan 350": {
         "description": "Solar Gas Turbine (38 MW)",
         "type": "Gas Turbine",
+        "derate_type": "gas_turbine",
         "iso_rating_mw": 38.0,
         "electrical_efficiency": 0.402,
         "heat_rate_lhv": 8495,
@@ -357,6 +366,7 @@ GENERATOR_LIBRARY = {
     "G20CM34": {
         "description": "Medium Speed Baseload Platform",
         "type": "Medium Speed",
+        "derate_type": "medium_speed_recip",
         "iso_rating_mw": 9.76,
         "electrical_efficiency": 0.475,
         "heat_rate_lhv": 7484,

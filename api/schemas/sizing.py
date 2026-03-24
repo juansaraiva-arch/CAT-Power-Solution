@@ -76,6 +76,10 @@ class SizingInput(BaseModel):
     bess_cost_kwh: float = Field(400.0, ge=0)
     bess_om_kw_yr: float = Field(5.0, ge=0)
 
+    # ── BESS Autonomy (P13) ──
+    bess_autonomy_min: float = Field(10.0, ge=0.5, le=120, description="BESS autonomy in minutes")
+    bess_dod: float = Field(0.85, gt=0, le=1.0, description="BESS depth of discharge")
+
     # ── Fuel ──
     fuel_mode: str = Field("Pipeline Gas",
                            description="'Pipeline Gas', 'LNG', or 'Dual-Fuel'")
@@ -236,6 +240,8 @@ class SizingResult(BaseModel):
     bess_power_mw: float
     bess_energy_mwh: float
     bess_breakdown: dict
+    bess_autonomy_min: Optional[float] = None
+    bess_dod: Optional[float] = None
 
     # ── Electrical ──
     rec_voltage_kv: float

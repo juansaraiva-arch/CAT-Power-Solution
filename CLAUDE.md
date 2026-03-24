@@ -196,6 +196,19 @@ The Streamlit UI displays all three H components separately with a warning if `H
 **Parameters:** `max_maintenance_units` (default 1), `selected_fleet_config_maint` (default 'B').
 The base `pod_fleet_optimizer()` also enforces C4 via `max_maintenance_units` kwarg (default 0 = backward compatible).
 
+### BESS Autonomy-Based Energy Sizing (P13)
+**Formula:** `bess_energy_mwh = bess_power_mw × (autonomy_min / 60) / bess_dod`
+
+Replaces the hardcoded 2.0h/2.5h coverage in `sizing_pipeline.py`. User-configurable via sidebar.
+
+| Strategy | Default autonomy | Energy (ref 43.86 MW) | CAPEX |
+|---|---|---|---|
+| Transient Only | 1 min | 0.86 MWh | $11.3M |
+| Hybrid (Balanced) | 10 min | 8.60 MWh | $14.4M |
+| Reliability Priority | 30 min | 25.80 MWh | $21.3M |
+
+**Parameters:** `bess_autonomy_min` (default 10.0), `bess_dod` (default 0.85).
+
 ### Key Engine Changes (Audit Series P02-P06, March 2026)
 | Finding | Fix | Impact |
 |---------|-----|--------|

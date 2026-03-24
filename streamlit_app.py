@@ -1214,7 +1214,7 @@ def render_sidebar():
         )
         override_avail = st.number_input(
             "Availability (%)", min_value=80.0, max_value=100.0,
-            value=float(gen_data_params.get('unit_availability', 0.93) * 100),
+            value=float(gen_data_params.get('unit_availability', 0.965) * 100),
             step=0.5, format="%.1f",
         )
         elec_path_avail = st.number_input(
@@ -1275,7 +1275,7 @@ def render_sidebar():
         if abs(override_aux - lib_aux) > 0.001:
             gen_overrides['aux_load_pct'] = override_aux
 
-        lib_avail = gen_data_params.get('unit_availability', 0.93)
+        lib_avail = gen_data_params.get('unit_availability', 0.965)
         if abs(override_avail / 100.0 - lib_avail) > 0.001:
             gen_overrides['unit_availability'] = override_avail / 100.0
 

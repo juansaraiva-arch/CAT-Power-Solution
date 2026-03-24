@@ -1217,6 +1217,19 @@ def render_sidebar():
             value=float(gen_data_params.get('unit_availability', 0.93) * 100),
             step=0.5, format="%.1f",
         )
+        elec_path_avail = st.number_input(
+            "Electrical Path Availability",
+            min_value=0.980, max_value=1.000,
+            value=0.9950, step=0.001, format="%.4f",
+            key="_elec_path_avail",
+            help=(
+                "Lumped availability of the power path from generator terminals to load bus "
+                "(breakers, MV bus, transformer, cables). "
+                "Typical values — radial: 0.9980 · ring bus: 0.9950 · double bus: 0.9970. "
+                "Applied as: a_path = generator_availability × electrical_path_availability. "
+                "Source: IEEE Std 493 (Gold Book). Default 0.9950 is conservative."
+            ),
+        )
         override_eff = st.number_input(
             "Efficiency (%)",
             value=float(gen_data_params.get('electrical_efficiency', 0.40) * 100),
@@ -1853,6 +1866,15 @@ def render_summary_tab(r):
     c2.metric("Fleet Size", _fleet_size_label(r))
     c3.metric("LCOE", f"${r.lcoe:.4f}/kWh")
     c4.metric("Availability", f"{r.system_availability * 100:.3f}%")
+
+    _epf = st.session_state.get('_elec_path_avail', 0.9950)
+    if _epf and _epf < 1.0 and r.system_availability:
+        st.caption(
+            f"System availability includes electrical path factor "
+            f"{_epf:.4f} (breakers, MV bus, transformer, cables — "
+            f"IEEE 493 lumped model). Generator-only availability: "
+            f"{r.system_availability / _epf * 100:.4f}%"
+        )
 
     st.divider()
 
@@ -3839,6 +3861,12 @@ def main():
         return
 
     r = st.session_state.result
+
+    # Apply electrical path derating to reported system availability
+    # (conservative lumped factor per IEEE 493 — preliminary sizing only)
+    elec_path_avail = st.session_state.get('_elec_path_avail', 0.9950)
+    if hasattr(r, 'system_availability') and r.system_availability:
+        r.system_availability = r.system_availability * elec_path_avail
 
     # ---- Executive Summary (before tabs) ----
     render_executive_summary(r, benchmark_price)

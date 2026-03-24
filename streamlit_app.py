@@ -2034,7 +2034,7 @@ def render_reliability_tab(r):
     for cfg in r.reliability_configs:
         # Estimate CAPEX: gen+install scales with n_total, BESS scales with MWh
         cfg_gen_cost = cfg.n_total * gen_cost_per_unit
-        cfg_bess_cost = (cfg.bess_mwh / r.bess_energy_mwh * r.capex_breakdown.get('bess', 0)) if r.bess_energy_mwh > 0 else 0
+        cfg_bess_cost = (cfg.bess_mwh / r.bess_energy_mwh * (r.capex_breakdown or {}).get('bess', 0)) if r.bess_energy_mwh > 0 else 0
         cfg_capex_m = (cfg_gen_cost + cfg_bess_cost) / 1e6
 
         configs_data.append({
@@ -2051,19 +2051,22 @@ def render_reliability_tab(r):
             "CAPEX ($M)": f"${cfg_capex_m:.1f}",
         })
 
-    df_configs = pd.DataFrame(configs_data)
+    if configs_data:
+        df_configs = pd.DataFrame(configs_data)
 
-    def _highlight_selected(row):
-        if row["Configuration"] == r.selected_config_name:
-            return ["background-color: #FFF3CD"] * len(row)
-        return [""] * len(row)
+        def _highlight_selected(row):
+            if row["Configuration"] == r.selected_config_name:
+                return ["background-color: #FFF3CD"] * len(row)
+            return [""] * len(row)
 
-    st.dataframe(
-        df_configs.style.apply(_highlight_selected, axis=1),
-        use_container_width=True,
-        hide_index=True,
-    )
-    st.caption(f"Selected: **{r.selected_config_name}**")
+        st.dataframe(
+            df_configs.style.apply(_highlight_selected, axis=1),
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.caption(f"Selected: **{r.selected_config_name}**")
+    else:
+        st.info("No reliability configurations available.")
 
 
 # =============================================================================

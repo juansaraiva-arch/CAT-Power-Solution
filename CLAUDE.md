@@ -182,6 +182,20 @@ The `frequency_screening` dict returned by `calculate_frequency_screening()` in 
 
 The Streamlit UI displays all three H components separately with a warning if `H_per_unit > 2.0 s` (atypical for recip gas engines).
 
+### Fleet Maintenance Configs (P12)
+`calculate_fleet_maintenance_configs()` in `core/engine.py` — produces three alternative fleet configurations satisfying **C4** (N+1 pod capacity minus generators in scheduled maintenance ≥ peak load).
+
+**Constraint C4:** `(N_pods−1) × n_per × P_gen − max_maint × P_gen ≥ P_peak`
+
+| Config | Strategy | Description |
+|--------|----------|-------------|
+| A — Distributed | min n_total, max n_pods | More smaller pods, same or fewer gens |
+| B — Conservative | same n_pods as base | Add gens to existing topology, no electrical changes |
+| C — Balanced | base_n_pods + 1 | One extra pod, moderate gen increase |
+
+**Parameters:** `max_maintenance_units` (default 1), `selected_fleet_config_maint` (default 'B').
+The base `pod_fleet_optimizer()` also enforces C4 via `max_maintenance_units` kwarg (default 0 = backward compatible).
+
 ### Key Engine Changes (Audit Series P02-P06, March 2026)
 | Finding | Fix | Impact |
 |---------|-----|--------|

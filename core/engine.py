@@ -703,6 +703,7 @@ def pod_fleet_optimizer(
     a_gen: float,
     avail_req: float,
     max_normal_loading: float,
+    max_maintenance_units: int = 0,
     max_pods: int = 20,
     max_per_pod: int = 40,
 ) -> dict:
@@ -758,6 +759,11 @@ def pod_fleet_optimizer(
             if contingency_cap < p_total_peak:
                 continue
 
+            # Constraint 4: N+1 pod minus generators in scheduled maintenance
+            cap_combined = contingency_cap - max_maintenance_units * unit_site_cap
+            if cap_combined < p_total_peak:
+                continue
+
             # Constraint 2: Normal loading cap
             norm_loading = p_total_peak / (n_total * unit_site_cap)
             if norm_loading > max_normal_loading:
@@ -782,6 +788,9 @@ def pod_fleet_optimizer(
                     'loading_contingency_pct': (p_total_peak / contingency_cap) * 100.0,
                     'a_system_calculated':  a_sys,
                     'n_required_min':       n_required,
+                    'cap_combined':         cap_combined,
+                    'maintenance_margin_mw': round(cap_combined - p_total_peak, 3),
+                    'max_maintenance_units': max_maintenance_units,
                 }
             # Once n_total starts increasing, we have the minimum — break inner loop
             elif n_total > best['n_total']:
@@ -792,6 +801,100 @@ def pod_fleet_optimizer(
             break
 
     return best
+
+
+# ==============================================================================
+# 8a-2. MAINTENANCE-AWARE FLEET CONFIGURATIONS (P12)
+# ==============================================================================
+
+def calculate_fleet_maintenance_configs(
+    p_total_peak: float,
+    unit_site_cap: float,
+    a_gen: float,
+    avail_req: float,
+    max_normal_loading: float,
+    max_maintenance_units: int,
+    base_n_pods: int,
+) -> dict:
+    """
+    Produce three maintenance-aware fleet configurations satisfying C4.
+
+    Config A — Distributed: minimize n_total, then maximize n_pods.
+               Fewest generators, more smaller pods.
+    Config B — Conservative: same n_pods as base design, minimum n_total.
+               No electrical topology change, just adds generators.
+    Config C — Balanced: base_n_pods + 1, minimum n_total.
+               One extra pod, moderate generator count.
+
+    Returns dict with keys 'A', 'B', 'C', each containing the full
+    pod optimizer result dict. Returns None for any config that has
+    no valid solution.
+    """
+    if max_maintenance_units == 0:
+        return {}   # no maintenance constraint → no alternative configs
+
+    from math import ceil, comb as math_comb
+
+    MIN_PER_POD = 5   # practical minimum: fewer than 5 gens/pod is atypical for MW-class plants
+
+    def binomial_avail(n, k, a):
+        q = 1.0 - a
+        return sum(
+            math_comb(n, i) * (a ** i) * (q ** (n - i))
+            for i in range(k, n + 1)
+        )
+
+    n_required = ceil(p_total_peak / unit_site_cap)
+    valid = []
+
+    for n_pods in range(2, 22):
+        for n_per in range(MIN_PER_POD, 40):
+            n_total       = n_pods * n_per
+            if n_total < n_required: continue
+            contingency   = (n_pods - 1) * n_per * unit_site_cap
+            if contingency < p_total_peak: continue
+            cap_combined  = contingency - max_maintenance_units * unit_site_cap
+            if cap_combined < p_total_peak: continue
+            loading       = p_total_peak / (n_total * unit_site_cap)
+            if loading > max_normal_loading: continue
+            if binomial_avail(n_total, n_required, a_gen) < avail_req: continue
+            valid.append(dict(
+                n_pods            = n_pods,
+                n_per_pod         = n_per,
+                n_total           = n_total,
+                n_running         = n_total,
+                n_reserve         = 0,
+                installed_cap     = n_total * unit_site_cap,
+                cap_contingency   = contingency,
+                cap_combined      = cap_combined,
+                loading_normal_pct      = round(loading * 100.0, 2),
+                loading_contingency_pct = round(p_total_peak / contingency * 100.0, 2),
+                maintenance_margin_mw   = round(cap_combined - p_total_peak, 3),
+                max_maintenance_units   = max_maintenance_units,
+                a_system_calculated     = binomial_avail(n_total, n_required, a_gen),
+                n_required_min          = n_required,
+            ))
+
+    if not valid:
+        return {}
+
+    # Config A: min n_total → among ties, maximize n_pods (most distributed)
+    min_ntot = min(s['n_total'] for s in valid)
+    cfg_A = max(
+        (s for s in valid if s['n_total'] == min_ntot),
+        key=lambda x: x['n_pods']
+    )
+
+    # Config B: same n_pods as base, min n_total
+    same_pods = [s for s in valid if s['n_pods'] == base_n_pods]
+    cfg_B = min(same_pods, key=lambda x: x['n_total']) if same_pods else None
+
+    # Config C: base_n_pods + 1, min n_total
+    one_more = [s for s in valid if s['n_pods'] == base_n_pods + 1]
+    cfg_C = min(one_more, key=lambda x: x['n_total']) if one_more else None
+
+    return {k: v for k, v in {'A': cfg_A, 'B': cfg_B, 'C': cfg_C}.items()
+            if v is not None}
 
 
 # ==============================================================================

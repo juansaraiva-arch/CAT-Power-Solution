@@ -271,7 +271,7 @@ def run_full_sizing(inputs: SizingInput) -> dict:
     mtbf = gen_data.get('mtbf_hours', 3000.0)
     mttr_hours = gen_data.get('mttr_hours', 16.0)  # used downstream for BESS bridge calc
     # a_gen uses operational availability (industry 93-95%), not MTBF/MTTR ratio (fix: 2026-03)
-    a_gen = gen_data.get('unit_availability', 0.93)
+    a_gen = gen_data.get('unit_availability', 0.965)
 
     # Max normal loading from prime/standby ratio
     prime_kw   = gen_data.get('prime_power_kw', gen_data.get('standby_kw', unit_site_cap * 1000) * 0.90)

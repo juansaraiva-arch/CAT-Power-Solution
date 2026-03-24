@@ -1988,8 +1988,7 @@ def render_reliability_tab(r):
                 help="The selected configuration's fleet size drives the generator and installation CAPEX.",
             )
 
-            # Store selection in session state for next run
-            st.session_state['fleet_maint_config_sel'] = sel
+            # st.radio with key= already stores selection in session_state
 
             # Show selected config details
             sel_cfg = maint_configs.get(sel)

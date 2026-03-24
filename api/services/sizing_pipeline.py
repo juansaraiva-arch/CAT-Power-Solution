@@ -268,10 +268,10 @@ def run_full_sizing(inputs: SizingInput) -> dict:
     # ── Step 6: Pod Architecture Fleet Optimization (P05) ──
     avail_decimal = inputs.avail_req / 100
 
-    # Derive a_gen from generator library MTBF/MTTR
     mtbf = gen_data.get('mtbf_hours', 3000.0)
-    mttr_hours = gen_data.get('mttr_hours', 16.0)
-    a_gen = mtbf / (mtbf + mttr_hours)
+    mttr_hours = gen_data.get('mttr_hours', 16.0)  # used downstream for BESS bridge calc
+    # a_gen uses operational availability (industry 93-95%), not MTBF/MTTR ratio (fix: 2026-03)
+    a_gen = gen_data.get('unit_availability', 0.93)
 
     # Max normal loading from prime/standby ratio
     prime_kw   = gen_data.get('prime_power_kw', gen_data.get('standby_kw', unit_site_cap * 1000) * 0.90)

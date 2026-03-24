@@ -209,6 +209,17 @@ Replaces the hardcoded 2.0h/2.5h coverage in `sizing_pipeline.py`. User-configur
 
 **Parameters:** `bess_autonomy_min` (default 10.0), `bess_dod` (default 0.85).
 
+### Availability & Electrical Path (P14)
+- **fix:** `a_gen` in pod fleet optimizer now reads `unit_availability` (0.93) instead
+  of MTBF/MTTR ratio (0.9947). `mttr_hours` retained for BESS bridge calc (~line 438).
+- **feat:** Electrical path availability factor added (default 0.9950, configurable).
+  Applied as: `a_path = a_gen × elec_path_avail`, post-calculation in `streamlit_app.py`.
+  Basis: IEEE Std 493 Gold Book lumped model. Preliminary sizing only.
+  Input widget in Generator Parameters sidebar expander, key `_elec_path_avail`.
+- **feat:** Pod Architecture Banner at top of Electrical tab.
+  Shows n_pods × n_per, n_total, installed cap, normal loading, n_trafos.
+  Config A/B/C label shown if maintenance config is active.
+
 ### Key Engine Changes (Audit Series P02-P06, March 2026)
 | Finding | Fix | Impact |
 |---------|-----|--------|

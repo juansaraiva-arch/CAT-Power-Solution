@@ -186,6 +186,8 @@ class SizingResult(BaseModel):
     altitude_deration: float = 1.0
     achrf: float = 1.0
     methane_warning: Optional[str] = None
+    derate_type: Optional[str] = None
+    derate_table_source: Optional[str] = None
 
     # ── Fleet ──
     n_running: int

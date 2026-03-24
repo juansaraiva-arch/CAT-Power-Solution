@@ -435,7 +435,12 @@ def render_wizard_step_3():
                 key="_wiz_methane_number",
                 help=HELP_TEXTS.get("methane_number", ""))
 
-        _dr = calculate_site_derate(site_temp_c, site_alt_m, methane_number)
+        # Get derate_type from currently selected generator
+        _wiz_gen = st.session_state.get("_wiz_generator_model", INPUT_DEFAULTS["selected_gen_name"])
+        _wiz_gen_data = GENERATOR_LIBRARY.get(_wiz_gen, {})
+        _wiz_derate_type = _wiz_gen_data.get('derate_type', 'high_speed_recip')
+        _dr = calculate_site_derate(site_temp_c, site_alt_m, methane_number,
+                                     derate_type=_wiz_derate_type)
         st.info(
             f"**Derate Factor: {_dr['derate_factor']:.4f}**  \n"
             f"Methane: {_dr['methane_deration']:.4f} | "
@@ -444,6 +449,24 @@ def render_wizard_step_3():
         )
         if _dr.get('methane_warning'):
             st.warning(_dr['methane_warning'])
+        # Non-validated table warning
+        if _dr.get('derate_table_source') in ('typical_estimate', 'placeholder_pending'):
+            _dt = _dr.get('derate_type', '')
+            if _dt == 'medium_speed_recip':
+                st.warning(
+                    f"⚠️ **Derate table — typical estimate.** "
+                    f"The site derating for {_wiz_gen} uses a conservative typical table "
+                    f"for medium-speed reciprocating engines. "
+                    f"Validated CAT GERP data for this model is not yet available. "
+                    f"Consult CAT application engineering before project commitment."
+                )
+            elif _dt == 'gas_turbine':
+                st.warning(
+                    f"⚠️ **Derate table — placeholder.** "
+                    f"Gas turbine derate characteristics differ significantly from "
+                    f"reciprocating engines. The current table is a placeholder. "
+                    f"Consult CAT GERP data for {_wiz_gen} before using these results."
+                )
         st.session_state["_wiz_site_temp_c"] = site_temp_c
         st.session_state["_wiz_site_alt_m"] = site_alt_m
     else:
@@ -1008,7 +1031,12 @@ def render_sidebar():
         )
         derate_factor_manual = 0.9
         if derate_mode == "Auto-Calculate":
-            _dr = calculate_site_derate(site_temp_c, site_alt_m, methane_number)
+            # Get derate_type from generator (sidebar renders top-down; use previous selection)
+            _sb_gen = st.session_state.get("_wiz_generator_model", INPUT_DEFAULTS["selected_gen_name"])
+            _sb_gen_data = GENERATOR_LIBRARY.get(_sb_gen, {})
+            _sb_derate_type = _sb_gen_data.get('derate_type', 'high_speed_recip')
+            _dr = calculate_site_derate(site_temp_c, site_alt_m, methane_number,
+                                         derate_type=_sb_derate_type)
             st.info(
                 f"**Derate Factor: {_dr['derate_factor']:.4f}**  \n"
                 f"Methane: {_dr['methane_deration']:.4f} | "
@@ -1017,6 +1045,21 @@ def render_sidebar():
             )
             if _dr.get('methane_warning'):
                 st.warning(_dr['methane_warning'])
+            if _dr.get('derate_table_source') in ('typical_estimate', 'placeholder_pending'):
+                _dt = _dr.get('derate_type', '')
+                if _dt == 'medium_speed_recip':
+                    st.warning(
+                        f"⚠️ **Derate table — typical estimate.** "
+                        f"The site derating for {_sb_gen} uses a conservative typical table "
+                        f"for medium-speed reciprocating engines. "
+                        f"Validated CAT GERP data is not yet available."
+                    )
+                elif _dt == 'gas_turbine':
+                    st.warning(
+                        f"⚠️ **Derate table — placeholder.** "
+                        f"Gas turbine derate characteristics differ significantly. "
+                        f"Consult CAT GERP data for {_sb_gen} before using these results."
+                    )
         else:
             derate_factor_manual = st.number_input(
                 "Manual Derate Factor", min_value=0.01, max_value=1.0,
@@ -1823,6 +1866,13 @@ def render_summary_tab(r):
         st.write(f"- ISO Rating: {r.unit_iso_cap:.2f} MW")
         st.write(f"- Site Rating: {r.unit_site_cap:.2f} MW")
         st.write(f"- Derate Factor: {r.derate_factor:.4f}")
+        # Non-validated derate table warning in summary
+        if getattr(r, 'derate_table_source', None) in ('typical_estimate', 'placeholder_pending'):
+            _dts = getattr(r, 'derate_type', '')
+            if _dts == 'medium_speed_recip':
+                st.caption("⚠️ Derate uses typical estimate — OEM data pending")
+            elif _dts == 'gas_turbine':
+                st.caption("⚠️ Derate uses placeholder table — consult CAT GERP")
         st.write(f"- Efficiency (ISO): {r.fleet_efficiency * 100:.1f}%")
         st.write(f"- Voltage: {r.rec_voltage_kv:.1f} kV")
         st.write(f"- Frequency: {r.freq_hz} Hz")
@@ -2234,6 +2284,52 @@ def render_bess_tab(r):
 # =============================================================================
 def render_electrical_tab(r):
     """Voltage, efficiency, heat rate, frequency screening, and stability."""
+
+    # ── Pod Architecture Banner ──────────────────────────────────────────────
+    n_pods   = getattr(r, 'n_pods',   None)
+    n_per    = getattr(r, 'n_per_pod', None)
+    n_total  = getattr(r, 'n_total',  None)
+    n_trafos = getattr(r, 'n_trafos', None)
+    p_inst   = getattr(r, 'installed_cap', None)
+    loading  = getattr(r, 'loading_normal_pct', None)
+    cap_comb = getattr(r, 'cap_combined', None)
+    sel_cfg  = getattr(r, 'selected_fleet_config_maint', None)
+    maint_n  = getattr(r, 'max_maintenance_units', 0)
+
+    if n_pods and n_per and n_total:
+        col1, col2, col3, col4, col5 = st.columns(5)
+        col1.metric("Pod Architecture",   f"{n_pods} pods × {n_per} gens")
+        col2.metric("Total Generators",   f"{n_total}")
+        col3.metric("P Installed",        f"{p_inst:.1f} MW" if p_inst else "—")
+        col4.metric("Normal Loading",     f"{loading:.1f}%" if loading else "—")
+        col5.metric("Transformers",       f"{n_trafos}" if n_trafos else "—")
+
+        if sel_cfg and sel_cfg in ('A', 'B', 'C'):
+            cfg_label = f"Maintenance Config {sel_cfg}"
+            combined_str = f"{cap_comb:.1f} MW" if cap_comb else "—"
+            st.info(
+                f"**Active configuration: {cfg_label}** — "
+                f"{n_pods} pods × {n_per} gens = {n_total} generators · "
+                f"Combined contingency capacity: {combined_str} "
+                f"(N+1 pod + {maint_n} unit{'s' if maint_n != 1 else ''} in maintenance). "
+                f"All electrical sizing below reflects this architecture."
+            )
+        else:
+            if maint_n and maint_n > 0 and cap_comb and cap_comb < getattr(r, 'p_total_peak', 999):
+                st.warning(
+                    f"**Base design active** — with max_maintenance_units = {maint_n}, "
+                    f"the base design (combined cap {cap_comb:.1f} MW) does not cover the "
+                    f"combined contingency. Go to the **Reliability tab** to select "
+                    f"Config A, B, or C and click **▶ Apply & Re-run Sizing**."
+                )
+            else:
+                st.caption(
+                    f"Base design: {n_pods} pods × {n_per} gens = {n_total} generators. "
+                    f"To apply a maintenance-aware configuration, go to the "
+                    f"Reliability tab and select Config A, B, or C."
+                )
+
+        st.divider()
 
     st.subheader("Electrical System")
 

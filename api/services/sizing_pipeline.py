@@ -214,9 +214,11 @@ def run_full_sizing(inputs: SizingInput) -> dict:
     p_peak_at_gen = p_total_peak / dist_loss_factor
 
     # ── Step 3: Site derating (CAT official tables with bilinear interpolation) ──
+    derate_type = gen_data.get('derate_type', 'high_speed_recip')
     if inputs.derate_mode == "Auto-Calculate":
         derate_result = calculate_site_derate(
-            inputs.site_temp_c, inputs.site_alt_m, inputs.methane_number
+            inputs.site_temp_c, inputs.site_alt_m, inputs.methane_number,
+            derate_type=derate_type,
         )
         derate_factor = derate_result["derate_factor"]
         methane_deration = derate_result["methane_deration"]
@@ -979,6 +981,8 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         derate_factor=derate_factor,
         methane_deration=methane_deration,
         altitude_deration=altitude_deration,
+        derate_type=derate_type,
+        derate_table_source=derate_result.get('derate_table_source', 'validated_gerp_em7206') if inputs.derate_mode == "Auto-Calculate" else None,
         achrf=achrf,
         methane_warning=methane_warning,
         # Fleet

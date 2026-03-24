@@ -1264,19 +1264,9 @@ def render_sidebar():
             value=float(gen_data_params.get('unit_availability', 0.965) * 100),
             step=0.5, format="%.1f",
         )
-        elec_path_avail = st.number_input(
-            "Electrical Path Availability",
-            min_value=0.980, max_value=1.000,
-            value=0.9950, step=0.001, format="%.4f",
-            key="_elec_path_avail",
-            help=(
-                "Lumped availability of the power path from generator terminals to load bus "
-                "(breakers, MV bus, transformer, cables). "
-                "Typical values — radial: 0.9980 · ring bus: 0.9950 · double bus: 0.9970. "
-                "Applied as: a_path = generator_availability × electrical_path_availability. "
-                "Source: IEEE Std 493 (Gold Book). Default 0.9950 is conservative."
-            ),
-        )
+        # Electrical path factor moved to Reliability tab (P16)
+        if "_elec_path_avail" not in st.session_state:
+            st.session_state["_elec_path_avail"] = 0.9950
         override_eff = st.number_input(
             "Efficiency (%)",
             value=float(gen_data_params.get('electrical_efficiency', 0.40) * 100),
@@ -2238,6 +2228,128 @@ def render_reliability_tab(r):
         st.caption(f"Selected: **{r.selected_config_name}**")
     else:
         st.info("No reliability configurations available.")
+
+    # ── Electrical Path Availability & Uptime Tier (P16) ─────────────────
+    st.divider()
+    st.subheader("System Availability — Electrical Path & Uptime Classification")
+
+    import pandas as pd
+    from core.engine import _binomial_availability
+
+    # --- Topology selector ---
+    _TOPOLOGIES = {
+        "Radial single bus":            0.9980,
+        "Ring bus / sectionalized":     0.9950,
+        "Double bus / double breaker":  0.9970,
+        "2N fully redundant path":      0.9990,
+        "Custom":                       None,
+    }
+    topo_labels = list(_TOPOLOGIES.keys())
+    topo_sel = st.selectbox(
+        "Bus Topology", topo_labels, index=1,
+        key="_bus_topology",
+        help="Selects the IEEE 493 lumped electrical path factor for the bus topology."
+    )
+    topo_factor = _TOPOLOGIES[topo_sel]
+
+    if topo_factor is not None:
+        st.session_state["_elec_path_avail"] = topo_factor
+
+    epf = st.number_input(
+        "Electrical Path Availability Factor",
+        min_value=0.980, max_value=1.000,
+        value=float(st.session_state.get("_elec_path_avail", 0.9950)),
+        step=0.0001, format="%.4f",
+        key="_elec_path_avail_input",
+        help=(
+            "Lumped availability of the electrical path (breakers, MV bus, transformer, cables). "
+            "Source: IEEE Std 493 (Gold Book). "
+            "To compare with the CAT Switchgear Excel tool, set this to 1.0000 "
+            "(that tool does not apply an electrical path factor)."
+        ),
+    )
+    st.session_state["_elec_path_avail"] = epf
+
+    # --- Fleet-only vs Combined availability ---
+    a_gen_active = getattr(r, 'a_gen_derived', 0.965)
+    n_total = getattr(r, 'n_total', 0)
+    n_running = getattr(r, 'n_running', 0)
+
+    if n_total > 0 and n_running > 0:
+        a_fleet = _binomial_availability(n_total, n_running, a_gen_active)
+    else:
+        a_fleet = getattr(r, 'system_availability', 0.99) / epf
+
+    a_combined = a_fleet * epf
+
+    col_f, col_e, col_c = st.columns(3)
+    col_f.metric("Fleet Only", f"{a_fleet * 100:.4f}%")
+    col_e.metric("Elec. Path Factor", f"{epf:.4f}")
+    col_c.metric("Combined", f"{a_combined * 100:.4f}%")
+
+    st.caption(
+        "**Fleet Only** = binomial(N_total, N_required, a_gen). "
+        "**Combined** = Fleet Only × Elec. Path Factor. "
+        "To match the CAT Switchgear Excel tool, set the factor to 1.0000."
+    )
+
+    # --- Uptime Tier Classification ---
+    st.markdown("---")
+    st.subheader("Uptime Institute Tier Classification")
+
+    downtime_min = (1 - a_combined) * 8760 * 60  # minutes/year
+    downtime_hr  = downtime_min / 60
+
+    _TIERS = [
+        ("Tier I — Basic",              99.671,  28.8),
+        ("Tier II — Redundant",         99.741,  22.0),
+        ("Tier III — Concurrently Maint.", 99.982, 1.6),
+        ("Tier IV — Fault Tolerant",    99.995,  0.4),
+    ]
+
+    tier_data = []
+    achieved = "Below Tier I"
+    for label, pct, max_down_hr in _TIERS:
+        met = "✅" if a_combined * 100 >= pct else "❌"
+        if a_combined * 100 >= pct:
+            achieved = label
+        tier_data.append({
+            'Tier': label,
+            'Req Avail (%)': f"{pct:.3f}%",
+            'Max Downtime/yr': f"{max_down_hr:.1f} hr",
+            'Met?': met,
+        })
+
+    st.dataframe(pd.DataFrame(tier_data), use_container_width=True, hide_index=True)
+    st.info(f"**Achieved:** {achieved} — Projected downtime: {downtime_hr:.2f} hr/yr ({downtime_min:.0f} min/yr)")
+
+    # --- a_gen Sensitivity Table ---
+    st.markdown("---")
+    st.subheader("Generator Availability Sensitivity")
+
+    a_gen_range = [0.920, 0.930, 0.940, 0.950, 0.960, 0.965, 0.970, 0.975, 0.980, 0.985, 0.990]
+    sens_data = []
+    for ag in a_gen_range:
+        if n_total > 0 and n_running > 0:
+            af = _binomial_availability(n_total, n_running, ag)
+        else:
+            af = ag ** 10  # fallback approximation
+        ac = af * epf
+        marker = " ◄" if abs(ag - a_gen_active) < 0.001 else ""
+        dt_hr = (1 - ac) * 8760
+        sens_data.append({
+            'a_gen': f"{ag:.3f}{marker}",
+            'Fleet Avail (%)': f"{af * 100:.4f}%",
+            'Combined (%)': f"{ac * 100:.4f}%",
+            'Downtime (hr/yr)': f"{dt_hr:.2f}",
+        })
+
+    st.dataframe(pd.DataFrame(sens_data), use_container_width=True, hide_index=True)
+    st.caption(
+        f"Fleet: {n_total} total generators, {n_running} required. "
+        f"Active a_gen = {a_gen_active:.3f} (marked with ◄). "
+        f"Electrical path factor = {epf:.4f}."
+    )
 
 
 # =============================================================================

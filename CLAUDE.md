@@ -144,7 +144,7 @@ Use fixtures from `conftest.py`:
 
 ## Sizing Pipeline Flow (v5.0 — post-audit)
 1. Resolve generator → 2. Calculate loads (p_total_peak = p_avg × PAR) →
-3. Site derating (CAT tables) → 4. BESS sizing →
+3. Site derating (CAT tables, validated vs EM7206-05-001 P11) → 4. BESS sizing →
 5. Spinning reserve (physical: max(load_step, N-1) — BESS credit validated) →
 6. **Pod fleet optimizer** (N+1 pod architecture, prime/standby loading) →
 7. Availability (Binomial) → 8. Voltage recommendation →

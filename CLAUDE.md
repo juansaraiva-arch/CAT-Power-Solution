@@ -173,6 +173,15 @@ Called from `sizing_pipeline.py` after pod fleet optimizer. Parameters:
 
 Validated against 5 CAT schemas: S1–S5 (25.5 kA to 52.2 kA symmetrical). Breaker selection per ANSI C37 ratings [16, 25, 31.5, 40, 50, 63, 80 kA].
 
+**HV SWG Bus Sizing (P18):** Dual HV switchgear N-1 contingency model in `streamlit_app.py`:
+- Topology selector: Single SWG (radial) | Dual SWG ring/sectionalized | Double bus/double breaker
+- Normal operation: each SWG carries `normal_factor` × I_total (50% for dual)
+- N-1 contingency: surviving SWG carries 100% — this is the bus rating basis
+- Tie-breaker rating: N-1 transfer current + ISC interrupting
+- ISC split model: local (55%) + remote (45%) contributions for dual SWG
+- Equipment recommendations table: incomers, bus bars, tie-breaker, transformers
+- Session state key: `_swg_topology`
+
 ### Frequency Screening — Inertia Fields
 The `frequency_screening` dict returned by `calculate_frequency_screening()` in `core/engine.py` includes:
 - `H_per_unit` — mechanical inertia constant from the generator library (e.g., 1.2 s for G3516H)

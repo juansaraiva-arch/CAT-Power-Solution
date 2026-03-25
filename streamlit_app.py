@@ -1358,6 +1358,26 @@ def render_sidebar():
                 format="%.1f",
             )
 
+        # ── HV Switchgear Topology (P18) ────────────────────────────────
+        _SWG_TOPOLOGY_OPTIONS = {
+            "Single SWG (radial)":                    {"n_swg": 1, "normal_factor": 1.0, "contingency_factor": 1.0},
+            "Dual SWG — ring / sectionalized (N-1)":  {"n_swg": 2, "normal_factor": 0.5, "contingency_factor": 1.0},
+            "Double bus / double breaker":             {"n_swg": 2, "normal_factor": 0.5, "contingency_factor": 1.0},
+        }
+        swg_topology = st.selectbox(
+            "HV SWG Architecture",
+            options=list(_SWG_TOPOLOGY_OPTIONS.keys()),
+            index=1,  # default: Dual SWG ring/sectionalized
+            key="_swg_topology",
+            help=(
+                "Defines how many HV switchgear panels share the generator output. "
+                "Dual SWG (ring/sectionalized): normal operation at 50% each; "
+                "N-1 contingency requires surviving SWG to carry 100% of load. "
+                "Bus and breakers are rated for the N-1 condition. "
+                "Single SWG: bus always carries 100% — more conservative sizing."
+            ),
+        )
+
     # ---- 9. Economics ----
     with st.sidebar.expander(":moneybag: Economics"):
         region = st.selectbox(
@@ -2637,11 +2657,167 @@ def render_electrical_tab(r):
         }
     st.table(pd.DataFrame(data).set_index("Component"))
 
-    # ---- Electrical Sizing (P08) ----
+    # ── HV Switchgear Bus Sizing — N-1 Corrected (P18) ──────────────────
+    import math as _math
+
+    swg_topology = st.session_state.get('_swg_topology', 'Dual SWG — ring / sectionalized (N-1)')
+    _SWG_TOPOLOGY_OPTIONS = {
+        "Single SWG (radial)":                    {"n_swg": 1, "normal_factor": 1.0, "contingency_factor": 1.0},
+        "Dual SWG — ring / sectionalized (N-1)":  {"n_swg": 2, "normal_factor": 0.5, "contingency_factor": 1.0},
+        "Double bus / double breaker":             {"n_swg": 2, "normal_factor": 0.5, "contingency_factor": 1.0},
+    }
+    _swg_cfg = _SWG_TOPOLOGY_OPTIONS.get(swg_topology, {"n_swg": 2, "normal_factor": 0.5, "contingency_factor": 1.0})
+    n_swg              = _swg_cfg["n_swg"]
+    normal_factor      = _swg_cfg["normal_factor"]
+    contingency_factor = _swg_cfg["contingency_factor"]
+
+    v_kv        = r.rec_voltage_kv
+    p_total_mw  = r.p_total_peak
+    pf          = 0.8
+    _n_pods     = getattr(r, 'n_pods', None)
+    _n_trafos   = getattr(r, 'n_trafos', None)
+
+    I_total_a        = (p_total_mw * 1e6) / (_math.sqrt(3) * v_kv * 1000 * pf)
+    I_normal_a       = I_total_a * normal_factor
+    I_contingency_a  = I_total_a * contingency_factor
+
+    _BUS_RATINGS_A = [800, 1200, 1600, 2000, 2500, 3000, 4000, 5000, 6000]
+    bus_rating_a   = next((br for br in _BUS_RATINGS_A if br >= I_contingency_a * 1.1), _BUS_RATINGS_A[-1])
+
+    I_tie_breaker_a = I_contingency_a if n_swg > 1 else 0.0
+
+    k_sc       = 6.5
+    ISC_sym_a  = I_total_a * k_sc
+    k_asym     = 1.6
+    ISC_asym_a = ISC_sym_a * k_asym
+
+    if n_swg > 1:
+        ISC_local_a  = ISC_sym_a * 0.55
+        ISC_remote_a = ISC_sym_a * 0.45
+    else:
+        ISC_local_a  = ISC_sym_a
+        ISC_remote_a = 0.0
+
+    _TRAFO_RATINGS_MVA = [2.5, 5.0, 7.5, 10.0, 15.0, 20.0, 25.0, 30.0]
+    p_per_pod_mw    = p_total_mw / _n_pods if _n_pods else p_total_mw
+    trafo_mva_each  = next((t for t in _TRAFO_RATINGS_MVA if t >= p_per_pod_mw / pf * 1.15), 30.0)
+    n_trafos_calc   = _n_pods if _n_pods else _math.ceil(p_total_mw / trafo_mva_each / pf)
+    trafo_total_mva = n_trafos_calc * trafo_mva_each
+
+    st.divider()
+    st.subheader(f"HV Switchgear Bus Sizing — {v_kv:.1f} kV")
+
+    if n_swg > 1:
+        st.info(
+            f"**Architecture: {swg_topology}** — {n_swg} SWG panels in service. "
+            f"Normal operation: each SWG carries **{normal_factor*100:.0f}% of load "
+            f"({I_normal_a:,.0f} A)**. "
+            f"N-1 contingency (one SWG faults): surviving SWG carries **100% of load "
+            f"({I_contingency_a:,.0f} A)**. "
+            f"**Bus and breakers are rated for the N-1 condition.** "
+            f"Tie-breaker closes automatically on N-1 to transfer load."
+        )
+    else:
+        st.info(
+            f"**Architecture: {swg_topology}** — single SWG, all load on one bus. "
+            f"Bus rated for total continuous current ({I_normal_a:,.0f} A)."
+        )
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric(
+        "Normal Current (per SWG)",
+        f"{I_normal_a:,.0f} A",
+        help=f"Current per SWG in normal operation ({normal_factor*100:.0f}% of total load).",
+    )
+    c2.metric(
+        "N-1 Contingency Current",
+        f"{I_contingency_a:,.0f} A",
+        help="Current in surviving SWG when one SWG is out of service. This is the bus sizing basis.",
+    )
+    c3.metric(
+        "Bus Rating (standard)",
+        f"{bus_rating_a:,.0f} A",
+        help=f"Next standard bus rating above N-1 current with 10% margin. Basis: N-1 contingency.",
+    )
+    c4.metric(
+        "Step-up Transformers",
+        f"{n_trafos_calc} × {trafo_mva_each:.1f} MVA",
+        help=f"Total installed: {trafo_total_mva:.0f} MVA. One transformer per pod stepping up to {v_kv:.1f} kV.",
+    )
+
+    st.divider()
+    st.subheader("Short Circuit Analysis — HV SWG")
+    st.caption(
+        f"Basis: IEC 60909. Generator subtransient factor k_sc = {k_sc}. "
+        f"Asymmetric multiplier k_asym = {k_asym} (X/R ≈ 15–20). "
+        + ("Split model: fault on one SWG bus receives local + attenuated remote contribution. " if n_swg > 1 else "") +
+        "Full ISC study required before equipment procurement."
+    )
+
+    if n_swg > 1:
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("ISC Local Contribution",   f"{ISC_local_a/1000:.1f} kA",
+                  help="Generators directly connected to the faulted SWG bus.")
+        c2.metric("ISC Remote Contribution",  f"{ISC_remote_a/1000:.1f} kA",
+                  help="Generators on the other SWG, connected through the bus-tie cable. Attenuated by tie impedance.")
+        c3.metric("ISC Total (symmetric)",    f"{ISC_sym_a/1000:.1f} kA",
+                  help="Conservative: sum of local + remote (ignores tie impedance attenuation).")
+        c4.metric("ISC Asymmetric (1st cycle)", f"{ISC_asym_a/1000:.1f} kA",
+                  help="First-cycle asymmetric fault current. Basis for breaker interrupting rating.")
+    else:
+        c1, c2 = st.columns(2)
+        c1.metric("ISC Symmetric",    f"{ISC_sym_a/1000:.1f} kA")
+        c2.metric("ISC Asymmetric",   f"{ISC_asym_a/1000:.1f} kA",
+                  help="First-cycle. Basis for breaker interrupting rating.")
+
+    _BREAKER_RATINGS_KA = [16, 20, 25, 31.5, 40, 50, 63]
+    breaker_rating_ka = next((b for b in _BREAKER_RATINGS_KA if b >= ISC_asym_a/1000 * 1.1), 63)
+
+    st.divider()
+    st.subheader("Equipment Recommendations")
+
+    eq_data = {
+        "Equipment": [
+            f"Generator incomer breaker ({v_kv:.1f} kV)",
+            "Bus bar rating",
+            f"Bus-tie / coupler breaker" if n_swg > 1 else "—",
+            f"Step-up transformer ({n_trafos_calc} units)",
+        ],
+        "Basis": [
+            "N-1 contingency current + 10% margin",
+            "N-1 contingency + ISC withstand",
+            "N-1 transfer current on close-in" if n_swg > 1 else "—",
+            f"Pod peak output ÷ PF × 1.15 margin",
+        ],
+        "Minimum Rating": [
+            f"{bus_rating_a:,.0f} A continuous / {breaker_rating_ka} kA interrupting",
+            f"{bus_rating_a:,.0f} A / {ISC_asym_a/1000:.0f} kA withstand (1 s)",
+            f"{I_contingency_a:,.0f} A continuous / {breaker_rating_ka} kA interrupting" if n_swg > 1 else "—",
+            f"{trafo_mva_each:.1f} MVA ONAN — {v_kv:.1f} kV / HV",
+        ],
+    }
+    st.table(pd.DataFrame(eq_data).set_index("Equipment"))
+
+    if n_swg > 1:
+        st.warning(
+            "⚠️ **Tie-breaker N-1 transfer scheme:** The bus-tie breaker must be equipped with "
+            "automatic bus transfer (ABT) logic to close within 100–200 ms of detecting SWG-A "
+            "or SWG-B de-energization. Verify that the surviving generator fleet can absorb "
+            "the full load step without frequency collapse. See Transient Stability tab."
+        )
+
+    st.caption(
+        "All currents are calculated at peak load. "
+        f"Power factor assumed = {pf}. "
+        "ISC values are preliminary estimates — a formal short circuit study per IEC 60909 "
+        "or ANSI/IEEE C37 is required before equipment specification and procurement."
+    )
+
+    # ---- Electrical Sizing (P08) — Detailed Model ----
     if hasattr(r, 'electrical_sizing'):
         e = r.electrical_sizing
         st.divider()
-        st.subheader("MV Generator Bus — 13.8 kV")
+        st.subheader("MV Generator Bus — 13.8 kV (Detailed Model)")
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Normal Current",      f"{e['mv_I_normal_a']:.0f} A")
         c2.metric("Contingency Current", f"{e['mv_I_contingency_a']:.0f} A")

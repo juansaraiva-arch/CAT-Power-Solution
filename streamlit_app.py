@@ -2909,6 +2909,31 @@ def render_electrical_tab(r):
     normal_factor      = _swg_cfg["normal_factor"]
     contingency_factor = _swg_cfg["contingency_factor"]
 
+    # ── 52T5 Bus-Tie Operating Mode (only relevant for dual SWG) ─────────
+    if _swg_cfg["n_swg"] > 1:
+        tie_mode = st.radio(
+            "52T5 Bus-Tie Breaker — Normal State",
+            options=[
+                "Normally Open (NO) — Standard CAT practice",
+                "Normally Closed (NC) — Ring bus, continuous paralleling",
+            ],
+            index=0,   # default: NO — matches all CAT Switchgear one-line diagrams
+            key="_tie_breaker_mode",
+            horizontal=True,
+            help=(
+                "52T5 is the bus sectionalizing breaker between SWGR-A and SWGR-B. "
+                "Normally Open (NO): each bus section operates independently in normal "
+                "conditions. On N-1, 52T5 closes to transfer load — lower normal ISC. "
+                "Normally Closed (NC): both sections in continuous parallel — maximum ISC "
+                "on any fault, highest breaker rating required. "
+                "All CAT Switchgear data center one-lines use the NO configuration."
+            ),
+        )
+        _tie_is_NO = "Normally Open" in tie_mode
+    else:
+        _tie_is_NO = True   # single SWG — no tie breaker
+        tie_mode   = "N/A"
+
     v_kv        = r.rec_voltage_kv
     p_total_mw  = r.p_total_peak
     pf          = 0.8
@@ -2924,17 +2949,48 @@ def render_electrical_tab(r):
 
     I_tie_breaker_a = I_contingency_a if n_swg > 1 else 0.0
 
-    k_sc       = 6.5
-    ISC_sym_a  = I_total_a * k_sc
-    k_asym     = 1.6
-    ISC_asym_a = ISC_sym_a * k_asym
+    # ── Short Circuit Current — mode-dependent ───────────────────────────
+    # k_sc = subtransient short circuit factor for high-speed recip gas engines
+    # Based on typical X"d = 15-20% → k_sc ≈ 5-7. Conservative value = 6.5
+    k_sc   = 6.5
+    k_asym = 1.6   # IEC 60909 first-cycle asymmetric factor (X/R ≈ 15-20)
 
-    if n_swg > 1:
-        ISC_local_a  = ISC_sym_a * 0.55
-        ISC_remote_a = ISC_sym_a * 0.45
+    # Total ISC if all generators were on one bus (worst case, NC ring)
+    ISC_sym_total_a  = I_total_a * k_sc
+    ISC_asym_total_a = ISC_sym_total_a * k_asym
+
+    if n_swg > 1 and _tie_is_NO:
+        # 52T5 Normally Open — each section sees only its own pods' contribution
+        # On close-in N-1, 52T5 closes and tie sees remote ISC through cable impedance.
+        # 50% local + 30% remote attenuated through tie (conservative estimate).
+        ISC_local_a  = ISC_sym_total_a * 0.50   # local section pods only
+        ISC_remote_a = ISC_sym_total_a * 0.30   # remote pods attenuated through tie
+        ISC_sym_a    = ISC_local_a + ISC_remote_a   # = 80% of total (NO, N-1)
+        ISC_asym_a   = ISC_sym_a * k_asym
+        _isc_basis   = (
+            f"52T5 Normally Open: fault on one bus section sees local pods "
+            f"({ISC_local_a/1000:.1f} kA) + remote pods attenuated through bus-tie "
+            f"({ISC_remote_a/1000:.1f} kA). Full ISC study required for exact values."
+        )
+    elif n_swg > 1 and not _tie_is_NO:
+        # 52T5 Normally Closed — all generators contribute to any fault
+        ISC_local_a  = ISC_sym_total_a * 0.50
+        ISC_remote_a = ISC_sym_total_a * 0.50
+        ISC_sym_a    = ISC_sym_total_a   # 100% — all generators contribute
+        ISC_asym_a   = ISC_asym_total_a
+        _isc_basis   = (
+            f"52T5 Normally Closed: all generators contribute to any bus fault "
+            f"(max ISC = {ISC_sym_a/1000:.1f} kA symmetric). "
+            f"This requires highest-rated breakers. "
+            f"Consider switching to NO configuration to reduce ISC."
+        )
     else:
-        ISC_local_a  = ISC_sym_a
+        # Single SWG
+        ISC_local_a  = ISC_sym_total_a
         ISC_remote_a = 0.0
+        ISC_sym_a    = ISC_sym_total_a
+        ISC_asym_a   = ISC_asym_total_a
+        _isc_basis   = f"Single bus: all generators contribute directly."
 
     # IEC 60076 standard power transformer ratings (MVA)
     _TRAFO_RATINGS_MVA = [2.5, 5.0, 7.5, 10.0, 12.5, 15.0, 20.0, 25.0,
@@ -2955,7 +3011,7 @@ def render_electrical_tab(r):
             f"N-1 contingency (one SWG faults): surviving SWG carries **100% of load "
             f"({I_contingency_a:,.0f} A)**. "
             f"**Bus and breakers are rated for the N-1 condition.** "
-            f"Tie-breaker closes automatically on N-1 to transfer load."
+            f"Bus-tie breaker (52T5) {'closes automatically on N-1 to transfer load' if _tie_is_NO else 'is normally closed — continuous paralleling'}."
         )
     else:
         st.info(
@@ -3010,6 +3066,8 @@ def render_electrical_tab(r):
         c2.metric("ISC Asymmetric",   f"{ISC_asym_a/1000:.1f} kA",
                   help="First-cycle. Basis for breaker interrupting rating.")
 
+    st.caption(f"**ISC basis:** {_isc_basis}")
+
     # IEC 62271-100 and ANSI/IEEE C37.06 standard interrupting ratings (kA)
     # 80–125 kA are special-order equipment — flag in UI if selected
     _BREAKER_RATINGS_KA = [16, 20, 25, 31.5, 40, 50, 63, 80, 100, 125]
@@ -3026,21 +3084,22 @@ def render_electrical_tab(r):
         "Equipment": [
             f"Generator incomer breaker ({v_kv:.1f} kV)",
             "Bus bar rating",
-            f"Bus-tie / coupler breaker" if n_swg > 1 else "—",
+            f"Bus-tie breaker 52T5 ({v_kv:.1f} kV)" if n_swg > 1 else "—",
             f"Step-up transformer ({n_trafos_calc} units)",
             "Current-limiting reactor (optional)",
         ],
         "Basis": [
             "N-1 contingency current + 10% margin",
             "N-1 contingency + ISC withstand",
-            "N-1 transfer current on close-in" if n_swg > 1 else "—",
+            ("N-1 transfer current + close-in ISC from remote section" if _tie_is_NO else "All-generator ISC — max rating") if n_swg > 1 else "—",
             f"Pod peak output ÷ PF × 1.15 margin",
             "Reduce ISC to standard breaker range (50–63 kA)",
         ],
         "Minimum Rating": [
             f"{bus_rating_a:,.0f} A continuous / {breaker_rating_ka} kA interrupting",
             f"{bus_rating_a:,.0f} A / {ISC_asym_a/1000:.0f} kA withstand (1 s)",
-            f"{I_contingency_a:,.0f} A continuous / {breaker_rating_ka} kA interrupting" if n_swg > 1 else "—",
+            (f"{I_contingency_a:,.0f} A continuous / {breaker_rating_ka} kA interrupting "
+             f"({'NO→close on N-1' if _tie_is_NO else 'NC, always closed'})") if n_swg > 1 else "—",
             f"{trafo_mva_each:.1f} MVA ONAN — {v_kv:.1f} kV / HV",
             f"Recommended if ISC_asym > 63 kA — consult application engineering"
                 if ISC_asym_a/1000 > 63 else "Not required at this load level",
@@ -3073,12 +3132,27 @@ def render_electrical_tab(r):
         )
 
     if n_swg > 1:
-        st.warning(
-            "⚠️ **Tie-breaker N-1 transfer scheme:** The bus-tie breaker must be equipped with "
-            "automatic bus transfer (ABT) logic to close within 100–200 ms of detecting SWG-A "
-            "or SWG-B de-energization. Verify that the surviving generator fleet can absorb "
-            "the full load step without frequency collapse. See Transient Stability tab."
-        )
+        if _tie_is_NO:
+            st.warning(
+                "⚠️ **Bus-tie breaker (52T5) — Automatic Bus Transfer scheme required.** "
+                "With 52T5 Normally Open, the protection relay must detect loss of "
+                "SWGR-A or SWGR-B de-energization and CLOSE 52T5 within 100–200 ms "
+                "to restore power to the affected loads. "
+                "Verify that the surviving generator fleet can absorb the full load step "
+                "without frequency collapse. See **Transient Stability** tab. "
+                "52T5 must be rated for the N-1 transfer current AND the close-in ISC "
+                f"from the remote section ({ISC_remote_a/1000:.1f} kA through tie)."
+            )
+        else:
+            st.warning(
+                "⚠️ **52T5 Normally Closed — continuous bus paralleling.** "
+                "Both sections operate in parallel at all times. "
+                "Any fault is seen by ALL generators — maximum ISC applies. "
+                f"Calculated ISC asymmetric = {ISC_asym_a/1000:.1f} kA. "
+                "Ensure all breakers (incomers, feeders, and 52T5) are rated for "
+                f"the full {ISC_asym_a/1000:.1f} kA interrupting capacity. "
+                "This configuration is less common in CAT Switchgear data center designs."
+            )
 
     st.caption(
         "All currents are calculated at peak load. "

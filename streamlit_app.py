@@ -65,6 +65,87 @@ DC_TYPES = [
     "Edge Computing",
 ]
 
+# Per-DC-type suggested defaults for load dynamics parameters.
+# These are industry-typical values for preliminary sizing — the user
+# can always override them after the auto-fill.
+# Sources: Uptime Institute, ASHRAE TC9.9, Lawrence Berkeley National Lab
+DC_TYPE_DEFAULTS = {
+    "AI Factory (Training)": {
+        "pue":               1.12,   # liquid cooling, very efficient
+        "capacity_factor":   0.90,   # training runs at near-constant load
+        "peak_avg_ratio":    1.10,   # very flat load profile
+        "load_step_pct":     30.0,   # large GPU job starts/stops
+        "spinning_res_pct":  15.0,   # high SR — GPU loads are unforgiving
+        "load_ramp_req":     5.0,    # MW/min
+        "avail_req":         99.99,
+    },
+    "AI Inference": {
+        "pue":               1.15,
+        "capacity_factor":   0.75,   # variable inference traffic
+        "peak_avg_ratio":    1.25,
+        "load_step_pct":     25.0,
+        "spinning_res_pct":  15.0,
+        "load_ramp_req":     5.0,
+        "avail_req":         99.99,
+    },
+    "Hyperscale Standard": {
+        "pue":               1.25,
+        "capacity_factor":   0.80,
+        "peak_avg_ratio":    1.20,
+        "load_step_pct":     20.0,
+        "spinning_res_pct":  10.0,
+        "load_ramp_req":     3.0,
+        "avail_req":         99.99,
+    },
+    "Colocation": {
+        "pue":               1.35,
+        "capacity_factor":   0.70,
+        "peak_avg_ratio":    1.35,
+        "load_step_pct":     15.0,
+        "spinning_res_pct":  10.0,
+        "load_ramp_req":     2.0,
+        "avail_req":         99.982,  # Tier III
+    },
+    "Enterprise Mixed": {
+        "pue":               1.45,
+        "capacity_factor":   0.65,
+        "peak_avg_ratio":    1.40,
+        "load_step_pct":     10.0,
+        "spinning_res_pct":  10.0,
+        "load_ramp_req":     1.5,
+        "avail_req":         99.741,  # Tier II
+    },
+    "HPC / Research": {
+        "pue":               1.20,
+        "capacity_factor":   0.85,
+        "peak_avg_ratio":    1.15,
+        "load_step_pct":     35.0,   # batch job starts
+        "spinning_res_pct":  15.0,
+        "load_ramp_req":     5.0,
+        "avail_req":         99.99,
+    },
+    "Edge Computing": {
+        "pue":               1.30,
+        "capacity_factor":   0.60,
+        "peak_avg_ratio":    1.50,   # very peaky
+        "load_step_pct":     25.0,
+        "spinning_res_pct":  15.0,
+        "load_ramp_req":     3.0,
+        "avail_req":         99.671,  # Tier I
+    },
+}
+
+# Keys that DC_TYPE_DEFAULTS populates — used by the on_change callback
+_DC_DEFAULT_KEYS = [
+    ("_wiz_pue",            "pue"),
+    ("_wiz_capacity_factor","capacity_factor"),
+    ("_wiz_peak_avg_ratio", "peak_avg_ratio"),
+    ("_wiz_load_step_pct",  "load_step_pct"),
+    ("_wiz_spinning_res_pct","spinning_res_pct"),
+    ("_wiz_load_ramp_req",  "load_ramp_req"),
+    ("_wiz_avail_req",      "avail_req"),
+]
+
 BESS_STRATEGIES = ["Transient Only", "Hybrid (Balanced)", "Reliability Priority"]
 
 REGIONS = [
@@ -228,6 +309,9 @@ def _init_wizard_state():
         "_wiz_load_ramp_req": float(INPUT_DEFAULTS.get("load_ramp_req", 0.5)),
         "_wiz_avail_req": float(INPUT_DEFAULTS["avail_req"]),
         "_wiz_unit_sys": "Metric",
+        "_wiz_dc_type_last_autofilled": "",
+        "_sidebar_dc_type":             INPUT_DEFAULTS["dc_type"],
+        "_sidebar_dc_type_changed":     False,
         # Step 3: Site & Technology
         "_wiz_derate_mode": "Auto",
         "_wiz_site_temp_display": float(INPUT_DEFAULTS.get("site_temp_c", 25)),
@@ -368,6 +452,42 @@ def render_wizard_step_1():
              help=HELP_TEXTS.get("freq_hz", ""))
 
 
+def _apply_dc_type_defaults():
+    """
+    Called when the user changes _wiz_dc_type.
+    Writes DC-type-specific defaults into wizard session state keys.
+    """
+    dc_type = st.session_state.get("_wiz_dc_type", "")
+    defaults = DC_TYPE_DEFAULTS.get(dc_type, {})
+    if not defaults:
+        return
+    for ss_key, defaults_key in _DC_DEFAULT_KEYS:
+        if defaults_key in defaults:
+            st.session_state[ss_key] = defaults[defaults_key]
+    # Record which dc_type last triggered the auto-fill (for UI note)
+    st.session_state["_wiz_dc_type_last_autofilled"] = dc_type
+
+
+def _apply_dc_type_defaults_sidebar():
+    """Apply DC type defaults for sidebar (post-wizard) context."""
+    dc_type = st.session_state.get("_sidebar_dc_type", "")
+    defaults = DC_TYPE_DEFAULTS.get(dc_type, {})
+    if not defaults:
+        return
+    # Sidebar keys are different — update session state for sidebar widgets
+    _SIDEBAR_DC_KEYS = {
+        "pue":              "_sidebar_pue_default",
+        "capacity_factor":  "_sidebar_cf_default",
+        "peak_avg_ratio":   "_sidebar_par_default",
+        "load_step_pct":    "_sidebar_ls_default",
+        "spinning_res_pct": "_sidebar_sr_default",
+    }
+    for param_key, ss_key in _SIDEBAR_DC_KEYS.items():
+        if param_key in defaults:
+            st.session_state[ss_key] = defaults[param_key]
+    st.session_state["_sidebar_dc_type_changed"] = True
+
+
 # ── Step 2: Load Profile ──
 
 def render_wizard_step_2():
@@ -399,14 +519,24 @@ def render_wizard_step_2():
         dc_default = INPUT_DEFAULTS["dc_type"]
         dc_idx = DC_TYPES.index(dc_default) if dc_default in DC_TYPES else 0
         st.selectbox("Data Center Type", DC_TYPES, index=dc_idx,
-                      key="_wiz_dc_type", help=HELP_TEXTS.get("dc_type", ""))
+                      key="_wiz_dc_type",
+                      on_change=_apply_dc_type_defaults,
+                      help=HELP_TEXTS.get("dc_type", ""))
+        # Show auto-fill notice if defaults were just applied
+        _last = st.session_state.get("_wiz_dc_type_last_autofilled", "")
+        _curr = st.session_state.get("_wiz_dc_type", "")
+        if _last == _curr and _curr:
+            st.caption(
+                f":sparkles: Default values for **{_curr}** have been applied. "
+                f"You can adjust any parameter below."
+            )
     with col2:
         st.number_input("Critical IT Load (MW)", min_value=0.1, max_value=2000.0,
-                         value=float(INPUT_DEFAULTS["p_it"]), step=1.0,
+                         value=float(st.session_state.get("_wiz_p_it", INPUT_DEFAULTS["p_it"])), step=1.0,
                          key="_wiz_p_it", help=HELP_TEXTS.get("p_it", ""))
     with col3:
         st.number_input("Availability (%)", min_value=90.0, max_value=100.0,
-                         value=float(INPUT_DEFAULTS["avail_req"]), step=0.01,
+                         value=float(st.session_state.get("_wiz_avail_req", INPUT_DEFAULTS["avail_req"])), step=0.01,
                          format="%.2f", key="_wiz_avail_req",
                          help=HELP_TEXTS.get("avail_req", ""))
 
@@ -417,26 +547,26 @@ def render_wizard_step_2():
     col1, col2, col3 = st.columns(3)
     with col1:
         st.number_input("PUE", min_value=1.0, max_value=3.0,
-                         value=float(INPUT_DEFAULTS["pue"]), step=0.05,
+                         value=float(st.session_state.get("_wiz_pue", INPUT_DEFAULTS["pue"])), step=0.05,
                          format="%.2f", key="_wiz_pue",
                          help=HELP_TEXTS.get("pue", ""))
         st.slider("Capacity Factor", min_value=0.50, max_value=1.0,
-                   value=float(INPUT_DEFAULTS["capacity_factor"]), step=0.01,
+                   value=float(st.session_state.get("_wiz_capacity_factor", INPUT_DEFAULTS["capacity_factor"])), step=0.01,
                    key="_wiz_capacity_factor",
                    help=HELP_TEXTS.get("capacity_factor", ""))
     with col2:
         st.number_input("Max Step Load (%)", min_value=0.0, max_value=100.0,
-                         value=float(INPUT_DEFAULTS["load_step_pct"]), step=5.0,
+                         value=float(st.session_state.get("_wiz_load_step_pct", INPUT_DEFAULTS["load_step_pct"])), step=5.0,
                          key="_wiz_load_step_pct",
                          help=HELP_TEXTS.get("load_step_pct", ""))
         st.number_input("Peak/Avg Ratio", min_value=1.0, max_value=2.0,
-                         value=float(INPUT_DEFAULTS["peak_avg_ratio"]), step=0.05,
+                         value=float(st.session_state.get("_wiz_peak_avg_ratio", INPUT_DEFAULTS["peak_avg_ratio"])), step=0.05,
                          format="%.2f", key="_wiz_peak_avg_ratio",
                          help=HELP_TEXTS.get("peak_avg_ratio", ""))
     with col3:
         # spinning_res_pct removed — now derived from physical contingencies (P04)
         st.number_input("Load Ramp Rate (MW/min)", min_value=0.1, max_value=100.0,
-                         value=float(INPUT_DEFAULTS["load_ramp_req"]), step=0.5,
+                         value=float(st.session_state.get("_wiz_load_ramp_req", INPUT_DEFAULTS["load_ramp_req"])), step=0.5,
                          key="_wiz_load_ramp_req",
                          help=HELP_TEXTS.get("load_ramp_req", ""))
 
@@ -978,9 +1108,20 @@ def render_sidebar():
     with st.sidebar.expander(":bar_chart: Load Profile", expanded=True):
         dc_type = st.selectbox(
             "Data Center Type", DC_TYPES,
-            index=DC_TYPES.index(INPUT_DEFAULTS["dc_type"]),
+            index=DC_TYPES.index(st.session_state.get("_sidebar_dc_type", INPUT_DEFAULTS["dc_type"])),
+            key="_sidebar_dc_type",
+            on_change=_apply_dc_type_defaults_sidebar,
             help=HELP_TEXTS.get("dc_type", ""),
         )
+        if st.session_state.get("_sidebar_dc_type_changed"):
+            _defs = DC_TYPE_DEFAULTS.get(dc_type, {})
+            if _defs:
+                st.caption(
+                    f":sparkles: Defaults updated for **{dc_type}**. "
+                    f"PUE → {_defs.get('pue','—')} · "
+                    f"Peak/Avg → {_defs.get('peak_avg_ratio','—')}"
+                )
+            st.session_state["_sidebar_dc_type_changed"] = False
         p_it = st.number_input(
             "IT Load (MW)", min_value=0.1, max_value=2000.0,
             value=float(INPUT_DEFAULTS["p_it"]), step=1.0,

@@ -593,7 +593,8 @@ def render_wizard_step_3():
                 f"Ambient Temperature ({_temp_label()})",
                 min_value=_to_display_temp(-40.0),
                 max_value=_to_display_temp(60.0),
-                value=_to_display_temp(float(INPUT_DEFAULTS["site_temp_c"])),
+                value=float(st.session_state.get("_wiz_site_temp_display",
+                    _to_display_temp(float(INPUT_DEFAULTS["site_temp_c"])))),
                 step=1.0, key="_wiz_site_temp_display",
                 help=HELP_TEXTS.get("site_temp_c", ""))
             site_temp_c = _from_display_temp(site_temp_display)
@@ -601,14 +602,15 @@ def render_wizard_step_3():
             site_alt_display = st.number_input(
                 f"Site Altitude ({_alt_label()})",
                 min_value=0.0, max_value=_to_display_alt(5000.0),
-                value=_to_display_alt(float(INPUT_DEFAULTS["site_alt_m"])),
+                value=float(st.session_state.get("_wiz_site_alt_display",
+                    _to_display_alt(float(INPUT_DEFAULTS["site_alt_m"])))),
                 step=50.0, key="_wiz_site_alt_display",
                 help=HELP_TEXTS.get("site_alt_m", ""))
             site_alt_m = _from_display_alt(site_alt_display)
         with col3:
             methane_number = st.number_input(
                 "Methane Number", min_value=0, max_value=100,
-                value=int(INPUT_DEFAULTS["methane_number"]), step=5,
+                value=int(st.session_state.get("_wiz_methane_number", INPUT_DEFAULTS["methane_number"])), step=5,
                 key="_wiz_methane_number",
                 help=HELP_TEXTS.get("methane_number", ""))
 
@@ -648,7 +650,7 @@ def render_wizard_step_3():
         st.session_state["_wiz_site_alt_m"] = site_alt_m
     else:
         st.number_input("Manual Derate Factor", min_value=0.01, max_value=1.0,
-                         value=float(INPUT_DEFAULTS["derate_factor_manual"]),
+                         value=float(st.session_state.get("_wiz_derate_factor_manual", INPUT_DEFAULTS["derate_factor_manual"])),
                          step=0.05, format="%.2f", key="_wiz_derate_factor_manual",
                          help=HELP_TEXTS.get("derate_factor_manual", ""))
 
@@ -720,7 +722,7 @@ def render_wizard_step_3():
                               help=HELP_TEXTS.get("fuel_mode", ""))
         if fuel_mode in ("LNG", "Dual-Fuel"):
             st.number_input("LNG Storage (days)", min_value=1, max_value=30,
-                            value=int(INPUT_DEFAULTS["lng_days"]), step=1,
+                            value=int(st.session_state.get("_wiz_lng_days", INPUT_DEFAULTS["lng_days"])), step=1,
                             key="_wiz_lng_days", help=HELP_TEXTS.get("lng_days", ""))
     with col2:
         st.radio("Voltage Mode", ["Auto-Recommend", "Manual"], index=0,
@@ -728,10 +730,10 @@ def render_wizard_step_3():
                   help=HELP_TEXTS.get("volt_mode", ""))
         if st.session_state.get("_wiz_volt_mode") == "Manual":
             st.number_input("Manual Voltage (kV)", min_value=0.48, max_value=69.0,
-                            value=float(INPUT_DEFAULTS["manual_voltage_kv"]),
+                            value=float(st.session_state.get("_wiz_manual_voltage_kv", INPUT_DEFAULTS["manual_voltage_kv"])),
                             step=0.1, format="%.1f", key="_wiz_manual_voltage_kv")
         st.number_input("Distribution Losses (%)", min_value=0.0, max_value=10.0,
-                         value=float(INPUT_DEFAULTS["dist_loss_pct"]), step=0.5,
+                         value=float(st.session_state.get("_wiz_dist_loss_pct", INPUT_DEFAULTS["dist_loss_pct"])), step=0.5,
                          key="_wiz_dist_loss_pct",
                          help=HELP_TEXTS.get("dist_loss_pct", ""))
 
@@ -746,12 +748,12 @@ def render_wizard_step_4():
     col1, col2 = st.columns(2)
     with col1:
         st.number_input("Pipeline Gas Price ($/MMBtu)", min_value=0.0, max_value=50.0,
-                         value=float(INPUT_DEFAULTS["gas_price_pipeline"]), step=0.5,
+                         value=float(st.session_state.get("_wiz_gas_price", INPUT_DEFAULTS["gas_price_pipeline"])), step=0.5,
                          key="_wiz_gas_price",
                          help=HELP_TEXTS.get("gas_price_pipeline", ""))
     with col2:
         st.number_input("Grid Benchmark ($/kWh)", min_value=0.0, max_value=1.0,
-                         value=float(INPUT_DEFAULTS["benchmark_price"]), step=0.01,
+                         value=float(st.session_state.get("_wiz_benchmark_price", INPUT_DEFAULTS["benchmark_price"])), step=0.01,
                          format="%.3f", key="_wiz_benchmark_price",
                          help=HELP_TEXTS.get("benchmark_price", ""))
 
@@ -760,11 +762,11 @@ def render_wizard_step_4():
     col1, col2, col3 = st.columns(3)
     with col1:
         st.number_input("WACC (%)", min_value=0.0, max_value=30.0,
-                         value=float(INPUT_DEFAULTS["wacc"]), step=0.5,
+                         value=float(st.session_state.get("_wiz_wacc", INPUT_DEFAULTS["wacc"])), step=0.5,
                          key="_wiz_wacc", help=HELP_TEXTS.get("wacc", ""))
     with col2:
         st.number_input("Project Life (years)", min_value=1, max_value=40,
-                         value=int(INPUT_DEFAULTS["project_years"]), step=1,
+                         value=int(st.session_state.get("_wiz_project_years", INPUT_DEFAULTS["project_years"])), step=1,
                          key="_wiz_project_years",
                          help=HELP_TEXTS.get("project_years", ""))
     with col3:
@@ -779,7 +781,7 @@ def render_wizard_step_4():
                      help=HELP_TEXTS.get("enable_depreciation", ""))
     with col2:
         st.number_input("Carbon Price ($/ton CO2)", min_value=0.0, max_value=500.0,
-                         value=float(INPUT_DEFAULTS["carbon_price_per_ton"]), step=5.0,
+                         value=float(st.session_state.get("_wiz_carbon_price", INPUT_DEFAULTS["carbon_price_per_ton"])), step=5.0,
                          key="_wiz_carbon_price",
                          help=HELP_TEXTS.get("carbon_price_per_ton", ""))
 
@@ -790,17 +792,17 @@ def render_wizard_step_4():
         col1, col2, col3 = st.columns(3)
         with col1:
             st.number_input("BESS Power Cost ($/kW)", min_value=0.0,
-                             value=float(INPUT_DEFAULTS["bess_cost_kw"]), step=25.0,
+                             value=float(st.session_state.get("_wiz_bess_cost_kw", INPUT_DEFAULTS["bess_cost_kw"])), step=25.0,
                              key="_wiz_bess_cost_kw",
                              help=HELP_TEXTS.get("bess_cost_kw", ""))
         with col2:
             st.number_input("BESS Energy Cost ($/kWh)", min_value=0.0,
-                             value=float(INPUT_DEFAULTS["bess_cost_kwh"]), step=25.0,
+                             value=float(st.session_state.get("_wiz_bess_cost_kwh", INPUT_DEFAULTS["bess_cost_kwh"])), step=25.0,
                              key="_wiz_bess_cost_kwh",
                              help=HELP_TEXTS.get("bess_cost_kwh", ""))
         with col3:
             st.number_input("BESS O&M ($/kW-yr)", min_value=0.0,
-                             value=float(INPUT_DEFAULTS["bess_om_kw_yr"]), step=1.0,
+                             value=float(st.session_state.get("_wiz_bess_om_kw_yr", INPUT_DEFAULTS["bess_om_kw_yr"])), step=1.0,
                              key="_wiz_bess_om_kw_yr",
                              help=HELP_TEXTS.get("bess_om_kw_yr", ""))
 
@@ -842,7 +844,8 @@ def render_wizard_step_4():
         if st.session_state.get("_wiz_enable_footprint_limit", False):
             st.number_input(f"Max Area ({_area_label()})",
                             min_value=_to_display_area(100.0),
-                            value=_to_display_area(float(INPUT_DEFAULTS["max_area_m2"])),
+                            value=float(st.session_state.get("_wiz_max_area_display",
+                                _to_display_area(float(INPUT_DEFAULTS["max_area_m2"])))),
                             step=500.0, key="_wiz_max_area_display",
                             help=HELP_TEXTS.get("max_area_m2", ""))
 

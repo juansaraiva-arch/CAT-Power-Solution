@@ -2523,6 +2523,103 @@ def render_bess_tab(r):
         st.info("BESS is disabled for this configuration.")
         return
 
+    # ── BESS Autonomy Control ─────────────────────────────────────────────
+    st.subheader("BESS Autonomy")
+
+    _auto_min_calc  = getattr(r, 'bess_autonomy_min', None)
+    _auto_basis     = getattr(r, 'bess_autonomy_min_basis', '')
+    _strategy       = getattr(r, 'bess_strategy', 'Hybrid (Balanced)')
+
+    # Per-strategy minimums for reference (mirrors sizing_pipeline.py defaults)
+    _AUTONOMY_MINS = {
+        "Transient Only":       1,
+        "Hybrid (Balanced)":   10,
+        "Reliability Priority": 30,
+    }
+    _min_for_strategy = _AUTONOMY_MINS.get(_strategy, 10)
+    _calc_min = _auto_min_calc if _auto_min_calc else _min_for_strategy
+
+    st.info(
+        f"**Strategy: {_strategy}**  \n"
+        f"Minimum required autonomy: **{_calc_min:.0f} minutes** "
+        + (f"({_auto_basis})" if _auto_basis else
+           f"(transient support + spinning reserve coverage for this strategy)") +
+        "  \nYou may increase autonomy for additional resilience. "
+        "Reducing below the minimum will trigger a warning — the BESS may not "
+        "fulfill its spinning reserve obligation."
+    )
+
+    _c1, _c2, _c3 = st.columns(3)
+    _c1.metric(
+        "Calculated Minimum",
+        f"{_calc_min:.0f} min",
+        help=f"Minimum autonomy required by the '{_strategy}' strategy to fulfill spinning reserve.",
+    )
+    _c2.metric(
+        "Calculated Energy",
+        f"{r.bess_energy_mwh:.2f} MWh",
+        help="BESS energy at the minimum required autonomy.",
+    )
+    _c3.metric(
+        "Calculated Power",
+        f"{r.bess_power_mw:.2f} MW",
+        help="BESS rated power for this strategy.",
+    )
+
+    # Override input
+    _override_key = "_bess_autonomy_override_min"
+    _current_override = st.session_state.get(_override_key, float(_calc_min))
+
+    bess_autonomy_override = st.number_input(
+        "Override Autonomy (minutes)",
+        min_value=0.5,
+        max_value=240.0,
+        value=_current_override,
+        step=1.0,
+        format="%.0f",
+        key=_override_key,
+        help=(
+            "Override the calculated autonomy. Values above the minimum add resilience "
+            "and increase BESS energy proportionally. "
+            f"Values below {_calc_min:.0f} min will trigger a warning."
+        ),
+    )
+
+    # Warning if override is below minimum
+    if bess_autonomy_override < _calc_min * 0.999:  # 0.1% tolerance
+        st.warning(
+            f"⚠️ **Autonomy below calculated minimum.** "
+            f"The '{_strategy}' strategy requires at least **{_calc_min:.0f} minutes** "
+            f"to fulfill its spinning reserve obligation "
+            f"({_min_for_strategy} min is the strategy baseline). "
+            f"With {bess_autonomy_override:.0f} minutes, the BESS may not bridge a "
+            f"generator start-up event or maintain frequency during a contingency. "
+            f"**Increase autonomy or change strategy before finalizing the design.**"
+        )
+    elif bess_autonomy_override > _calc_min * 1.001:
+        # Show what the override means in MWh
+        _dod = getattr(r, 'bess_dod', 0.85) or 0.85
+        _override_energy = r.bess_power_mw * (bess_autonomy_override / 60) / _dod
+        _delta_energy    = _override_energy - r.bess_energy_mwh
+        st.success(
+            f"✅ Override accepted: {bess_autonomy_override:.0f} min "
+            f"→ **{_override_energy:.2f} MWh** "
+            f"(+{_delta_energy:.2f} MWh vs. minimum). "
+            f"Re-run sizing to update CAPEX and LCOE with the new BESS energy."
+        )
+        # Show re-run button if override differs from current result
+        if abs(_override_energy - r.bess_energy_mwh) > 0.01:
+            if st.button(
+                f"▶ Re-run with {bess_autonomy_override:.0f} min autonomy",
+                key="_bess_rerun_autonomy",
+                type="primary",
+            ):
+                st.session_state["_bess_autonomy_min"] = bess_autonomy_override
+                st.rerun()
+
+    st.divider()
+
+    # ── BESS Sizing Breakdown ─────────────────────────────────────────────
     st.subheader("BESS Sizing Breakdown")
 
     c1, c2 = st.columns(2)

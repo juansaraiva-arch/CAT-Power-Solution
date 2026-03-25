@@ -243,6 +243,7 @@ class SizingResult(BaseModel):
     bess_energy_mwh: float
     bess_breakdown: dict
     bess_autonomy_min: Optional[float] = None
+    bess_autonomy_min_basis: Optional[str] = None
     bess_dod: Optional[float] = None
 
     # ── Electrical ──

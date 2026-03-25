@@ -1029,6 +1029,11 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         bess_energy_mwh=bess_energy_total,
         bess_breakdown=bess_breakdown,
         bess_autonomy_min=getattr(inputs, 'bess_autonomy_min', 10.0),
+        bess_autonomy_min_basis=(
+            f"Strategy '{inputs.bess_strategy}': "
+            f"{getattr(inputs, 'bess_autonomy_min', 10.0):.0f} min autonomy "
+            f"covers spinning reserve for generator start-up bridging"
+        ),
         bess_dod=getattr(inputs, 'bess_dod', 0.85),
         # Electrical
         rec_voltage_kv=rec_voltage_kv,

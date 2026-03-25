@@ -2698,7 +2698,9 @@ def render_electrical_tab(r):
         ISC_local_a  = ISC_sym_a
         ISC_remote_a = 0.0
 
-    _TRAFO_RATINGS_MVA = [2.5, 5.0, 7.5, 10.0, 15.0, 20.0, 25.0, 30.0]
+    # IEC 60076 standard power transformer ratings (MVA)
+    _TRAFO_RATINGS_MVA = [2.5, 5.0, 7.5, 10.0, 12.5, 15.0, 20.0, 25.0,
+                           31.5, 40.0, 50.0, 63.0, 80.0]
     p_per_pod_mw    = p_total_mw / _n_pods if _n_pods else p_total_mw
     trafo_mva_each  = next((t for t in _TRAFO_RATINGS_MVA if t >= p_per_pod_mw / pf * 1.15), 30.0)
     n_trafos_calc   = _n_pods if _n_pods else _math.ceil(p_total_mw / trafo_mva_each / pf)
@@ -2770,8 +2772,14 @@ def render_electrical_tab(r):
         c2.metric("ISC Asymmetric",   f"{ISC_asym_a/1000:.1f} kA",
                   help="First-cycle. Basis for breaker interrupting rating.")
 
-    _BREAKER_RATINGS_KA = [16, 20, 25, 31.5, 40, 50, 63]
-    breaker_rating_ka = next((b for b in _BREAKER_RATINGS_KA if b >= ISC_asym_a/1000 * 1.1), 63)
+    # IEC 62271-100 and ANSI/IEEE C37.06 standard interrupting ratings (kA)
+    # 80–125 kA are special-order equipment — flag in UI if selected
+    _BREAKER_RATINGS_KA = [16, 20, 25, 31.5, 40, 50, 63, 80, 100, 125]
+    _BREAKER_SPECIAL_ORDER_KA = 80  # ratings >= this value are long-lead special order
+    breaker_rating_ka = next((b for b in _BREAKER_RATINGS_KA if b >= ISC_asym_a/1000 * 1.1), _BREAKER_RATINGS_KA[-1])
+    _breaker_is_special = breaker_rating_ka >= _BREAKER_SPECIAL_ORDER_KA
+    _breaker_at_max     = breaker_rating_ka == _BREAKER_RATINGS_KA[-1] and \
+                          ISC_asym_a / 1000 * 1.1 > _BREAKER_RATINGS_KA[-1]
 
     st.divider()
     st.subheader("Equipment Recommendations")
@@ -2782,21 +2790,49 @@ def render_electrical_tab(r):
             "Bus bar rating",
             f"Bus-tie / coupler breaker" if n_swg > 1 else "—",
             f"Step-up transformer ({n_trafos_calc} units)",
+            "Current-limiting reactor (optional)",
         ],
         "Basis": [
             "N-1 contingency current + 10% margin",
             "N-1 contingency + ISC withstand",
             "N-1 transfer current on close-in" if n_swg > 1 else "—",
             f"Pod peak output ÷ PF × 1.15 margin",
+            "Reduce ISC to standard breaker range (50–63 kA)",
         ],
         "Minimum Rating": [
             f"{bus_rating_a:,.0f} A continuous / {breaker_rating_ka} kA interrupting",
             f"{bus_rating_a:,.0f} A / {ISC_asym_a/1000:.0f} kA withstand (1 s)",
             f"{I_contingency_a:,.0f} A continuous / {breaker_rating_ka} kA interrupting" if n_swg > 1 else "—",
             f"{trafo_mva_each:.1f} MVA ONAN — {v_kv:.1f} kV / HV",
+            f"Recommended if ISC_asym > 63 kA — consult application engineering"
+                if ISC_asym_a/1000 > 63 else "Not required at this load level",
         ],
     }
     st.table(pd.DataFrame(eq_data).set_index("Equipment"))
+
+    # ── Breaker rating warnings ──────────────────────────────────────────
+    if _breaker_at_max:
+        st.error(
+            f"⛔ **ISC exceeds available standard breaker ratings.** "
+            f"Calculated ISC asymmetric = {ISC_asym_a/1000:.1f} kA requires "
+            f"{ISC_asym_a/1000*1.1:.0f} kA interrupting capacity with 10% margin — "
+            f"above the {_BREAKER_RATINGS_KA[-1]} kA maximum in this table. "
+            f"Contact CAT application engineering and the switchgear manufacturer "
+            f"before proceeding. Consider: (1) splitting the generator bus into "
+            f"more sections, (2) adding current-limiting reactors on generator "
+            f"incomers, or (3) upgrading to a higher voltage level (34.5 kV or 69 kV) "
+            f"to reduce ISC magnitude."
+        )
+    elif _breaker_is_special:
+        st.warning(
+            f"⚠️ **Special-order breaker required: {breaker_rating_ka} kA.** "
+            f"Interrupting ratings ≥ {_BREAKER_SPECIAL_ORDER_KA} kA are not standard "
+            f"catalog items. Expect extended lead times (typically 20–36 weeks) and "
+            f"significant cost premium vs. standard ratings. "
+            f"Consider current-limiting reactors on generator incomers to reduce ISC "
+            f"to the 50–63 kA range. Confirm with CAT switchgear division and the "
+            f"project electrical engineer before budgeting."
+        )
 
     if n_swg > 1:
         st.warning(

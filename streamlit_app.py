@@ -247,7 +247,7 @@ def _init_wizard_state():
         "_wiz_manual_voltage_kv": 13.8,
         "_wiz_dist_loss_pct": float(INPUT_DEFAULTS.get("dist_loss_pct", 2.0)),
         # Step 4: Economics
-        "_wiz_gas_price": float(INPUT_DEFAULTS["gas_price"]),
+        "_wiz_gas_price": float(INPUT_DEFAULTS["gas_price_pipeline"]),
         "_wiz_benchmark_price": float(INPUT_DEFAULTS.get("benchmark_price", 0.07)),
         "_wiz_wacc": float(INPUT_DEFAULTS.get("wacc", 8.0)),
         "_wiz_project_years": int(INPUT_DEFAULTS.get("project_years", 20)),

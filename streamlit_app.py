@@ -2540,7 +2540,7 @@ def render_reliability_tab(r):
 
     st.dataframe(pd.DataFrame(sens_data), use_container_width=True, hide_index=True)
     st.caption(
-        f"Fleet: {n_total} total generators, {n_running} required. "
+        f"Fleet: {n_total} total generators, {n_required} required. "
         f"Active a_gen = {a_gen_active:.3f} (marked with ◄). "
         f"Electrical path factor = {epf:.4f}."
     )

@@ -314,6 +314,9 @@ def _init_wizard_state():
         "_sidebar_dc_type_changed":     False,
         # Step 3: Site & Technology
         "_wiz_derate_mode": "Auto",
+        "_wiz_site_temp_c":      float(INPUT_DEFAULTS.get("site_temp_c", 25.0)),
+        "_wiz_site_alt_m":       float(INPUT_DEFAULTS.get("site_alt_m", 0.0)),
+        "_wiz_spinning_res_pct": float(INPUT_DEFAULTS.get("spinning_res_pct", 10.0)),
         "_wiz_site_temp_display": float(INPUT_DEFAULTS.get("site_temp_c", 25)),
         "_wiz_site_alt_display": float(INPUT_DEFAULTS.get("site_alt_m", 0)),
         "_wiz_methane_number": int(INPUT_DEFAULTS.get("methane_number", 80)),
@@ -2360,10 +2363,12 @@ def render_reliability_tab(r):
         cfg_bess_cost = (cfg.bess_mwh / r.bess_energy_mwh * (r.capex_breakdown or {}).get('bess', 0)) if r.bess_energy_mwh > 0 else 0
         cfg_capex_m = (cfg_gen_cost + cfg_bess_cost) / 1e6
 
+        # r.n_pods updates after Apply & Re-run; derive per-config n_per
+        _n_pods_d = r.n_pods if (hasattr(r, 'n_pods') and r.n_pods and r.n_pods > 0) else 1
+        _n_per_d  = round(cfg.n_total / _n_pods_d) if _n_pods_d > 0 else cfg.n_total
         configs_data.append({
             "Configuration": cfg.name,
-            "Fleet": f"{r.n_pods}p×{r.n_per_pod}" if hasattr(r, 'n_pods') and r.n_pods > 0
-                     else f"{cfg.n_running}+{cfg.n_reserve}",
+            "Fleet": f"{_n_pods_d}p×{_n_per_d}",
             "Total": cfg.n_total,
             "BESS (MW/MWh)": f"{cfg.bess_mw:.0f}/{cfg.bess_mwh:.0f}" if cfg.bess_mw > 0 else "None",
             "BESS Credit": f"{cfg.bess_credit:.1f}",

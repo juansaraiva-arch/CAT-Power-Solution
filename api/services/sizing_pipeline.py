@@ -879,6 +879,21 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         'commissioning':     capex_commission_m * 1e6,
         'contingency':       capex_contingency_m * 1e6,
     }
+
+    # Include emissions control + LNG infrastructure in total CAPEX (H2 fix)
+    # These are computed in Steps 18e/18d after the initial capex_subtotal_m,
+    # so add them here and recalculate the contingency on the delta.
+    _scr_usd = emissions_control.get('total_capex', 0)
+    _lng_usd = lng_logistics.get('lng_capex_usd', 0)
+    if _scr_usd > 0 or _lng_usd > 0:
+        _addon_m = (_scr_usd + _lng_usd) / 1e6
+        _addon_contingency_m = _addon_m * contingency_pct
+        capex_subtotal_m += _addon_m
+        capex_contingency_m += _addon_contingency_m
+        total_capex_m = capex_subtotal_m + capex_contingency_m
+        # Update contingency in breakdown to reflect the new total
+        capex_breakdown['contingency'] = capex_contingency_m * 1e6
+
     capex_assumptions = {
         'generators': f"${gen_unit_cost:,.0f}/kW x {installed_cap * 1000:,.0f} kW",
         'installation': f"${gen_install_cost:,.0f}/kW (idx {idx_install:.2f})",

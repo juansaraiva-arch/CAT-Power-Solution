@@ -2164,23 +2164,44 @@ def render_reliability_tab(r):
     """Spinning reserve visualization and reliability configuration comparison."""
 
     # ---- Pod Architecture (if applicable) ----
-    if hasattr(r, 'n_pods') and r.n_pods > 0:
+    # Read from selected maintenance config if one is active, else from r
+    _sel_cfg_key = st.session_state.get('fleet_maint_config_sel', None)
+    _maint_cfgs  = getattr(r, 'fleet_maintenance_configs', {}) or {}
+    _active_mc   = _maint_cfgs.get(_sel_cfg_key) if _sel_cfg_key and _maint_cfgs else None
+
+    if _active_mc:
+        _n_pods    = _active_mc.get('n_pods',    getattr(r, 'n_pods', 0))
+        _n_per     = _active_mc.get('n_per_pod', getattr(r, 'n_per_pod', 0))
+        _n_tot     = _active_mc.get('n_total',   r.n_total)
+        _load_norm = _active_mc.get('loading_normal_pct', getattr(r, 'loading_normal_pct', 0))
+        _load_cont = _active_mc.get('loading_contingency_pct', getattr(r, 'loading_contingency_pct', 0))
+        _cap_cont  = _active_mc.get('cap_combined', (_n_pods - 1) * _n_per * r.unit_site_cap)
+    else:
+        _n_pods    = getattr(r, 'n_pods', 0)
+        _n_per     = getattr(r, 'n_per_pod', 0)
+        _n_tot     = r.n_total
+        _load_norm = getattr(r, 'loading_normal_pct', 0)
+        _load_cont = getattr(r, 'loading_contingency_pct', 0)
+        _cap_cont  = getattr(r, 'cap_contingency', (_n_pods - 1) * _n_per * r.unit_site_cap if _n_pods > 0 else 0)
+
+    if _n_pods > 0:
         st.subheader("Pod Architecture")
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Number of Pods",        f"{r.n_pods}")
-        c2.metric("Generators / Pod",      f"{r.n_per_pod}")
-        c3.metric("Normal Loading",        f"{r.loading_normal_pct:.1f}%")
-        c4.metric("Contingency Loading",   f"{r.loading_contingency_pct:.1f}%")
+        c1.metric("Number of Pods",        f"{_n_pods}")
+        c2.metric("Generators / Pod",      f"{_n_per}")
+        c3.metric("Normal Loading",        f"{_load_norm:.1f}%")
+        c4.metric("Contingency Loading",   f"{_load_cont:.1f}%")
 
-        cap_contingency = getattr(r, 'cap_contingency', (r.n_pods - 1) * r.n_per_pod * r.unit_site_cap)
         st.caption(
-            f"All {r.n_total} generators operate simultaneously across {r.n_pods} pods. "
-            f"**N+1 pod redundancy:** loss of any single pod ({r.n_per_pod} gens, "
-            f"{r.n_per_pod * r.unit_site_cap:.1f} MW) leaves {cap_contingency:.1f} MW "
-            f"available at {r.loading_contingency_pct:.1f}% loading. "
-            f"Normal loading {r.loading_normal_pct:.1f}% ≤ prime/standby ratio — "
+            f"All {_n_tot} generators operate simultaneously across {_n_pods} pods. "
+            f"**N+1 pod redundancy:** loss of any single pod ({_n_per} gens, "
+            f"{_n_per * r.unit_site_cap:.1f} MW) leaves {_cap_cont:.1f} MW "
+            f"available at {_load_cont:.1f}% loading. "
+            f"Normal loading {_load_norm:.1f}% ≤ prime/standby ratio — "
             f"thermal margin maintained in all operating conditions."
         )
+        if _active_mc:
+            st.info(f"**Active: Config {_sel_cfg_key}** — maintenance-aware architecture applied.")
         st.divider()
 
     # ---- Spinning Reserve Distribution ----
@@ -2440,10 +2461,16 @@ def render_reliability_tab(r):
     # --- Fleet-only vs Combined availability ---
     a_gen_active = getattr(r, 'a_gen_derived', 0.965)
     n_total = getattr(r, 'n_total', 0)
-    n_running = getattr(r, 'n_running', 0)
+    # n_required = minimum generators to serve the load (NOT n_total)
+    # r.n_running may equal n_total (pod optimizer sets all as "running"),
+    # so derive from load: ceil(p_total_peak / unit_site_cap)
+    import math as _math
+    _unit_cap = getattr(r, 'unit_site_cap', 1.0) or 1.0
+    _p_peak   = getattr(r, 'p_total_peak', 0)
+    n_required = _math.ceil(_p_peak / _unit_cap) if _unit_cap > 0 and _p_peak > 0 else n_total
 
-    if n_total > 0 and n_running > 0:
-        a_fleet = _binomial_availability(n_total, n_running, a_gen_active)
+    if n_total > 0 and n_required > 0:
+        a_fleet = _binomial_availability(n_total, n_required, a_gen_active)
     else:
         a_fleet = getattr(r, 'system_availability', 0.99) / epf
 
@@ -2497,8 +2524,8 @@ def render_reliability_tab(r):
     a_gen_range = [0.920, 0.930, 0.940, 0.950, 0.960, 0.965, 0.970, 0.975, 0.980, 0.985, 0.990]
     sens_data = []
     for ag in a_gen_range:
-        if n_total > 0 and n_running > 0:
-            af = _binomial_availability(n_total, n_running, ag)
+        if n_total > 0 and n_required > 0:
+            af = _binomial_availability(n_total, n_required, ag)
         else:
             af = ag ** 10  # fallback approximation
         ac = af * epf

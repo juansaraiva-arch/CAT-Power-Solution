@@ -4285,9 +4285,57 @@ def render_pdf_tab(r):
 
     try:
         pdf_data = r.model_dump()
-        # Add gen_data for the PDF report
+
+        # ── gen_data ─────────────────────────────────────────────────────────
         gen_data = GENERATOR_LIBRARY.get(r.selected_gen, {})
         pdf_data["gen_data"] = gen_data
+
+        # ── Flatten emissions dict → top-level PDF fields ────────────────────
+        emissions = r.emissions or {}
+        co2_tpy   = emissions.get('co2_tpy', 0.0)   # tons/year
+        nox_tpy   = emissions.get('nox_tpy', 0.0)   # tons/year
+        co_tpy    = emissions.get('co_tpy',  0.0)   # tons/year
+
+        # 1 ton/yr ÷ 8760 hr × 2204.62 lb/ton = lb/hr
+        _T_TO_LB_HR = 2204.62 / 8760.0
+
+        pdf_data['co2_ton_yr']       = round(co2_tpy, 1)
+        pdf_data['nox_lb_hr']        = round(nox_tpy * _T_TO_LB_HR, 3)
+        pdf_data['co_lb_hr']         = round(co_tpy  * _T_TO_LB_HR, 3)
+
+        # Carbon cost = CO2 tons/year × carbon_price ($/ton)
+        _carbon_price = getattr(r, 'carbon_price_per_ton', 0.0) or 0.0
+        pdf_data['carbon_cost_year'] = round(co2_tpy * _carbon_price, 2)
+
+        # ── CAPEX items (from r.capex_breakdown — same source as Financial tab) ──
+        # pdf_report.py expects: item.get('label') and item.get('value_m')
+        _capex_bd = r.capex_breakdown or {}
+        pdf_data['capex_items'] = [
+            {
+                'label':   k.replace('_', ' ').title(),
+                'value_m': round(float(v) / 1e6, 2) if v else 0.0,
+            }
+            for k, v in _capex_bd.items()
+        ]
+        # pdf_report.py line 524 reads 'initial_capex_sum' for TOTAL row
+        pdf_data['initial_capex_sum'] = getattr(r, 'total_capex', 0)
+
+        # ── Field name alignment ─────────────────────────────────────────────
+        # pdf_report.py reads 'selected_config' as dict for spinning reserve
+        pdf_data['selected_config'] = {
+            'spinning_reserve_mw': getattr(r, 'spinning_reserve_mw', 0),
+            'spinning_from_gens':  getattr(r, 'spinning_from_gens', 0),
+            'spinning_from_bess':  getattr(r, 'spinning_from_bess', 0),
+            'headroom_mw':         getattr(r, 'headroom_mw', 0),
+        }
+
+        # pdf_report.py reads 'pue_actual'
+        pdf_data['pue_actual'] = r.pue if hasattr(r, 'pue') else r.p_total_dc / max(r.p_it, 1)
+
+        # Pod architecture
+        pdf_data['n_pods']    = getattr(r, 'n_pods', None)
+        pdf_data['n_per_pod'] = getattr(r, 'n_per_pod', None)
+
         pdf_bytes = generate_comprehensive_pdf(pdf_data)
 
         st.download_button(

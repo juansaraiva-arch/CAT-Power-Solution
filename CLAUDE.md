@@ -221,10 +221,18 @@ Replaces the hardcoded 2.0h/2.5h coverage in `sizing_pipeline.py`. User-configur
 ### Availability & Electrical Path (P14)
 - **fix:** `a_gen` in pod fleet optimizer now reads `unit_availability` (0.93) instead
   of MTBF/MTTR ratio (0.9947). `mttr_hours` retained for BESS bridge calc (~line 438).
-- **feat:** Electrical path availability factor added (default 0.9950, configurable).
-  Applied as: `a_path = a_gen × elec_path_avail`, post-calculation in `streamlit_app.py`.
-  Basis: IEEE Std 493 Gold Book lumped model. Preliminary sizing only.
-  Input widget in Generator Parameters sidebar expander, key `_elec_path_avail`.
+- **feat:** Electrical path availability now **calculated** from IEEE 493-2007 Table 3-4
+  component data (not hardcoded). Topology selector in Reliability tab drives the calculation.
+  Topologies and IEEE 493 calculated A_path values:
+    Radial single bus:             0.999871  (1.13 hr/yr downtime)
+    Ring bus / sectionalized N-1:  0.999999991  (0.00 min/yr — bus is NOT the bottleneck)
+    Double bus / double breaker:   0.999999992  (0.00 min/yr)
+    2N fully redundant:            0.999999996  (0.00 min/yr)
+  Components: MV breakers (lam=0.0027, MTTR=83.1h), bus duct, MV cable.
+  Transformers EXCLUDED: their failure is counted in fleet binomial model.
+  Component data expander shows IEEE 493 Table 3-4 source data with footnote.
+  Default topology: Ring bus / sectionalized N-1 (CAT standard for DCs).
+  Combined ~ Fleet Only for ring bus (bus is NOT the reliability bottleneck).
 - **feat:** Pod Architecture Banner at top of Electrical tab.
   Shows n_pods × n_per, n_total, installed cap, normal loading, n_trafos.
   Config A/B/C label shown if maintenance config is active.

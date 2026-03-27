@@ -419,7 +419,7 @@ def _init_wizard_state():
         "_sidebar_dc_type":             INPUT_DEFAULTS["dc_type"],
         "_sidebar_dc_type_changed":     False,
         # Step 3: Site & Technology
-        "_wiz_derate_mode": "Auto",
+        "_wiz_derate_mode": "Auto-Calculate",
         "_wiz_site_temp_c":      float(INPUT_DEFAULTS.get("site_temp_c", 25.0)),
         "_wiz_site_alt_m":       float(INPUT_DEFAULTS.get("site_alt_m", 0.0)),
         "_wiz_spinning_res_pct": float(INPUT_DEFAULTS.get("spinning_res_pct", 10.0)),
@@ -457,6 +457,7 @@ def _init_wizard_state():
         "_wiz_epc_pct": float(INPUT_DEFAULTS.get("epc_pct", 12.0)),
         "_wiz_contingency_pct": float(INPUT_DEFAULTS.get("contingency_pct", 10.0)),
         "_wiz_enable_footprint_limit": False,
+        "_wiz_max_area_display": _to_display_area(float(INPUT_DEFAULTS.get("max_area_m2", 10000.0))),
     }
     for key, val in defaults.items():
         if key not in st.session_state:
@@ -597,6 +598,30 @@ def _apply_dc_type_defaults_sidebar():
     st.session_state["_sidebar_dc_type_changed"] = True
 
 
+def _on_template_change():
+    """Called when user selects a Quick Start Template in Step 2.
+    Maps TEMPLATES keys → _wiz_ session state keys."""
+    template = st.session_state.get("_wiz_template", "Custom (Manual)")
+    if template == "Custom (Manual)" or template not in TEMPLATES:
+        return
+    tpl = TEMPLATES[template]
+    _TPL_KEY_MAP = {
+        "dc_type":          "_wiz_dc_type",
+        "p_it":             "_wiz_p_it",
+        "avail_req":        "_wiz_avail_req",
+        "pue":              "_wiz_pue",
+        "load_step_pct":    "_wiz_load_step_pct",
+        "capacity_factor":  "_wiz_capacity_factor",
+        "peak_avg_ratio":   "_wiz_peak_avg_ratio",
+        "load_ramp_req":    "_wiz_load_ramp_req",
+        "gen_filter":       "_wiz_gen_filter",
+        "use_bess":         "_wiz_use_bess",
+    }
+    for tpl_key, ss_key in _TPL_KEY_MAP.items():
+        if tpl_key in tpl:
+            st.session_state[ss_key] = tpl[tpl_key]
+
+
 # ── Step 2: Load Profile ──
 
 def render_wizard_step_2():
@@ -617,6 +642,7 @@ def render_wizard_step_2():
     template_options = ["Custom (Manual)"] + list(TEMPLATES.keys())
     template = st.selectbox("Template", template_options, index=0,
                              key="_wiz_template",
+                             on_change=_on_template_change,
                              help="Select a pre-configured template to auto-fill common settings.")
 
     st.divider()
@@ -1067,8 +1093,9 @@ def _build_inputs_from_wizard():
         load_ramp_req=float(ss.get("_wiz_load_ramp_req", INPUT_DEFAULTS["load_ramp_req"])),
         dc_type=ss.get("_wiz_dc_type", INPUT_DEFAULTS["dc_type"]),
         derate_mode=ss.get("_wiz_derate_mode", INPUT_DEFAULTS["derate_mode"]),
-        site_temp_c=float(ss.get("_wiz_site_temp_c", INPUT_DEFAULTS["site_temp_c"])),
-        site_alt_m=float(ss.get("_wiz_site_alt_m", INPUT_DEFAULTS["site_alt_m"])),
+        # Read from display keys and convert inline — avoids desync when unit system changes mid-session
+        site_temp_c=_from_display_temp(float(ss.get("_wiz_site_temp_display", _to_display_temp(float(INPUT_DEFAULTS["site_temp_c"]))))),
+        site_alt_m=_from_display_alt(float(ss.get("_wiz_site_alt_display", _to_display_alt(float(INPUT_DEFAULTS["site_alt_m"]))))),
         methane_number=int(ss.get("_wiz_methane_number", INPUT_DEFAULTS["methane_number"])),
         derate_factor_manual=float(ss.get("_wiz_derate_factor_manual", INPUT_DEFAULTS["derate_factor_manual"])),
         generator_model=gen_model,

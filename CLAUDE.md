@@ -237,6 +237,47 @@ Replaces the hardcoded 2.0h/2.5h coverage in `sizing_pipeline.py`. User-configur
   Shows n_pods × n_per, n_total, installed cap, normal loading, n_trafos.
   Config A/B/C label shown if maintenance config is active.
 
+### Wizard Session State Pattern (P15/P20/P23/Definitivo)
+All `_wiz_` number_input widgets use: `value=float(st.session_state.get("_wiz_key", INPUT_DEFAULTS["key"]))`.
+- `_init_wizard_state()` at line ~391 pre-populates all `_wiz_` keys from INPUT_DEFAULTS.
+- `_apply_dc_type_defaults()` callback updates keys when DC type changes (P20).
+- `DC_TYPE_DEFAULTS` dict maps DC types to preset values (PUE, load_step, etc.).
+- BOS adder widgets use `INPUT_DEFAULTS['x']*100` as fallback (pct conversion).
+- Unit-converted widgets (temp, alt, area) use `_to_display_X()` conversion functions.
+
+### PDF Report Key Mapping (P17/C1)
+`core/pdf_report.py` uses `g(key, default)` helper. Corrected field mappings:
+- `bess_power_mw` / `bess_energy_mwh` (was `bess_power_total` / `bess_energy_total`)
+- `total_capex` (was `initial_capex_sum`)
+- `simple_payback_years` (was `payback_str`)
+- `annual_fuel_cost` / `annual_om_cost` (was `fuel_cost_year` / `om_cost_year`)
+- `system_availability` (was `prob_gen`)
+- `spinning_reserve_mw` in MW (was `spinning_res_pct` in %)
+- Pod architecture (`n_pods × n_per_pod`), loading, Uptime tier, derate_table_source added.
+- `render_pdf_tab()` in `streamlit_app.py` enriches `pdf_data` with flattened emissions,
+  `capex_items` list, `selected_config`, and `gen_data` before calling `generate_comprehensive_pdf()`.
+
+### CAPEX Total Calculation (H2)
+`total_capex_m` in `sizing_pipeline.py` now includes:
+- `emissions_control.get('total_capex', 0)` — SCR/oxidation catalyst CAPEX
+- `lng_logistics.get('lng_capex_usd', 0)` — LNG tank + vaporizer + piping
+These were in `capex_breakdown` but excluded from the sum. Fixed at line ~631.
+
+### HV Switchgear — 52T5 Bus-Tie Modes (P18/P19/P22)
+In `streamlit_app.py` Electrical tab:
+- **52T5 mode selector:** Normally Open (NO) vs Normally Closed (NC)
+- **NO mode (default):** ISC = local section only. 52T5 closes on N-1 contingency.
+- **NC mode:** ISC = both sections contribute (ring bus paralleling). Higher ISC.
+- **Breaker ratings:** ANSI C37 list extended to [16, 20, 25, 31.5, 40, 50, 63, 80, 100, 125] kA.
+- **Warnings:** "Special Order" for 80-125 kA; "Exceeds Maximum" if ISC > 125 kA.
+- Equipment recommendations table with bus bars, incomers, tie-breaker, current-limiting reactor.
+
+### BESS Autonomy Calculated (P21)
+In BESS tab, autonomy slider with override capability:
+- Default autonomy derived from `bess_energy_mwh / bess_power_mw × 60`.
+- User can override; warning shown if override differs >50% from calculated.
+- Formula caption: `Energy = Power × autonomy_min / 60 / DoD`.
+
 ### Key Engine Changes (Audit Series P02-P06, March 2026)
 | Finding | Fix | Impact |
 |---------|-----|--------|

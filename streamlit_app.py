@@ -278,6 +278,112 @@ def _safe_get(d: dict, key: str, default=0):
     return val if val is not None else default
 
 
+# ── Electrical Path Availability — IEEE 493-2007 (Gold Book) ─────────────────
+# Component failure rates and MTTR from IEEE 493-2007, Table 3-4.
+# Step-up transformers EXCLUDED: their failure affects generator availability
+# (counted in the binomial fleet model), not the bus path availability.
+
+_IEEE493 = {
+    # component: (lambda failures/yr, MTTR hours)  Source: IEEE 493-2007 Table 3-4
+    "cb":    (0.0027,  83.1),   # MV circuit breaker, metal-clad switchgear
+    "bus":   (0.0024,  35.0),   # Bus duct, per 100 ft section
+    "cable": (0.0083,  15.7),   # MV cable, per 1,000 ft
+    "trafo": (0.0062, 341.7),   # Power transformer >500 kVA (shown in table, EXCLUDED from calc)
+}
+
+def _ieee493_section_load_path_U(
+    n_D_breakers: int = 2,     # 52D distribution breakers per section (load side)
+    bus_ft: float     = 150.0, # HV bus length per section
+    cable_ft: float   = 500.0, # HV cable to loads
+) -> float:
+    """
+    Unavailability of ONE HV bus section's load-side path.
+    Includes: HV bus + 52D distribution breakers + HV cable to load.
+    Excludes: 52T generator incomers and step-up transformers (in fleet model).
+    """
+    lam_cb,  mttr_cb  = _IEEE493["cb"]
+    lam_bus, mttr_bus  = _IEEE493["bus"]
+    lam_cbl, mttr_cbl  = _IEEE493["cable"]
+    return (n_D_breakers * lam_cb * mttr_cb / 8760
+            + lam_bus * mttr_bus / 8760 * (bus_ft / 100.0)
+            + lam_cbl * mttr_cbl / 8760 * (cable_ft / 1000.0))
+
+def _ieee493_elec_path(topology: str) -> float:
+    """
+    Calculate electrical path availability per IEEE 493-2007.
+    For ring/redundant topologies, models simultaneous failure probability.
+    52T5 demand failure (fails to close on N-1) is included for ring topologies.
+    Returns: A_path (0-1).
+    """
+    U_CB = _IEEE493["cb"][0] * _IEEE493["cb"][1] / 8760  # per breaker
+
+    if topology == "Radial single bus":
+        U = _ieee493_section_load_path_U(n_D_breakers=4, bus_ft=200, cable_ft=500)
+        return 1.0 - U
+
+    elif topology == "Ring bus / sectionalized (N-1)":
+        U_sec = _ieee493_section_load_path_U(n_D_breakers=2, bus_ft=150, cable_ft=500)
+        U_52T5_demand = U_CB * (U_sec * 2)
+        U_ring = U_sec ** 2 + U_52T5_demand
+        return 1.0 - U_ring
+
+    elif topology == "Double bus / double breaker":
+        U_sec = _ieee493_section_load_path_U(n_D_breakers=2, bus_ft=100, cable_ft=300)
+        U_dbl = U_sec ** 2 + U_CB * (U_sec * 2)
+        return 1.0 - U_dbl
+
+    elif topology == "2N fully redundant":
+        U_sec = _ieee493_section_load_path_U(n_D_breakers=2, bus_ft=80, cable_ft=200)
+        return 1.0 - U_sec ** 2
+
+    return 0.9990  # conservative fallback
+
+_ELEC_TOPOLOGY_OPTIONS = {
+    "Radial single bus": {
+        "description": (
+            "Single bus section, no redundancy. Any bus component failure "
+            "causes a full outage. Only suitable for small or temporary "
+            "installations without reliability requirements."
+        ),
+        "typical_use": "Small projects, temporary power, non-critical loads.",
+    },
+    "Ring bus / sectionalized (N-1)": {
+        "description": (
+            "Dual HV section bus (SWGR-A and SWGR-B) with bus-tie breaker 52T5 "
+            "(normally open). In normal operation each section carries half the load. "
+            "On N-1 (one section fails), 52T5 closes and the surviving section "
+            "carries 100% of load. CAT standard topology for data center prime power -- "
+            "confirmed across Fidelis 120 MW, JERA Americas 150/216 MW, and P-05H."
+        ),
+        "typical_use": "Standard data center prime power. CAT default.",
+    },
+    "Double bus / double breaker": {
+        "description": (
+            "Each generator and each load feeder connects to both buses via "
+            "independent breakers. Both buses must fail simultaneously for "
+            "any load to be interrupted. Higher capital cost than ring bus."
+        ),
+        "typical_use": "Tier III-IV, high-reliability industrial, large campus.",
+    },
+    "2N fully redundant": {
+        "description": (
+            "Two completely independent electrical paths -- separate transformer, "
+            "switchgear, cable, and feeder for each load. Any single component "
+            "failure is tolerated without any load interruption."
+        ),
+        "typical_use": "Tier IV, mission-critical financial/government infrastructure.",
+    },
+}
+
+def _fmt_downtime(hours):
+    """Format downtime in the most readable unit."""
+    if hours < 1/60:
+        return f"{hours*3600:.1f} sec/yr"
+    elif hours < 1:
+        return f"{hours*60:.1f} min/yr"
+    return f"{hours:.1f} hr/yr"
+
+
 # =============================================================================
 # WIZARD — 5-STEP GUIDED SETUP
 # =============================================================================
@@ -2417,54 +2523,43 @@ def render_reliability_tab(r):
     else:
         st.info("No reliability configurations available.")
 
-    # ── Electrical Path Availability & Uptime Tier (P16) ─────────────────
+    # ── Electrical Path Availability & Uptime Tier (IEEE 493-2007) ────────
     st.divider()
     st.subheader("System Availability — Electrical Path & Uptime Classification")
 
     import pandas as pd
+    import math as _math
     from core.engine import _binomial_availability
 
-    # --- Topology selector ---
-    _TOPOLOGIES = {
-        "Radial single bus":            0.9980,
-        "Ring bus / sectionalized":     0.9950,
-        "Double bus / double breaker":  0.9970,
-        "2N fully redundant path":      0.9990,
-        "Custom":                       None,
-    }
-    topo_labels = list(_TOPOLOGIES.keys())
-    topo_sel = st.selectbox(
-        "Bus Topology", topo_labels, index=1,
-        key="_bus_topology",
-        help="Selects the IEEE 493 lumped electrical path factor for the bus topology."
-    )
-    topo_factor = _TOPOLOGIES[topo_sel]
+    # --- Topology selector (IEEE 493 calculated, not hardcoded) ---
+    _topo_options = list(_ELEC_TOPOLOGY_OPTIONS.keys())
+    _topo_default = "Ring bus / sectionalized (N-1)"
+    _topo_idx     = _topo_options.index(_topo_default)
 
-    if topo_factor is not None:
-        st.session_state["_elec_path_avail"] = topo_factor
-
-    epf = st.number_input(
-        "Electrical Path Availability Factor",
-        min_value=0.980, max_value=1.000,
-        value=float(st.session_state.get("_elec_path_avail", 0.9950)),
-        step=0.0001, format="%.4f",
-        key="_elec_path_avail_input",
+    selected_topology = st.selectbox(
+        "HV Bus Topology",
+        options=_topo_options,
+        index=_topo_idx,
+        key="_elec_bus_topology",
         help=(
-            "Lumped availability of the electrical path (breakers, MV bus, transformer, cables). "
-            "Source: IEEE Std 493 (Gold Book). "
-            "To compare with the CAT Switchgear Excel tool, set this to 1.0000 "
-            "(that tool does not apply an electrical path factor)."
+            "Electrical bus architecture connecting generators to the facility load. "
+            "Determines the redundancy level and fault tolerance of the distribution system. "
+            "Source: IEEE 493-2007 (Gold Book) — Recommended Practice for "
+            "the Design of Reliable Industrial and Commercial Power Systems."
         ),
     )
+
+    _topo_info = _ELEC_TOPOLOGY_OPTIONS[selected_topology]
+    st.caption(f"**{selected_topology}:** {_topo_info['description']}")
+    st.caption(f"Typical use: {_topo_info['typical_use']}")
+
+    # Calculate electrical path factor from IEEE 493
+    epf = _ieee493_elec_path(selected_topology)
     st.session_state["_elec_path_avail"] = epf
 
     # --- Fleet-only vs Combined availability ---
     a_gen_active = getattr(r, 'a_gen_derived', 0.965)
     n_total = getattr(r, 'n_total', 0)
-    # n_required = minimum generators to serve the load (NOT n_total)
-    # r.n_running may equal n_total (pod optimizer sets all as "running"),
-    # so derive from load: ceil(p_total_peak / unit_site_cap)
-    import math as _math
     _unit_cap = getattr(r, 'unit_site_cap', 1.0) or 1.0
     _p_peak   = getattr(r, 'p_total_peak', 0)
     n_required = _math.ceil(_p_peak / _unit_cap) if _unit_cap > 0 and _p_peak > 0 else n_total
@@ -2476,35 +2571,94 @@ def render_reliability_tab(r):
 
     a_combined = a_fleet * epf
 
+    # Display metrics
     col_f, col_e, col_c = st.columns(3)
-    col_f.metric("Fleet Only", f"{a_fleet * 100:.4f}%")
-    col_e.metric("Elec. Path Factor", f"{epf:.4f}")
-    col_c.metric("Combined", f"{a_combined * 100:.4f}%")
-
-    st.caption(
-        "**Fleet Only** = binomial(N_total, N_required, a_gen). "
-        "**Combined** = Fleet Only × Elec. Path Factor. "
-        "To match the CAT Switchgear Excel tool, set the factor to 1.0000."
+    col_f.metric(
+        "Fleet Only", f"{a_fleet * 100:.4f}%",
+        help=f"P(X >= {n_required} | n={n_total}, p={a_gen_active:.3f}) — binomial CDF.",
+    )
+    col_e.metric(
+        "Elec. Path (IEEE 493)", f"{epf * 100:.6f}%",
+        help=(
+            f"Topology: {selected_topology}. "
+            f"Component data: MV breakers lambda=0.0027 f/yr, MTTR=83.1 hr; "
+            f"bus duct lambda=0.0024; MV cable lambda=0.0083. "
+            f"Transformers excluded (counted in fleet model)."
+        ),
+    )
+    col_c.metric(
+        "Combined System", f"{a_combined * 100:.4f}%",
+        help="Fleet Only x Electrical Path Factor.",
     )
 
+    # Downtime equivalents
+    dt_fleet    = (1 - a_fleet)    * 8760
+    dt_elec     = (1 - epf)        * 8760
+    dt_combined = (1 - a_combined) * 8760
+
+    st.caption(
+        f"**Downtime equivalents:** "
+        f"Fleet: {_fmt_downtime(dt_fleet)} | "
+        f"Elec. path: {_fmt_downtime(dt_elec)} | "
+        f"Combined: {_fmt_downtime(dt_combined)}"
+    )
+
+    # IEEE 493 component breakdown expander
+    with st.expander("IEEE 493-2007 Component Data (source for electrical path factor)"):
+        st.markdown(
+            "Failure rates and MTTR from **IEEE 493-2007, Table 3-4** — "
+            "*Recommended Practice for the Design of Reliable Industrial and "
+            "Commercial Power Systems (Gold Book)*."
+        )
+        _comp_data = {
+            "Component": [
+                "MV circuit breaker (metal-clad)",
+                "Bus duct (per 100 ft section)",
+                "MV cable (per 1,000 ft)",
+                "Power transformer >500 kVA *",
+            ],
+            "failures/yr": ["0.0027", "0.0024", "0.0083", "0.0062"],
+            "MTTR (hours)":    ["83.1",   "35.0",   "15.7",   "341.7"],
+            "U = lam x MTTR/8760": [
+                f"{0.0027*83.1/8760:.2e}",
+                f"{0.0024*35.0/8760:.2e}",
+                f"{0.0083*15.7/8760:.2e}",
+                f"{0.0062*341.7/8760:.2e} *",
+            ],
+        }
+        st.table(pd.DataFrame(_comp_data).set_index("Component"))
+        st.caption(
+            "\\* Transformer unavailability is **not included** in the electrical path factor "
+            "because transformer failure affects generator availability (already modeled "
+            "in the fleet binomial calculation). Including it here would double-count."
+        )
+        st.caption(
+            f"**Topology: {selected_topology}** — "
+            + ("Single series path: A = 1 - U_section."
+               if "Radial" in selected_topology
+               else "Parallel redundant paths: A = 1 - U_section^2. Both sections must "
+                    "fail simultaneously for a bus outage.")
+        )
+
+    st.divider()
+
     # --- Uptime Tier Classification ---
-    st.markdown("---")
     st.subheader("Uptime Institute Tier Classification")
 
-    downtime_min = (1 - a_combined) * 8760 * 60  # minutes/year
-    downtime_hr  = downtime_min / 60
+    downtime_hr  = (1 - a_combined) * 8760
+    downtime_min = downtime_hr * 60
 
     _TIERS = [
-        ("Tier I — Basic",              99.671,  28.8),
-        ("Tier II — Redundant",         99.741,  22.0),
-        ("Tier III — Concurrently Maint.", 99.982, 1.6),
-        ("Tier IV — Fault Tolerant",    99.995,  0.4),
+        ("Tier I -- Basic",              99.671,  28.8),
+        ("Tier II -- Redundant",         99.741,  22.0),
+        ("Tier III -- Concurrently Maint.", 99.982, 1.6),
+        ("Tier IV -- Fault Tolerant",    99.995,  0.4),
     ]
 
     tier_data = []
     achieved = "Below Tier I"
     for label, pct, max_down_hr in _TIERS:
-        met = "✅" if a_combined * 100 >= pct else "❌"
+        met = "Yes" if a_combined * 100 >= pct else "No"
         if a_combined * 100 >= pct:
             achieved = label
         tier_data.append({
@@ -2515,7 +2669,7 @@ def render_reliability_tab(r):
         })
 
     st.dataframe(pd.DataFrame(tier_data), use_container_width=True, hide_index=True)
-    st.info(f"**Achieved:** {achieved} — Projected downtime: {downtime_hr:.2f} hr/yr ({downtime_min:.0f} min/yr)")
+    st.info(f"**Achieved:** {achieved} — Projected downtime: {_fmt_downtime(downtime_hr)}")
 
     # --- a_gen Sensitivity Table ---
     st.markdown("---")
@@ -2527,22 +2681,22 @@ def render_reliability_tab(r):
         if n_total > 0 and n_required > 0:
             af = _binomial_availability(n_total, n_required, ag)
         else:
-            af = ag ** 10  # fallback approximation
+            af = ag ** 10
         ac = af * epf
-        marker = " ◄" if abs(ag - a_gen_active) < 0.001 else ""
+        marker = " <" if abs(ag - a_gen_active) < 0.001 else ""
         dt_hr = (1 - ac) * 8760
         sens_data.append({
             'a_gen': f"{ag:.3f}{marker}",
             'Fleet Avail (%)': f"{af * 100:.4f}%",
             'Combined (%)': f"{ac * 100:.4f}%",
-            'Downtime (hr/yr)': f"{dt_hr:.2f}",
+            'Downtime (hr/yr)': f"{dt_hr:.4f}",
         })
 
     st.dataframe(pd.DataFrame(sens_data), use_container_width=True, hide_index=True)
     st.caption(
         f"Fleet: {n_total} total generators, {n_required} required. "
-        f"Active a_gen = {a_gen_active:.3f} (marked with ◄). "
-        f"Electrical path factor = {epf:.4f}."
+        f"Active a_gen = {a_gen_active:.3f} (marked with <). "
+        f"Electrical path: {selected_topology}, A = {epf:.10f}."
     )
 
 

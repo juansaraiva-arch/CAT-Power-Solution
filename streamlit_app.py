@@ -641,10 +641,12 @@ def render_wizard_step_2():
             )
     with col2:
         st.number_input("Critical IT Load (MW)", min_value=0.1, max_value=2000.0,
+                         value=float(st.session_state.get("_wiz_p_it", INPUT_DEFAULTS["p_it"])),
                          step=1.0,
                          key="_wiz_p_it", help=HELP_TEXTS.get("p_it", ""))
     with col3:
         st.number_input("Availability (%)", min_value=90.0, max_value=100.0,
+                         value=float(st.session_state.get("_wiz_avail_req", INPUT_DEFAULTS["avail_req"])),
                          step=0.01,
                          format="%.2f", key="_wiz_avail_req",
                          help=HELP_TEXTS.get("avail_req", ""))
@@ -665,16 +667,19 @@ def render_wizard_step_2():
                    help=HELP_TEXTS.get("capacity_factor", ""))
     with col2:
         st.number_input("Max Step Load (%)", min_value=0.0, max_value=100.0,
+                         value=float(st.session_state.get("_wiz_load_step_pct", INPUT_DEFAULTS.get("load_step_pct", 25))),
                          step=5.0,
                          key="_wiz_load_step_pct",
                          help=HELP_TEXTS.get("load_step_pct", ""))
         st.number_input("Peak/Avg Ratio", min_value=1.0, max_value=2.0,
+                         value=float(st.session_state.get("_wiz_peak_avg_ratio", INPUT_DEFAULTS["peak_avg_ratio"])),
                          step=0.05,
                          format="%.2f", key="_wiz_peak_avg_ratio",
                          help=HELP_TEXTS.get("peak_avg_ratio", ""))
     with col3:
         # spinning_res_pct removed — now derived from physical contingencies (P04)
         st.number_input("Load Ramp Rate (MW/min)", min_value=0.1, max_value=100.0,
+                         value=float(st.session_state.get("_wiz_load_ramp_req", INPUT_DEFAULTS.get("load_ramp_req", 0.5))),
                          step=0.5,
                          key="_wiz_load_ramp_req",
                          help=HELP_TEXTS.get("load_ramp_req", ""))
@@ -759,6 +764,7 @@ def render_wizard_step_3():
         st.session_state["_wiz_site_alt_m"] = site_alt_m
     else:
         st.number_input("Manual Derate Factor", min_value=0.01, max_value=1.0,
+                         value=float(st.session_state.get("_wiz_derate_factor_manual", INPUT_DEFAULTS["derate_factor_manual"])),
                          step=0.05, format="%.2f", key="_wiz_derate_factor_manual",
                          help=HELP_TEXTS.get("derate_factor_manual", ""))
 
@@ -838,8 +844,10 @@ def render_wizard_step_3():
                   help=HELP_TEXTS.get("volt_mode", ""))
         if st.session_state.get("_wiz_volt_mode") == "Manual":
             st.number_input("Manual Voltage (kV)", min_value=0.48, max_value=69.0,
+                            value=float(st.session_state.get("_wiz_manual_voltage_kv", INPUT_DEFAULTS["manual_voltage_kv"])),
                             step=0.1, format="%.1f", key="_wiz_manual_voltage_kv")
         st.number_input("Distribution Losses (%)", min_value=0.0, max_value=10.0,
+                         value=float(st.session_state.get("_wiz_dist_loss_pct", INPUT_DEFAULTS["dist_loss_pct"])),
                          step=0.5,
                          key="_wiz_dist_loss_pct",
                          help=HELP_TEXTS.get("dist_loss_pct", ""))
@@ -855,11 +863,13 @@ def render_wizard_step_4():
     col1, col2 = st.columns(2)
     with col1:
         st.number_input("Pipeline Gas Price ($/MMBtu)", min_value=0.0, max_value=50.0,
+                         value=float(st.session_state.get("_wiz_gas_price", INPUT_DEFAULTS["gas_price_pipeline"])),
                          step=0.5,
                          key="_wiz_gas_price",
                          help=HELP_TEXTS.get("gas_price_pipeline", ""))
     with col2:
         st.number_input("Grid Benchmark ($/kWh)", min_value=0.0, max_value=1.0,
+                         value=float(st.session_state.get("_wiz_benchmark_price", INPUT_DEFAULTS["benchmark_price"])),
                          step=0.01,
                          format="%.3f", key="_wiz_benchmark_price",
                          help=HELP_TEXTS.get("benchmark_price", ""))
@@ -869,10 +879,12 @@ def render_wizard_step_4():
     col1, col2, col3 = st.columns(3)
     with col1:
         st.number_input("WACC (%)", min_value=0.0, max_value=30.0,
+                         value=float(st.session_state.get("_wiz_wacc", INPUT_DEFAULTS["wacc"])),
                          step=0.5,
                          key="_wiz_wacc", help=HELP_TEXTS.get("wacc", ""))
     with col2:
         st.number_input("Project Life (years)", min_value=1, max_value=40,
+                         value=int(st.session_state.get("_wiz_project_years", INPUT_DEFAULTS["project_years"])),
                          step=1,
                          key="_wiz_project_years",
                          help=HELP_TEXTS.get("project_years", ""))
@@ -899,16 +911,19 @@ def render_wizard_step_4():
         col1, col2, col3 = st.columns(3)
         with col1:
             st.number_input("BESS Power Cost ($/kW)", min_value=0.0,
+                             value=float(st.session_state.get("_wiz_bess_cost_kw", INPUT_DEFAULTS["bess_cost_kw"])),
                              step=25.0,
                              key="_wiz_bess_cost_kw",
                              help=HELP_TEXTS.get("bess_cost_kw", ""))
         with col2:
             st.number_input("BESS Energy Cost ($/kWh)", min_value=0.0,
+                             value=float(st.session_state.get("_wiz_bess_cost_kwh", INPUT_DEFAULTS["bess_cost_kwh"])),
                              step=25.0,
                              key="_wiz_bess_cost_kwh",
                              help=HELP_TEXTS.get("bess_cost_kwh", ""))
         with col3:
             st.number_input("BESS O&M ($/kW-yr)", min_value=0.0,
+                             value=float(st.session_state.get("_wiz_bess_om_kw_yr", INPUT_DEFAULTS["bess_om_kw_yr"])),
                              step=1.0,
                              key="_wiz_bess_om_kw_yr",
                              help=HELP_TEXTS.get("bess_om_kw_yr", ""))

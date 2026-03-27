@@ -935,23 +935,23 @@ def render_wizard_step_4():
         c1, c2 = st.columns(2)
         with c1:
             st.number_input("BOS / Switchgear + Xfmr (%)", 0.0, 50.0,
-                            INPUT_DEFAULTS['bos_pct']*100, 1.0,
+                            float(st.session_state.get("_wiz_bos_pct", INPUT_DEFAULTS['bos_pct']*100)), 1.0,
                             key="_wiz_bos_pct")
             st.number_input("Civil / Site Work (%)", 0.0, 50.0,
-                            INPUT_DEFAULTS['civil_pct']*100, 1.0,
+                            float(st.session_state.get("_wiz_civil_pct", INPUT_DEFAULTS['civil_pct']*100)), 1.0,
                             key="_wiz_civil_pct")
             st.number_input("Fuel System (%)", 0.0, 30.0,
-                            INPUT_DEFAULTS['fuel_system_pct']*100, 0.5,
+                            float(st.session_state.get("_wiz_fuel_system_pct", INPUT_DEFAULTS['fuel_system_pct']*100)), 0.5,
                             key="_wiz_fuel_system_pct")
         with c2:
             st.number_input("MV Electrical (%)", 0.0, 30.0,
-                            INPUT_DEFAULTS['electrical_pct']*100, 0.5,
+                            float(st.session_state.get("_wiz_electrical_pct", INPUT_DEFAULTS['electrical_pct']*100)), 0.5,
                             key="_wiz_electrical_pct")
             st.number_input("EPC Management (%)", 0.0, 30.0,
-                            INPUT_DEFAULTS['epc_pct']*100, 1.0,
+                            float(st.session_state.get("_wiz_epc_pct", INPUT_DEFAULTS['epc_pct']*100)), 1.0,
                             key="_wiz_epc_pct")
             st.number_input("Contingency (%)", 0.0, 30.0,
-                            INPUT_DEFAULTS['contingency_pct']*100, 1.0,
+                            float(st.session_state.get("_wiz_contingency_pct", INPUT_DEFAULTS['contingency_pct']*100)), 1.0,
                             key="_wiz_contingency_pct")
 
     # Footprint

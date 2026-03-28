@@ -255,6 +255,16 @@ All `_wiz_` number_input widgets use: `value=float(st.session_state.get("_wiz_ke
   cae al default (cubre el caso de cambio de tipo de generador)
 - Mismo patrón que el fix del DC Type selector (commit 4dea7c2)
 
+### Bug Fix: gen_filter multiselect key/value conflict (commit 5287d12)
+- `render_wizard_step_3()`: eliminado `default=INPUT_DEFAULTS["gen_filter"]`
+  del multiselect de Generator Types
+- Causa raíz del bug de persistencia del generador: gen_filter revertía a
+  `["High Speed"]` en cada rerun por conflicto key/value, forzando fallback
+  a G3516H en `_wiz_generator_model`
+- Patrón idéntico al key/value conflict de number_input documentado en CLAUDE.md
+- `_wiz_gen_filter` ya inicializado en `_init_wizard_state()` — `default=` era
+  redundante y destructivo
+
 ### PDF Report Key Mapping (P17/C1)
 `core/pdf_report.py` uses `g(key, default)` helper. Corrected field mappings:
 - `bess_power_mw` / `bess_energy_mwh` (was `bess_power_total` / `bess_energy_total`)

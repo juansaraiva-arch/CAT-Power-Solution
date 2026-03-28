@@ -800,8 +800,10 @@ def render_wizard_step_3():
     st.subheader("Generator Selection")
     col1, col2 = st.columns([2, 1])
     with col1:
+        # No pasar default= cuando key= está activo — genera key/value conflict
+        # en Streamlit que revierte gen_filter a ["High Speed"] en cada rerun.
+        # _wiz_gen_filter ya se inicializa en _init_wizard_state().
         gen_filter = st.multiselect("Generator Types", GEN_TYPE_OPTIONS,
-                                     default=INPUT_DEFAULTS["gen_filter"],
                                      key="_wiz_gen_filter",
                                      help=HELP_TEXTS.get("gen_filter", ""))
         available_models = _get_filtered_models(gen_filter)

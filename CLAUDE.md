@@ -241,9 +241,19 @@ Replaces the hardcoded 2.0h/2.5h coverage in `sizing_pipeline.py`. User-configur
 All `_wiz_` number_input widgets use: `value=float(st.session_state.get("_wiz_key", INPUT_DEFAULTS["key"]))`.
 - `_init_wizard_state()` at line ~391 pre-populates all `_wiz_` keys from INPUT_DEFAULTS.
 - `_apply_dc_type_defaults()` callback updates keys when DC type changes (P20).
+- `_on_template_change()` callback applies TEMPLATES presets to `_wiz_` keys when template selectbox changes.
 - `DC_TYPE_DEFAULTS` dict maps DC types to preset values (PUE, load_step, etc.).
 - BOS adder widgets use `INPUT_DEFAULTS['x']*100` as fallback (pct conversion).
 - Unit-converted widgets (temp, alt, area) use `_to_display_X()` conversion functions.
+- `_build_inputs_from_wizard()` reads `_wiz_site_temp_display`/`_wiz_site_alt_display` with inline
+  unit conversion (avoids desync when user switches unit system mid-session).
+
+### Bug Fix: Generator model selector persistencia (commit c916f8a)
+- `render_wizard_step_3()`: `gen_idx` ahora lee desde `st.session_state.get("_wiz_generator_model")`
+  en lugar de `INPUT_DEFAULTS["selected_gen_name"]`
+- Fallback seguro: si el modelo guardado no existe en la lista filtrada actual,
+  cae al default (cubre el caso de cambio de tipo de generador)
+- Mismo patrón que el fix del DC Type selector (commit 4dea7c2)
 
 ### PDF Report Key Mapping (P17/C1)
 `core/pdf_report.py` uses `g(key, default)` helper. Corrected field mappings:

@@ -805,8 +805,13 @@ def render_wizard_step_3():
                                      key="_wiz_gen_filter",
                                      help=HELP_TEXTS.get("gen_filter", ""))
         available_models = _get_filtered_models(gen_filter)
-        default_gen = INPUT_DEFAULTS["selected_gen_name"]
-        gen_idx = available_models.index(default_gen) if default_gen in available_models else 0
+        # Leer desde session state para respetar la selección del usuario.
+        # Fallback a INPUT_DEFAULTS si el modelo guardado ya no está en la
+        # lista filtrada (e.g. usuario cambió el tipo de generador).
+        current_gen = st.session_state.get("_wiz_generator_model", INPUT_DEFAULTS["selected_gen_name"])
+        if current_gen not in available_models:
+            current_gen = INPUT_DEFAULTS["selected_gen_name"]
+        gen_idx = available_models.index(current_gen) if current_gen in available_models else 0
         generator_model = st.selectbox("Generator Model", available_models,
                                         index=gen_idx, key="_wiz_generator_model",
                                         help=HELP_TEXTS.get("selected_gen_name", ""))

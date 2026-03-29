@@ -270,6 +270,16 @@ All `_wiz_` number_input widgets use: `value=float(st.session_state.get("_wiz_ke
 - **Resolves:** generator always G3516H, template not applying, BESS strategy not
   persisting, cooling/fuel/voltage resetting, region resetting on rerun.
 
+### P25f — Render all wizard steps simultaneously (commit c74bfc4, 2026-03-29)
+- **Why P25e failed:** Streamlit deletes widget keys during the rerun itself,
+  before `_preserve_wizard_state()` can execute on the next cycle.
+- **Solution:** `render_wizard()` now renders ALL 5 steps on every rerun.
+  Inactive steps are wrapped in `display:none` CSS containers. This keeps
+  all widget keys alive in the DOM at all times.
+- **Critical pattern:** Never conditionally render wizard steps with
+  `step_renderers[step]()` — always render all of them.
+- P25e preserve/restore kept as belt-and-suspenders backup.
+
 ### P25e — Wizard state preservation across steps (commit 6555514, 2026-03-29)
 - **Root cause (DEFINITIVE):** Streamlit deletes session state keys for widgets
   not currently rendered. Wizard renders one step at a time, so navigating away

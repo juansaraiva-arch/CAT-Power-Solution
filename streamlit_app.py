@@ -4772,6 +4772,7 @@ def main():
                 result = run_full_sizing(sizing_input)
                 st.session_state.result = result
                 st.session_state["_wizard_running"] = False
+                st.session_state["_wizard_just_completed"] = True
         except Exception as e:
             st.error(f"Sizing failed: {e}")
             import traceback
@@ -4779,9 +4780,6 @@ def main():
             st.session_state["_wizard_running"] = False
             st.session_state["_wizard_complete"] = False
             return
-        # Force a rerun so the sidebar renders with the correct result
-        # WITHOUT re-running the sizing pipeline
-        st.rerun()
 
     # Sidebar for post-wizard adjustments
     inputs_dict, benchmark_price = render_sidebar()
@@ -4804,15 +4802,19 @@ def main():
     st.session_state["_enable_phasing"] = inputs_dict["enable_phasing"]
 
     # Auto-run sizing on every input change (reactive)
-    try:
-        sizing_input = SizingInput(**inputs_dict)
-        result = run_full_sizing(sizing_input)
-        st.session_state.result = result
-    except Exception as e:
-        st.error(f"Sizing failed: {e}")
-        import traceback
-        st.code(traceback.format_exc())
-        return
+    # Skip if wizard just completed — the result is already correct
+    if st.session_state.pop("_wizard_just_completed", False):
+        pass  # First render after wizard — don't overwrite wizard result
+    else:
+        try:
+            sizing_input = SizingInput(**inputs_dict)
+            result = run_full_sizing(sizing_input)
+            st.session_state.result = result
+        except Exception as e:
+            st.error(f"Sizing failed: {e}")
+            import traceback
+            st.code(traceback.format_exc())
+            return
 
     r = st.session_state.result
 

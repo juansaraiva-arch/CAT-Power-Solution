@@ -270,6 +270,18 @@ All `_wiz_` number_input widgets use: `value=float(st.session_state.get("_wiz_ke
 - **Resolves:** generator always G3516H, template not applying, BESS strategy not
   persisting, cooling/fuel/voltage resetting, region resetting on rerun.
 
+### P25e — Wizard state preservation across steps (commit 6555514, 2026-03-29)
+- **Root cause (DEFINITIVE):** Streamlit deletes session state keys for widgets
+  not currently rendered. Wizard renders one step at a time, so navigating away
+  from a step deletes all its widget keys. `_init_wizard_state()` then
+  re-initializes them to defaults (e.g. `_wiz_generator_model` → G3516H).
+- **Solution:** `_preserve_wizard_state()` / `_restore_wizard_state()` pair that
+  copies all `_wiz_*` keys to a `_wizard_persist` dict (not tied to any widget)
+  before step transitions and restores them on render.
+- **Critical pattern for future wizard widgets:** Any new `_wiz_*` key is
+  automatically preserved — no additional code needed per widget.
+- Also removed P25d debug prints.
+
 ### P25b — Remaining widget fixes (commit a86f263, 2026-03-29)
 - Added explicit `value=st.session_state.get(...)` to 4 widgets missing it: PUE, Methane Number, LNG days, Carbon Price
 - Generator model selectbox: verified correct (reads session state for index — commit c916f8a)

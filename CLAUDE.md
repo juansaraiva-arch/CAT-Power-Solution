@@ -270,6 +270,18 @@ All `_wiz_` number_input widgets use: `value=float(st.session_state.get("_wiz_ke
 - **Resolves:** generator always G3516H, template not applying, BESS strategy not
   persisting, cooling/fuel/voltage resetting, region resetting on rerun.
 
+### P25L — on_change + _stored_ pattern for all wizard widgets (commit 78f7566, 2026-03-29)
+- Extended the generator's proven `on_change` + `_stored_` pattern to ALL ~40
+  wizard widgets across Steps 2-4.
+- **Pattern:** Each widget has `on_change=_make_wizard_persist_callback("_wiz_X", "_stored_X")`.
+  The callback copies the widget value to a `_stored_X` key that is not tied to any
+  widget and therefore survives Streamlit's session state cleanup on step transitions.
+- **Read order:** `_stored_X` → `_wiz_X` → `INPUT_DEFAULTS["X"]` in all readers
+  (`_build_inputs_from_wizard` via `_v()` helper, `render_wizard_step_5`, `_render_load_preview`).
+- **Template callback** also writes to `_stored_` keys.
+- **`_on_template_change()`** updated to write both `_wiz_` and `_stored_` for each key.
+- **DEFINITIVE wizard persistence pattern** for Streamlit multi-step forms.
+
 ### P25k — Skip reactive sizing after wizard (commit 8cf5efc, 2026-03-29)
 - **Problem:** P25j's `st.rerun()` didn't prevent sidebar from overwriting wizard
   results — the reactive sizing still ran on the next cycle.

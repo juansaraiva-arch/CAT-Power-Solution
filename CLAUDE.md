@@ -270,6 +270,17 @@ All `_wiz_` number_input widgets use: `value=float(st.session_state.get("_wiz_ke
 - **Resolves:** generator always G3516H, template not applying, BESS strategy not
   persisting, cooling/fuel/voltage resetting, region resetting on rerun.
 
+### P25g — Remove value=/index= from keyed widgets + rollback P25f (commit 1102bb5, 2026-03-29)
+- **P25f rollback:** Rendering all steps simultaneously caused widget key conflicts
+  and showed all steps visually. Reverted to single-step render.
+- **Root fix:** Removed `value=` from all `number_input`/`slider`/`checkbox` and
+  `index=` from all `selectbox`/`radio` that have `key=`. When both `value=` and
+  `key=` are present, Streamlit warns and the `value=` can override the restored
+  session state value.
+- **Pattern (DEFINITIVE):** For wizard widgets, use ONLY `key=` (no `value=`/`index=`).
+  `_init_wizard_state()` sets initial defaults. `_preserve/_restore_wizard_state()`
+  survives step transitions.
+
 ### P25f — Render all wizard steps simultaneously (commit c74bfc4, 2026-03-29)
 - **Why P25e failed:** Streamlit deletes widget keys during the rerun itself,
   before `_preserve_wizard_state()` can execute on the next cycle.

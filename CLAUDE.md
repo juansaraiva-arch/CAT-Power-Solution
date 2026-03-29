@@ -255,6 +255,21 @@ All `_wiz_` number_input widgets use: `value=float(st.session_state.get("_wiz_ke
   cae al default (cubre el caso de cambio de tipo de generador)
 - Mismo patrón que el fix del DC Type selector (commit 4dea7c2)
 
+### P25 — Systemic wizard widget persistence fix (commit f04dbbc, 2026-03-28)
+- **Root cause:** All wizard widgets (Steps 2-4) used `value=INPUT_DEFAULTS[...]` / `index=0`
+  with `key=`, causing Streamlit to overwrite user values on every rerun.
+- **Fix pattern:** `value=st.session_state.get("_wiz_KEY", INPUT_DEFAULTS["KEY"])`
+  applied to ~17 widgets; index for all selectbox/radio widgets computed from session state.
+- **Step 2 fixed:** Unit System radio, Template selectbox, DC Type selectbox.
+- **Step 3 fixed:** Derate Mode radio, Include BESS/Black Start/CHP checkboxes,
+  BESS Strategy selectbox, Cooling radio, Fuel Mode radio, Voltage Mode radio.
+- **Step 4 fixed:** Region selectbox, MACRS checkbox, Site Area checkbox.
+- **`_init_wizard_state()` corrections:** `_wiz_gen_filter` `"All"` → list;
+  `_wiz_derate_factor_manual` key typo fixed; `_wiz_cooling` key `cooling` → `cooling_method`;
+  `_wiz_volt_mode` fallback `"Auto"` → `"Auto-Recommend"` (matches radio options).
+- **Resolves:** generator always G3516H, template not applying, BESS strategy not
+  persisting, cooling/fuel/voltage resetting, region resetting on rerun.
+
 ### Bug Fix: gen_filter multiselect key/value conflict (commit 5287d12)
 - `render_wizard_step_3()`: eliminado `default=INPUT_DEFAULTS["gen_filter"]`
   del multiselect de Generator Types

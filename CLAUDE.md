@@ -270,6 +270,20 @@ All `_wiz_` number_input widgets use: `value=float(st.session_state.get("_wiz_ke
 - **Resolves:** generator always G3516H, template not applying, BESS strategy not
   persisting, cooling/fuel/voltage resetting, region resetting on rerun.
 
+### P25h — Rollback to stable + generator on_change fix (commit c49c6e6, 2026-03-29)
+- **Rolled back** P25-P25g experiments that broke defaults (min_value shown instead of correct defaults)
+- **Widgets restored** to original stable pattern: `value=INPUT_DEFAULTS[...]` with `key=`
+- **Generator fix:** `on_change=_on_generator_change` callback persists selection to
+  `_stored_generator_model` (non-widget key, survives step transitions)
+- **`_build_inputs_from_wizard()`** reads `_stored_generator_model` first, falls back
+  to `_wiz_generator_model` then `INPUT_DEFAULTS`
+- **`render_wizard_step_5()`** also reads `_stored_generator_model` first for Review display
+- **If generator test passes**, same `on_change` + `_stored_` pattern will be applied
+  to all other critical widgets (temp, alt, BESS strategy, etc.)
+- **Removed** `_preserve/_restore_wizard_state()` (caused button key write errors)
+- **Simplified** `_init_wizard_state()` to Step 1 keys only — Steps 2-4 widgets
+  create their own session state via `value=`/`index=` defaults
+
 ### P25g — Remove value=/index= from keyed widgets + rollback P25f (commit 1102bb5, 2026-03-29)
 - **P25f rollback:** Rendering all steps simultaneously caused widget key conflicts
   and showed all steps visually. Reverted to single-step render.

@@ -1239,13 +1239,14 @@ def render_wizard():
     st.image("assets/logo_caterpillar.png", width=350)
     st.caption(f"Power Solution v{APP_VERSION} — Prime Power Quick-Size Wizard")
 
-    # Restore wizard state from persist backup (survives widget cleanup)
+    # Restore any persisted state (belt-and-suspenders with the render-all approach)
     _restore_wizard_state()
 
     render_wizard_stepper()
     st.divider()
 
-    step = st.session_state.get("_wizard_step", 0)
+    current_step = st.session_state.get("_wizard_step", 0)
+
     step_renderers = [
         render_wizard_step_1,
         render_wizard_step_2,
@@ -1253,12 +1254,27 @@ def render_wizard():
         render_wizard_step_4,
         render_wizard_step_5,
     ]
-    step_renderers[step]()
+
+    # Render ALL steps, but only show the active one.
+    # This keeps all widget keys alive in the DOM, preventing Streamlit
+    # from deleting them when the user navigates between steps.
+    for i, renderer in enumerate(step_renderers):
+        if i == current_step:
+            renderer()
+        else:
+            # Render in a hidden container — widgets exist in DOM but are invisible
+            with st.container():
+                st.markdown(
+                    f'<div style="display:none !important;" aria-hidden="true">',
+                    unsafe_allow_html=True,
+                )
+                renderer()
+                st.markdown('</div>', unsafe_allow_html=True)
 
     st.divider()
     render_wizard_navigation()
 
-    # Preserve wizard state to survive widget cleanup on step change
+    # Preserve state as backup
     _preserve_wizard_state()
 
 

@@ -1062,8 +1062,6 @@ def render_wizard_navigation():
 def _build_inputs_from_wizard():
     """Build inputs_dict from wizard session state. Returns (inputs_dict, benchmark_price)."""
     ss = st.session_state
-    import sys
-    print(f"[DEBUG-GEN] _stored_generator_model={ss.get('_stored_generator_model','MISSING')}, _wiz_generator_model={ss.get('_wiz_generator_model','MISSING')}", file=sys.stderr)
     gen_model = ss.get("_stored_generator_model",
                 ss.get("_wiz_generator_model", INPUT_DEFAULTS["selected_gen_name"]))
     gen_data = GENERATOR_LIBRARY.get(gen_model, {})
@@ -4781,6 +4779,9 @@ def main():
             st.session_state["_wizard_running"] = False
             st.session_state["_wizard_complete"] = False
             return
+        # Force a rerun so the sidebar renders with the correct result
+        # WITHOUT re-running the sizing pipeline
+        st.rerun()
 
     # Sidebar for post-wizard adjustments
     inputs_dict, benchmark_price = render_sidebar()

@@ -427,16 +427,16 @@ def _init_wizard_state():
         "_wiz_site_alt_display": float(INPUT_DEFAULTS.get("site_alt_m", 0)),
         "_wiz_methane_number": int(INPUT_DEFAULTS.get("methane_number", 80)),
         "_wiz_generator_model": INPUT_DEFAULTS.get("selected_gen_name", "G3516H"),
-        "_wiz_gen_filter": "All",
-        "_wiz_derate_factor_manual": float(INPUT_DEFAULTS.get("derate_factor", 1.0)),
+        "_wiz_gen_filter": INPUT_DEFAULTS.get("gen_filter", ["High Speed"]),  # list for multiselect
+        "_wiz_derate_factor_manual": float(INPUT_DEFAULTS.get("derate_factor_manual", 1.0)),
         "_wiz_use_bess": bool(INPUT_DEFAULTS.get("use_bess", True)),
         "_wiz_bess_strategy": INPUT_DEFAULTS.get("bess_strategy", "Hybrid (Balanced)"),
         "_wiz_enable_black_start": bool(INPUT_DEFAULTS.get("enable_black_start", False)),
         "_wiz_include_chp": bool(INPUT_DEFAULTS.get("include_chp", False)),
-        "_wiz_cooling": INPUT_DEFAULTS.get("cooling", "Radiator"),
+        "_wiz_cooling": INPUT_DEFAULTS.get("cooling_method", "Air-Cooled"),  # key corrected
         "_wiz_fuel_mode": INPUT_DEFAULTS.get("fuel_mode", "Pipeline Gas"),
         "_wiz_lng_days": int(INPUT_DEFAULTS.get("lng_days", 5)),
-        "_wiz_volt_mode": INPUT_DEFAULTS.get("volt_mode", "Auto"),
+        "_wiz_volt_mode": INPUT_DEFAULTS.get("volt_mode", "Auto-Recommend"),  # matches radio options
         "_wiz_manual_voltage_kv": 13.8,
         "_wiz_dist_loss_pct": float(INPUT_DEFAULTS.get("dist_loss_pct", 2.0)),
         # Step 4: Economics
@@ -630,7 +630,8 @@ def render_wizard_step_2():
 
     # Unit system toggle
     unit_options = ["Metric", "Imperial"]
-    unit_sys = st.radio("Unit System", unit_options, index=0,
+    unit_idx = unit_options.index(st.session_state.get("_wiz_unit_sys", "Metric")) if st.session_state.get("_wiz_unit_sys", "Metric") in unit_options else 0
+    unit_sys = st.radio("Unit System", unit_options, index=unit_idx,
                          horizontal=True, key="_wiz_unit_sys",
                          help=HELP_TEXTS.get("unit_system", ""))
     st.session_state["_unit_sys"] = unit_sys
@@ -640,7 +641,9 @@ def render_wizard_step_2():
     # Template quick start
     st.subheader("Quick Start Template")
     template_options = ["Custom (Manual)"] + list(TEMPLATES.keys())
-    template = st.selectbox("Template", template_options, index=0,
+    current_tpl = st.session_state.get("_wiz_template", "Custom (Manual)")
+    tpl_idx = template_options.index(current_tpl) if current_tpl in template_options else 0
+    template = st.selectbox("Template", template_options, index=tpl_idx,
                              key="_wiz_template",
                              on_change=_on_template_change,
                              help="Select a pre-configured template to auto-fill common settings.")
@@ -651,8 +654,8 @@ def render_wizard_step_2():
     st.subheader("Application")
     col1, col2, col3 = st.columns(3)
     with col1:
-        dc_default = INPUT_DEFAULTS["dc_type"]
-        dc_idx = DC_TYPES.index(dc_default) if dc_default in DC_TYPES else 0
+        dc_current = st.session_state.get("_wiz_dc_type", INPUT_DEFAULTS["dc_type"])
+        dc_idx = DC_TYPES.index(dc_current) if dc_current in DC_TYPES else 0
         st.selectbox("Data Center Type", DC_TYPES, index=dc_idx,
                       key="_wiz_dc_type",
                       on_change=_apply_dc_type_defaults,
@@ -722,8 +725,11 @@ def render_wizard_step_3():
 
     # Site Conditions
     st.subheader(":thermometer: Site Conditions")
-    derate_mode = st.radio("Derate Mode", ["Auto-Calculate", "Manual"],
-                            index=0, horizontal=True, key="_wiz_derate_mode",
+    derate_options = ["Auto-Calculate", "Manual"]
+    derate_current = st.session_state.get("_wiz_derate_mode", "Auto-Calculate")
+    derate_idx = derate_options.index(derate_current) if derate_current in derate_options else 0
+    derate_mode = st.radio("Derate Mode", derate_options,
+                            index=derate_idx, horizontal=True, key="_wiz_derate_mode",
                             help=HELP_TEXTS.get("derate_mode", ""))
 
     if derate_mode == "Auto-Calculate":
@@ -844,27 +850,36 @@ def render_wizard_step_3():
     st.subheader("Technology Options")
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.checkbox("Include BESS", value=INPUT_DEFAULTS["use_bess"],
+        st.checkbox("Include BESS",
+                     value=st.session_state.get("_wiz_use_bess", INPUT_DEFAULTS["use_bess"]),
                      key="_wiz_use_bess", help=HELP_TEXTS.get("use_bess", ""))
     with col2:
-        st.checkbox("Black Start", value=INPUT_DEFAULTS["enable_black_start"],
+        st.checkbox("Black Start",
+                     value=st.session_state.get("_wiz_enable_black_start", INPUT_DEFAULTS["enable_black_start"]),
                      key="_wiz_enable_black_start",
                      help=HELP_TEXTS.get("enable_black_start", ""))
     with col3:
-        st.checkbox("CHP / Tri-Gen", value=False,
+        st.checkbox("CHP / Tri-Gen",
+                     value=st.session_state.get("_wiz_include_chp", False),
                      key="_wiz_include_chp", help=HELP_TEXTS.get("include_chp", ""))
 
     if st.session_state.get("_wiz_use_bess", True):
-        bess_idx = BESS_STRATEGIES.index(INPUT_DEFAULTS["bess_strategy"]) if INPUT_DEFAULTS["bess_strategy"] in BESS_STRATEGIES else 1
+        bess_current = st.session_state.get("_wiz_bess_strategy", INPUT_DEFAULTS["bess_strategy"])
+        bess_idx = BESS_STRATEGIES.index(bess_current) if bess_current in BESS_STRATEGIES else 1
         st.selectbox("BESS Strategy", BESS_STRATEGIES, index=bess_idx,
                       key="_wiz_bess_strategy", help=HELP_TEXTS.get("bess_strategy", ""))
 
     col1, col2 = st.columns(2)
     with col1:
-        st.radio("Cooling", ["Air-Cooled", "Water-Cooled"], index=0,
+        cooling_options = ["Air-Cooled", "Water-Cooled"]
+        cooling_current = st.session_state.get("_wiz_cooling", "Air-Cooled")
+        cooling_idx = cooling_options.index(cooling_current) if cooling_current in cooling_options else 0
+        st.radio("Cooling", cooling_options, index=cooling_idx,
                   horizontal=True, key="_wiz_cooling",
                   help=HELP_TEXTS.get("cooling_method", ""))
-        fuel_mode = st.radio("Fuel Mode", FUEL_MODES, index=0, horizontal=True,
+        fuel_current = st.session_state.get("_wiz_fuel_mode", INPUT_DEFAULTS.get("fuel_mode", "Pipeline Gas"))
+        fuel_idx = FUEL_MODES.index(fuel_current) if fuel_current in FUEL_MODES else 0
+        fuel_mode = st.radio("Fuel Mode", FUEL_MODES, index=fuel_idx, horizontal=True,
                               key="_wiz_fuel_mode",
                               help=HELP_TEXTS.get("fuel_mode", ""))
         if fuel_mode in ("LNG", "Dual-Fuel"):
@@ -872,7 +887,10 @@ def render_wizard_step_3():
                             step=1,
                             key="_wiz_lng_days", help=HELP_TEXTS.get("lng_days", ""))
     with col2:
-        st.radio("Voltage Mode", ["Auto-Recommend", "Manual"], index=0,
+        volt_options = ["Auto-Recommend", "Manual"]
+        volt_current = st.session_state.get("_wiz_volt_mode", "Auto-Recommend")
+        volt_idx = volt_options.index(volt_current) if volt_current in volt_options else 0
+        st.radio("Voltage Mode", volt_options, index=volt_idx,
                   horizontal=True, key="_wiz_volt_mode",
                   help=HELP_TEXTS.get("volt_mode", ""))
         if st.session_state.get("_wiz_volt_mode") == "Manual":
@@ -922,13 +940,15 @@ def render_wizard_step_4():
                          key="_wiz_project_years",
                          help=HELP_TEXTS.get("project_years", ""))
     with col3:
-        region_idx = REGIONS.index(INPUT_DEFAULTS["region"]) if INPUT_DEFAULTS["region"] in REGIONS else 0
+        region_current = st.session_state.get("_wiz_region", INPUT_DEFAULTS["region"])
+        region_idx = REGIONS.index(region_current) if region_current in REGIONS else 0
         st.selectbox("Region", REGIONS, index=region_idx,
                       key="_wiz_region", help=HELP_TEXTS.get("region", ""))
 
     col1, col2 = st.columns(2)
     with col1:
-        st.checkbox("MACRS Depreciation", value=INPUT_DEFAULTS["enable_depreciation"],
+        st.checkbox("MACRS Depreciation",
+                     value=st.session_state.get("_wiz_enable_depreciation", INPUT_DEFAULTS["enable_depreciation"]),
                      key="_wiz_enable_depreciation",
                      help=HELP_TEXTS.get("enable_depreciation", ""))
     with col2:
@@ -992,7 +1012,8 @@ def render_wizard_step_4():
     st.subheader("Footprint Constraint")
     col1, col2 = st.columns(2)
     with col1:
-        st.checkbox("Limit Site Area", value=INPUT_DEFAULTS["enable_footprint_limit"],
+        st.checkbox("Limit Site Area",
+                     value=st.session_state.get("_wiz_enable_footprint_limit", INPUT_DEFAULTS["enable_footprint_limit"]),
                      key="_wiz_enable_footprint_limit",
                      help=HELP_TEXTS.get("enable_footprint_limit", ""))
     with col2:

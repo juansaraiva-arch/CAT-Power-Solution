@@ -270,6 +270,14 @@ All `_wiz_` number_input widgets use: `value=float(st.session_state.get("_wiz_ke
 - **Resolves:** generator always G3516H, template not applying, BESS strategy not
   persisting, cooling/fuel/voltage resetting, region resetting on rerun.
 
+### P25k — Skip reactive sizing after wizard (commit 8cf5efc, 2026-03-29)
+- **Problem:** P25j's `st.rerun()` didn't prevent sidebar from overwriting wizard
+  results — the reactive sizing still ran on the next cycle.
+- **Fix:** `_wizard_just_completed` flag set after wizard sizing, consumed by
+  `st.session_state.pop()` in the reactive sizing guard. First render after wizard
+  skips reactive sizing; subsequent sidebar changes trigger it normally.
+- Removed P25j's `st.rerun()`.
+
 ### P25j — Prevent sidebar from overwriting wizard results (commit b9518ef, 2026-03-29)
 - **Root cause (DEFINITIVE):** After wizard sizing completes with the correct
   generator, `main()` falls through to `render_sidebar()` which re-runs

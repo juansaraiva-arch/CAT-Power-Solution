@@ -687,6 +687,7 @@ def render_wizard_step_2():
     col1, col2, col3 = st.columns(3)
     with col1:
         st.number_input("PUE", min_value=1.0, max_value=3.0,
+                         value=float(st.session_state.get("_wiz_pue", INPUT_DEFAULTS["pue"])),
                          step=0.05,
                          format="%.2f", key="_wiz_pue",
                          help=HELP_TEXTS.get("pue", ""))
@@ -756,6 +757,7 @@ def render_wizard_step_3():
         with col3:
             methane_number = st.number_input(
                 "Methane Number", min_value=0, max_value=100,
+                value=int(st.session_state.get("_wiz_methane_number", INPUT_DEFAULTS["methane_number"])),
                 step=5,
                 key="_wiz_methane_number",
                 help=HELP_TEXTS.get("methane_number", ""))
@@ -884,6 +886,7 @@ def render_wizard_step_3():
                               help=HELP_TEXTS.get("fuel_mode", ""))
         if fuel_mode in ("LNG", "Dual-Fuel"):
             st.number_input("LNG Storage (days)", min_value=1, max_value=30,
+                            value=int(st.session_state.get("_wiz_lng_days", INPUT_DEFAULTS["lng_days"])),
                             step=1,
                             key="_wiz_lng_days", help=HELP_TEXTS.get("lng_days", ""))
     with col2:
@@ -953,6 +956,7 @@ def render_wizard_step_4():
                      help=HELP_TEXTS.get("enable_depreciation", ""))
     with col2:
         st.number_input("Carbon Price ($/ton CO2)", min_value=0.0, max_value=500.0,
+                         value=float(st.session_state.get("_wiz_carbon_price", INPUT_DEFAULTS["carbon_price_per_ton"])),
                          step=5.0,
                          key="_wiz_carbon_price",
                          help=HELP_TEXTS.get("carbon_price_per_ton", ""))

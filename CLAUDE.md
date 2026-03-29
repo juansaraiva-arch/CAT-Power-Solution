@@ -270,6 +270,12 @@ All `_wiz_` number_input widgets use: `value=float(st.session_state.get("_wiz_ke
 - **Resolves:** generator always G3516H, template not applying, BESS strategy not
   persisting, cooling/fuel/voltage resetting, region resetting on rerun.
 
+### P25b — Remaining widget fixes (commit a86f263, 2026-03-29)
+- Added explicit `value=st.session_state.get(...)` to 4 widgets missing it: PUE, Methane Number, LNG days, Carbon Price
+- Generator model selectbox: verified correct (reads session state for index — commit c916f8a)
+- Full audit: 45 wizard widgets confirmed using correct session state pattern across Steps 2-4
+- 6 BOS adder `number_input` widgets use positional `value` arg with session_state — confirmed correct
+
 ### Bug Fix: gen_filter multiselect key/value conflict (commit 5287d12)
 - `render_wizard_step_3()`: eliminado `default=INPUT_DEFAULTS["gen_filter"]`
   del multiselect de Generator Types

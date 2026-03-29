@@ -462,10 +462,6 @@ def _init_wizard_state():
     for key, val in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = val
-            # DEBUG P25d — REMOVE AFTER DIAGNOSIS
-            if key == "_wiz_generator_model":
-                import sys
-                print(f"[P25d-INIT] INITIALIZING _wiz_generator_model = {val} (was not in session state)", file=sys.stderr)
 
 
 def render_wizard_stepper():
@@ -826,17 +822,9 @@ def render_wizard_step_3():
         if current_gen not in available_models:
             current_gen = INPUT_DEFAULTS["selected_gen_name"]
         gen_idx = available_models.index(current_gen) if current_gen in available_models else 0
-        # DEBUG P25d — REMOVE AFTER DIAGNOSIS
-        import sys
-        print(f"[P25d-STEP3] BEFORE selectbox: _wiz_generator_model in ss = {st.session_state.get('_wiz_generator_model', 'NOT FOUND')}", file=sys.stderr)
-        print(f"[P25d-STEP3] available_models = {available_models}", file=sys.stderr)
-        print(f"[P25d-STEP3] gen_idx = {gen_idx}", file=sys.stderr)
         generator_model = st.selectbox("Generator Model", available_models,
                                         index=gen_idx, key="_wiz_generator_model",
                                         help=HELP_TEXTS.get("selected_gen_name", ""))
-        # DEBUG P25d — REMOVE AFTER DIAGNOSIS
-        print(f"[P25d-STEP3] AFTER selectbox: generator_model = {generator_model}", file=sys.stderr)
-        print(f"[P25d-STEP3] AFTER selectbox: _wiz_generator_model in ss = {st.session_state.get('_wiz_generator_model', 'NOT FOUND')}", file=sys.stderr)
     with col2:
         gen_data = GENERATOR_LIBRARY.get(generator_model, {})
         if gen_data:
@@ -1066,9 +1054,6 @@ def render_wizard_step_5():
         st.markdown("**Site & Technology**")
         st.write(f"Temperature: {ss.get('_wiz_site_temp_c', INPUT_DEFAULTS['site_temp_c']):.0f} \u00b0C")
         st.write(f"Altitude: {ss.get('_wiz_site_alt_m', INPUT_DEFAULTS['site_alt_m']):.0f} m")
-        # DEBUG P25d — REMOVE AFTER DIAGNOSIS
-        import sys
-        print(f"[P25d-STEP5] _wiz_generator_model in ss = {st.session_state.get('_wiz_generator_model', 'NOT FOUND')}", file=sys.stderr)
         st.write(f"Generator: **{ss.get('_wiz_generator_model', INPUT_DEFAULTS['selected_gen_name'])}**")
         bess_label = "Yes" if ss.get("_wiz_use_bess", INPUT_DEFAULTS["use_bess"]) else "No"
         st.write(f"BESS: {bess_label}")
@@ -1098,20 +1083,20 @@ def render_wizard_navigation():
     with col_left:
         if current > 0:
             if st.button(":arrow_left: Back", use_container_width=True, key="_wiz_nav_back"):
+                _preserve_wizard_state()
                 st.session_state["_wizard_step"] = current - 1
                 st.rerun()
     with col_right:
         if current < 4:
             if st.button("Next :arrow_right:", use_container_width=True, type="primary",
                           key="_wiz_nav_next"):
+                _preserve_wizard_state()
                 st.session_state["_wizard_step"] = current + 1
-                # DEBUG P25d — REMOVE AFTER DIAGNOSIS
-                import sys
-                print(f"[P25d-NAV] Next clicked, step {current} -> {current+1}, _wiz_generator_model = {st.session_state.get('_wiz_generator_model', 'NOT FOUND')}", file=sys.stderr)
                 st.rerun()
         else:
             if st.button(":zap: Run Sizing", use_container_width=True, type="primary",
                           key="_wiz_run_sizing"):
+                _preserve_wizard_state()
                 st.session_state["_wizard_running"] = True
                 st.session_state["_wizard_complete"] = True
                 st.rerun()
@@ -1123,9 +1108,6 @@ def _build_inputs_from_wizard():
     """Build inputs_dict from wizard session state. Returns (inputs_dict, benchmark_price)."""
     ss = st.session_state
     gen_model = ss.get("_wiz_generator_model", INPUT_DEFAULTS["selected_gen_name"])
-    # DEBUG P25d — REMOVE AFTER DIAGNOSIS
-    import sys
-    print(f"[P25d-BUILD] gen_model = {gen_model}", file=sys.stderr)
     gen_data = GENERATOR_LIBRARY.get(gen_model, {})
 
     max_area_m2 = float(INPUT_DEFAULTS["max_area_m2"])
@@ -1217,6 +1199,33 @@ def _build_inputs_from_wizard():
 
 # ── Master Wizard Renderer ──
 
+def _preserve_wizard_state():
+    """Save all _wiz_ keys to a parallel _wizard_persist dict that survives widget cleanup.
+
+    Streamlit removes session state keys for widgets that are not currently rendered.
+    Since the wizard only renders one step at a time, keys from other steps get deleted.
+    This function copies all _wiz_ values to _persist_ keys, and _restore_wizard_state()
+    copies them back before rendering.
+    """
+    persist = {}
+    for key in list(st.session_state.keys()):
+        if key.startswith("_wiz_"):
+            persist[key] = st.session_state[key]
+    st.session_state["_wizard_persist"] = persist
+
+
+def _restore_wizard_state():
+    """Restore _wiz_ keys from the _wizard_persist backup.
+
+    Called at the start of each render cycle to ensure widget keys
+    have their correct values before widgets try to read them.
+    """
+    persist = st.session_state.get("_wizard_persist", {})
+    for key, val in persist.items():
+        if key not in st.session_state:
+            st.session_state[key] = val
+
+
 def render_wizard():
     """Full wizard experience — hides sidebar, renders steps."""
     # Hide sidebar during wizard
@@ -1229,6 +1238,9 @@ def render_wizard():
 
     st.image("assets/logo_caterpillar.png", width=350)
     st.caption(f"Power Solution v{APP_VERSION} — Prime Power Quick-Size Wizard")
+
+    # Restore wizard state from persist backup (survives widget cleanup)
+    _restore_wizard_state()
 
     render_wizard_stepper()
     st.divider()
@@ -1245,6 +1257,9 @@ def render_wizard():
 
     st.divider()
     render_wizard_navigation()
+
+    # Preserve wizard state to survive widget cleanup on step change
+    _preserve_wizard_state()
 
 
 # =============================================================================

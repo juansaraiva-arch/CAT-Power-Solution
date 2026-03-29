@@ -270,6 +270,15 @@ All `_wiz_` number_input widgets use: `value=float(st.session_state.get("_wiz_ke
 - **Resolves:** generator always G3516H, template not applying, BESS strategy not
   persisting, cooling/fuel/voltage resetting, region resetting on rerun.
 
+### P25j — Prevent sidebar from overwriting wizard results (commit b9518ef, 2026-03-29)
+- **Root cause (DEFINITIVE):** After wizard sizing completes with the correct
+  generator, `main()` falls through to `render_sidebar()` which re-runs
+  `run_full_sizing()` with sidebar defaults (G3516H), overwriting the result.
+- **Fix:** Added `st.rerun()` after wizard sizing so the sidebar renders on a
+  clean cycle where `_wizard_running=False` and the stored result is preserved.
+- **Generator on_change pattern confirmed working:** `_stored_generator_model`
+  correctly holds the user's selection across step transitions.
+
 ### P25h — Rollback to stable + generator on_change fix (commit c49c6e6, 2026-03-29)
 - **Rolled back** P25-P25g experiments that broke defaults (min_value shown instead of correct defaults)
 - **Widgets restored** to original stable pattern: `value=INPUT_DEFAULTS[...]` with `key=`

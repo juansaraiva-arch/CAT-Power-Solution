@@ -4974,9 +4974,22 @@ def main():
     st.session_state["_enable_phasing"] = inputs_dict["enable_phasing"]
 
     # Auto-run sizing on every input change (reactive)
-    # Skip if wizard just completed — the result is already correct
-    if st.session_state.pop("_wizard_just_completed", False) or st.session_state.pop("_config_rerun", False):
-        pass  # Don't overwrite — result was just set by wizard or config re-run
+    _skip_wizard = st.session_state.pop("_wizard_just_completed", False)
+    _do_config_rerun = st.session_state.pop("_config_rerun", False)
+
+    if _skip_wizard:
+        pass  # First render after wizard — result already correct
+    elif _do_config_rerun:
+        # Re-run sizing with wizard values, not sidebar defaults
+        try:
+            wiz_inputs, wiz_benchmark = _build_inputs_from_wizard()
+            sizing_input = SizingInput(**wiz_inputs)
+            result = run_full_sizing(sizing_input)
+            st.session_state.result = result
+        except Exception as e:
+            st.error(f"Re-run sizing failed: {e}")
+            import traceback
+            st.code(traceback.format_exc())
     else:
         try:
             sizing_input = SizingInput(**inputs_dict)

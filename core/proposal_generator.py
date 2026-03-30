@@ -159,18 +159,27 @@ def _add_bullet(doc, text, size=11):
 
 
 def _offer_checkboxes(proposal_info):
-    """Return offer-type checkbox string."""
-    items = [
-        ("Genset", proposal_info.get("offer_type_genset", False)),
-        ("Switchgear", proposal_info.get("offer_type_switchgear", False)),
-        ("Solutions", proposal_info.get("offer_type_solutions", False)),
-        ("Hybrid", proposal_info.get("offer_type_hybrid", False)),
+    """Return offer-type checkbox string with 2-column layout."""
+    genset_only = proposal_info.get("offer_type_genset", False)
+    switchgear = proposal_info.get("offer_type_switchgear", False)
+    energy_storage = proposal_info.get("offer_type_energy_storage", False)
+    solution_enclosure = proposal_info.get("offer_type_solutions", False)
+    scr = proposal_info.get("offer_type_scr", False)
+    other = proposal_info.get("offer_type_other", proposal_info.get("offer_type_hybrid", False))
+
+    def cb(checked):
+        return "\u2611" if checked else "\u2610"
+
+    col1 = f"[{cb(genset_only)} Genset Only]"
+    col2_items = [
+        f"[{cb(switchgear)} Switchgear]",
+        f"[{cb(energy_storage)} Energy Storage]",
+        f"[{cb(solution_enclosure)} Solution/Enclosure]",
+        f"[{cb(scr)} Selective Catalytic Reduction Solution (SCR)]",
+        f"[{cb(other)} Other]",
     ]
-    parts = []
-    for label, checked in items:
-        mark = "\u2611" if checked else "\u2610"
-        parts.append(f"[{mark} {label}]")
-    return "\t".join(parts)
+    col2 = "  ".join(col2_items)
+    return f"{col1}\t\tBalance of Plant (BOP) Elements: {col2}"
 
 
 _LOGO_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "logo_caterpillar.png")
@@ -322,14 +331,14 @@ def generate_proposal_docx(
         f"Caterpillar Inc. is pleased to present this proposal for the {project_name}. "
         "The solution offered in this document is designed to meet the project\u2019s operational, "
         "performance, and reliability requirements while providing a flexible and scalable "
-        "foundation for long-term use. The proposed equipment and supporting systems are based "
-        "on proven designs widely deployed across diverse applications and operating environments."
+        "foundation for long-term use. The proposed equipment and supporting solutions are based "
+        "on proven designs widely deployed across diverse Applications and operating environments."
     )
     _add_paragraph(doc, exec_summary)
 
     exec_summary_2 = (
         "This document outlines a preliminary, non-binding proposal based on the information "
-        "provided to date. Final pricing and commercial terms would be confirmed and executed "
+        "provided to date. Final pricing and commercial terms will be confirmed and executed "
         "through the authorized Caterpillar dealer."
     )
     _add_paragraph(doc, exec_summary_2)
@@ -348,18 +357,18 @@ def generate_proposal_docx(
     exec_summary_4 = (
         "This proposal includes the supply of the primary equipment and associated controls, "
         "along with supporting systems required for reliable operation. A detailed description "
-        "of the technical configuration, performance parameters, and system interfaces is "
+        "of the technical configuration, performance parameters, and solution interfaces is "
         "provided in the following sections. This offer has been configured to align with the "
         "project information provided and can be adapted to meet additional requirements as needed."
     )
     _add_paragraph(doc, exec_summary_4)
 
     exec_summary_5 = (
-        "Commercial information, including pricing, delivery expectations, validity, and warranty "
-        "provisions, is included within this document. All pricing and commercial conditions are "
-        "presented based on the defined scope and assumptions associated with the project. The "
-        "proposal is intended to provide the customer with a clear understanding of the recommended "
-        "solution and the associated commercial framework."
+        f"Commercial information, including pricing, delivery expectations, validity, and warranty "
+        f"provisions, is included within this document. All pricing and commercial conditions are "
+        f"presented based on the defined scope and assumptions associated with the project. The "
+        f"proposal is intended to provide {client_name} with a clear understanding of the recommended "
+        f"solution and the associated commercial framework."
     )
     _add_paragraph(doc, exec_summary_5)
 
@@ -367,7 +376,7 @@ def generate_proposal_docx(
         "We appreciate the opportunity to be considered for this project and trust that the "
         "information presented will support your evaluation of our proposed electric power solution. "
         "Our team is available to discuss the contents of this proposal in further detail and to "
-        "assist in identifying the configuration best suited for your application."
+        "assist in identifying the configuration best suited for your Application."
     )
     _add_paragraph(doc, exec_summary_6)
 
@@ -386,8 +395,7 @@ def generate_proposal_docx(
     # =========================================================================
     # SECTION 2 — SOLUTION OVERVIEW
     # =========================================================================
-    _add_heading(doc, "Solution Overview", level=1)
-    _add_heading(doc, "Solution Details", level=2)
+    _add_heading(doc, "Proposed Customer Solution", level=1)
 
     # Total facility MW
     total_facility_mw = _safe(sizing_result, "p_total_dc",
@@ -428,7 +436,7 @@ def generate_proposal_docx(
     except (ValueError, TypeError):
         derated_mw_str = str(derated_mw)
 
-    _add_bullet(doc, f"{n_units} x {gen_model} Caterpillar generator set packages")
+    _add_bullet(doc, f"{n_units} x {gen_model} Caterpillar generator set solutions")
     _add_bullet(doc, f"Derated output per unit: {derated_mw_str} MW at site conditions")
 
     # BESS
@@ -455,7 +463,7 @@ def generate_proposal_docx(
     n_reserve = _safe(sizing_result, "n_reserve", "")
     config_label = f"N+{n_reserve}" if n_reserve != "" else ""
     _add_bullet(doc, f"System availability: {avail_str} ({config_label} configuration)")
-    _add_bullet(doc, "CVA and ESC options available \u2014 refer to Appendix for overview")
+    _add_bullet(doc, "CVA and ESC options available \u2014 refer to Exhibit for overview")
 
     doc.add_page_break()
 
@@ -564,7 +572,7 @@ def generate_proposal_docx(
     _add_bullet(doc, f"Fuel type: {fuel_mode}")
     _add_bullet(doc, f"Methane number: {methane_number}")
     _add_bullet(doc, "Estimated consumption at full load: To be confirmed per fuel analysis")
-    _add_bullet(doc, "Note: Detailed fuel specifications are included in Appendix H.")
+    _add_bullet(doc, "Note: Detailed fuel specifications are included in Exhibit H.")
 
     doc.add_page_break()
 
@@ -783,16 +791,20 @@ def generate_proposal_docx(
     # =========================================================================
 
     # --- Appendix A — Definitions ---------------------------------------------
-    _add_heading(doc, "Appendix A \u2014 Definitions", level=1)
+    _add_heading(doc, "Exhibit A \u2014 Definitions", level=1)
 
     definitions = [
         ("Application (Standby / Prime / Other)",
          "The operational mode of the generator set. Standby is for emergency use only during "
          "utility outages, while Prime is intended for continuous or frequent operation as the "
          "main power source."),
+        ("Balance of Plant (BOP)",
+         "All supporting equipment required for a complete power solution beyond the generator set "
+         "itself. In this Proposal, BOP includes switchgear, enclosures/solutions, SCR solutions, "
+         "inverters, energy storage, and other ancillary components."),
         ("Base Price",
-         "The primary price for the proposed equipment and included commercial items, excluding "
-         "taxes, duties, licenses, and any optional scope."),
+         "The total price for the defined Scope of Supply included in the Proposal, excluding "
+         "optional items, taxes, duties, freight, and licensing fees."),
         ("Bill of Material (BOM)",
          "A summarized list of all equipment, components, features, and selected options included "
          "in the proposed power generation solution."),
@@ -800,7 +812,7 @@ def generate_proposal_docx(
          "An explanation of assumptions or interpretations where project information is incomplete "
          "or ambiguous, provided to ensure shared understanding of the proposal."),
         ("Delivery",
-         "A delivery condition in which Caterpillar makes the equipment available at the factory, "
+         "A Delivery condition in which Caterpillar makes the equipment available at the factory, "
          "and the Customer assumes responsibility for transportation, duties, permits, and logistics "
          "from that point forward."),
         ("Deviation",
@@ -811,25 +823,33 @@ def generate_proposal_docx(
          "part of this proposal."),
         ("Feature Code",
          "The identifier used to specify a configurable feature, option, or characteristic of the "
-         "generator set in the Bill of Material."),
+         "generator set or BOP equipment."),
         ("Fuel Requirements",
          "The fuel type and characteristics required for operation of the generator set, such as "
          "natural gas, biogas, diesel, or propane."),
         ("Load Requirements",
          "The expected electrical demand characteristics of the project, including maximum demand, "
          "average load, step-load expectations, and motor-starting needs."),
-        ("Offer Type (Genset / Switchgear / Solutions / Hybrid)",
-         "The classification of the solution being proposed, indicating whether it consists of "
-         "generator sets, switchgear packages, integrated solutions, or hybrid power configurations."),
+        ("Offer Type (Genset / Switchgear / Solution/Enclosure / Selective Catalytic Reduction (SCR) / Energy Storage / Other)",
+         "The classification of equipment included in the Proposal, indicating whether it consists "
+         "of a Genset Only or Balance of Plant (BOP) elements."),
         ("Price Validity",
          "The period during which the pricing and commercial conditions presented in this proposal "
          "remain firm before requiring review or adjustment."),
-        ("Purchase Order (PO) / Letter of Authorization (LOA)",
-         "A formal customer document indicating financial commitment and authorizing Caterpillar "
-         "to begin scheduling and fulfillment of the proposed equipment."),
+        ("Offer Purchase Order (PO) / Letter of Authorization (LOA)",
+         "A formal customer document indicating financial commitment. Receipt of a PO or LOA "
+         "allows scheduling and fulfillment of the proposed equipment."),
+        ("Ready to Ship (RTS)",
+         "The manufacturing milestone indicating that equipment is complete and available for "
+         "shipment from the facility."),
         ("Scope of Supply",
          "The complete list of equipment, materials, and services included in this proposal. Items "
          "not explicitly listed are excluded."),
+        ("Service Agreement (SA)",
+         "Included agreement providing proactive maintenance, connectivity, and dealer support "
+         "to maximize uptime."),
+        ("Start on Line (SOL)",
+         "A manufacturing milestone indicating when the unit formally enters the production line."),
         ("Taxes, Licenses, and Fees",
          "Duties, taxes, permits, and other governmental fees associated with procuring or installing "
          "the equipment, which are the responsibility of the Customer."),
@@ -863,7 +883,7 @@ def generate_proposal_docx(
     doc.add_page_break()
 
     # --- Appendix B — Datasheets ----------------------------------------------
-    _add_heading(doc, "Appendix B \u2014 Datasheets", level=1)
+    _add_heading(doc, "Exhibit B \u2014 Datasheets", level=1)
     _add_paragraph(doc, (
         "The datasheets included in this appendix will be added by the BDM or dealer based on "
         "the specific equipment configuration selected for the curated proposal. These documents "
@@ -873,7 +893,7 @@ def generate_proposal_docx(
     doc.add_page_break()
 
     # --- Appendix C — Warranty Statement --------------------------------------
-    _add_heading(doc, "Appendix C \u2014 Warranty Statement", level=1)
+    _add_heading(doc, "Exhibit C \u2014 Warranty Statement", level=1)
     _add_paragraph(doc, (
         "Warranty terms and conditions to be provided by the authorized CAT dealer specific to "
         "this project and jurisdiction."
@@ -881,7 +901,7 @@ def generate_proposal_docx(
     doc.add_page_break()
 
     # --- Appendix D — Conceptual Layout ---------------------------------------
-    _add_heading(doc, "Appendix D \u2014 Conceptual Layout", level=1)
+    _add_heading(doc, "Exhibit D \u2014 Conceptual Layout", level=1)
 
     footprint_data = _safe(sizing_result, "footprint", {})
     footprint_m2 = _safe_dict(footprint_data, "total_area_m2", None)
@@ -910,7 +930,7 @@ def generate_proposal_docx(
     doc.add_page_break()
 
     # --- Appendix E — Scope of Supply Matrix ----------------------------------
-    _add_heading(doc, "Appendix E \u2014 Scope of Supply Matrix", level=1)
+    _add_heading(doc, "Exhibit E \u2014 Scope of Supply Matrix", level=1)
 
     scope_table = doc.add_table(rows=1, cols=2)
     scope_table.alignment = WD_TABLE_ALIGNMENT.CENTER
@@ -921,7 +941,7 @@ def generate_proposal_docx(
     _set_table_borders(scope_table)
 
     in_scope = [
-        "Generator set package(s) per equipment summary",
+        "Generator set solution(s) per equipment summary",
         "Factory testing and inspection",
         "Standard documentation package",
     ]
@@ -929,9 +949,9 @@ def generate_proposal_docx(
     if use_bess and bess_power:
         in_scope.append("Battery Energy Storage System (BESS)")
     if proposal_info.get("offer_type_switchgear"):
-        in_scope.append("Switchgear package")
+        in_scope.append("Switchgear solution")
     if proposal_info.get("offer_type_solutions"):
-        in_scope.append("Integrated solutions package")
+        in_scope.append("Integrated solution")
     if proposal_info.get("offer_type_hybrid"):
         in_scope.append("Hybrid power configuration")
 
@@ -956,7 +976,7 @@ def generate_proposal_docx(
     doc.add_page_break()
 
     # --- Appendix F — Extended Service Coverage (ESC) -------------------------
-    _add_heading(doc, "Appendix F \u2014 Extended Service Coverage (ESC)", level=1)
+    _add_heading(doc, "Exhibit F \u2014 Extended Service Coverage Overview", level=1)
 
     _add_heading(doc, "Purpose of Extended Service Coverage", level=2)
     _add_paragraph(doc, (
@@ -1008,7 +1028,16 @@ def generate_proposal_docx(
     doc.add_page_break()
 
     # --- Appendix G — Customer Value Agreement (CVA) --------------------------
-    _add_heading(doc, "Appendix G \u2014 Customer Value Agreement (CVA)", level=1)
+    _add_heading(doc, "Exhibit G \u2014 Service Agreement (SA) Overview", level=1)
+
+    _add_paragraph(doc, (
+        "All Caterpillar Inc. proposals include a Service Agreement (SA) that supports "
+        "Caterpillar Inc.'s brand promise by helping customers to achieve maximum uptime, "
+        "lower owning and operating costs, and deliver consistent, reliable performance. "
+        "The Service Agreement provides proactive maintenance, condition monitoring "
+        "connectivity, and access to dealer expertise, ensuring that the asset is "
+        "supported throughout its operating life."
+    ))
 
     _add_heading(doc, "What Is a Customer Value Agreement?", level=2)
     _add_paragraph(doc, (
@@ -1065,7 +1094,7 @@ def generate_proposal_docx(
     doc.add_page_break()
 
     # --- Appendix H — Additional Technical Documents --------------------------
-    _add_heading(doc, "Appendix H \u2014 Additional Technical Documents", level=1)
+    _add_heading(doc, "Exhibit H \u2014 Additional Technical Documents", level=1)
     _add_paragraph(doc, (
         "The materials included in this appendix will be added by the BDM or dealer based on the "
         "specific configuration in the curated proposal. This appendix may contain supplemental "

@@ -277,9 +277,9 @@ HELP_TEXTS = {
     "methane_number": "Gas quality indicator. Pipeline gas is typically MN 70-90. Below 70 may require derating.",
     "derate_factor_manual": "Manual power derating factor. 0.90 = generators produce 90% of their ISO rating.",
     "enable_footprint_limit": "Enable to constrain the plant within a maximum area. Affects generator count and layout.",
-    "bus_tie_mode": ("Bus-tie breaker mode. Closed: maximum availability (ring bus mallado, "
-                     "protecciones selectivas aíslan fallas sin afectar el resto del sistema). "
-                     "Open: secciones independientes (menor corriente de cortocircuito, menor disponibilidad)."),
+    "bus_tie_mode": ("Bus-tie breaker mode. Closed: maximum availability (ring bus mesh, "
+                     "selective protection isolates faults without affecting the rest of the system). "
+                     "Open: independent sections (lower short-circuit current, lower availability)."),
     "max_area_m2": "Maximum available area for the power plant in square meters.",
 
     # Technology

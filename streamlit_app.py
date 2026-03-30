@@ -2842,6 +2842,159 @@ def render_reliability_tab(r):
         f"Electrical path: {selected_topology}, A = {epf:.10f}."
     )
 
+    # ---- Availability Sensitivity Analysis ----
+    st.divider()
+    st.subheader("Availability Sensitivity Analysis")
+    st.caption(
+        "Tornado chart showing the impact of key variables on system availability. "
+        "Each bar represents the availability range when that variable is varied "
+        "while holding all others constant."
+    )
+
+    from math import comb
+
+    def _binomial_avail(n_total_, n_required_, p):
+        """Probability that at least n_required_ of n_total_ units are available."""
+        if p >= 1.0:
+            return 1.0
+        if p <= 0.0:
+            return 0.0
+        return sum(comb(n_total_, k) * p**k * (1.0 - p)**(n_total_ - k)
+                   for k in range(n_required_, n_total_ + 1))
+
+    # Current values — use variables already computed in this tab
+    _t_n_total    = n_total
+    _t_n_running  = getattr(r, 'n_running', n_required)
+    _t_n_reserve  = getattr(r, 'n_reserve', _t_n_total - _t_n_running)
+    _t_unit_avail = a_gen_active
+    _t_epf        = epf
+
+    # Base case
+    _t_a_fleet_base  = _binomial_avail(_t_n_total, _t_n_running, _t_unit_avail)
+    _t_a_system_base = _t_a_fleet_base * _t_epf
+
+    # --- Sensitivity 1: Unit Availability (±0.05, clamped to [0.80, 1.0]) ---
+    _t_ua_low  = max(_t_unit_avail - 0.05, 0.80)
+    _t_ua_high = min(_t_unit_avail + 0.05, 1.0)
+    _t_a_ua_low  = _binomial_avail(_t_n_total, _t_n_running, _t_ua_low)  * _t_epf
+    _t_a_ua_high = _binomial_avail(_t_n_total, _t_n_running, _t_ua_high) * _t_epf
+
+    # --- Sensitivity 2: N+X Reserve Units (±1 unit) ---
+    _t_nr_low  = max(_t_n_reserve - 1, 0)
+    _t_nr_high = _t_n_reserve + 1
+    _t_nt_low  = _t_n_running + _t_nr_low
+    _t_nt_high = _t_n_running + _t_nr_high
+    _t_a_nx_low  = _binomial_avail(_t_nt_low,  _t_n_running, _t_unit_avail) * _t_epf
+    _t_a_nx_high = _binomial_avail(_t_nt_high, _t_n_running, _t_unit_avail) * _t_epf
+
+    # --- Sensitivity 3: Electrical Path Factor (open vs closed) ---
+    _t_epf_low  = 0.9999     # ties open
+    _t_epf_high = 0.999999   # ties closed
+    _t_a_epf_low  = _t_a_fleet_base * _t_epf_low
+    _t_a_epf_high = _t_a_fleet_base * _t_epf_high
+
+    # Build tornado data (sorted by impact descending)
+    _tornado_data = [
+        {
+            "variable": f"Unit Availability ({_t_ua_low:.3f} \u2013 {_t_ua_high:.3f})",
+            "low":   _t_a_ua_low  * 100,
+            "high":  _t_a_ua_high * 100,
+            "base":  _t_a_system_base * 100,
+            "delta": abs(_t_a_ua_high - _t_a_ua_low) * 100,
+        },
+        {
+            "variable": f"Reserve Units (N+{_t_nr_low} \u2013 N+{_t_nr_high})",
+            "low":   _t_a_nx_low  * 100,
+            "high":  _t_a_nx_high * 100,
+            "base":  _t_a_system_base * 100,
+            "delta": abs(_t_a_nx_high - _t_a_nx_low) * 100,
+        },
+        {
+            "variable": "Elec. Path (Open \u2013 Closed)",
+            "low":   _t_a_epf_low  * 100,
+            "high":  _t_a_epf_high * 100,
+            "base":  _t_a_system_base * 100,
+            "delta": abs(_t_a_epf_high - _t_a_epf_low) * 100,
+        },
+    ]
+
+    # Sort by impact (largest delta first)
+    _tornado_data.sort(key=lambda x: x["delta"], reverse=True)
+
+    # Build tornado chart
+    _fig_tornado = go.Figure()
+
+    _t_variables = [d["variable"] for d in _tornado_data]
+    _t_lows      = [d["low"]  for d in _tornado_data]
+    _t_highs     = [d["high"] for d in _tornado_data]
+    _t_base      = _t_a_system_base * 100
+
+    # Low side (base to low value)
+    _fig_tornado.add_trace(go.Bar(
+        y=_t_variables,
+        x=[low - _t_base for low in _t_lows],
+        base=[_t_base] * len(_t_variables),
+        orientation='h',
+        name='Low',
+        marker_color=COLOR_DANGER,
+        text=[f"{v:.4f}%" for v in _t_lows],
+        textposition='outside',
+        textfont=dict(size=11),
+    ))
+
+    # High side (base to high value)
+    _fig_tornado.add_trace(go.Bar(
+        y=_t_variables,
+        x=[high - _t_base for high in _t_highs],
+        base=[_t_base] * len(_t_variables),
+        orientation='h',
+        name='High',
+        marker_color=COLOR_SUCCESS,
+        text=[f"{v:.4f}%" for v in _t_highs],
+        textposition='outside',
+        textfont=dict(size=11),
+    ))
+
+    # Base line
+    _fig_tornado.add_vline(
+        x=_t_base, line_dash="dash", line_color=COLOR_PRIMARY, line_width=2,
+        annotation_text=f"Base: {_t_base:.4f}%",
+        annotation_position="top",
+    )
+
+    _fig_tornado.update_layout(
+        title="System Availability Sensitivity (Tornado Chart)",
+        xaxis_title="System Availability (%)",
+        yaxis=dict(autorange="reversed"),
+        barmode='overlay',
+        height=350,
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(l=20, r=20, t=80, b=40),
+    )
+
+    st.plotly_chart(_fig_tornado, use_container_width=True)
+
+    # Summary table
+    st.subheader("Sensitivity Summary")
+    _summary_rows = []
+    for d in _tornado_data:
+        _summary_rows.append({
+            "Variable":    d["variable"],
+            "Low (%)":     f"{d['low']:.4f}",
+            "Base (%)":    f"{d['base']:.4f}",
+            "High (%)":    f"{d['high']:.4f}",
+            "Impact (\u0394%)": f"{d['delta']:.4f}",
+        })
+    st.table(pd.DataFrame(_summary_rows).set_index("Variable"))
+
+    st.caption(
+        "**Methodology:** Each variable is perturbed independently while holding all others "
+        "at their current values. System availability = Binomial fleet availability \u00d7 "
+        "Electrical path factor (IEEE 493-2007). Unit availability \u00b10.05; reserve units \u00b11; "
+        "electrical path: open (0.9999) vs closed (0.999999)."
+    )
+
 
 # =============================================================================
 # TAB 3: BESS

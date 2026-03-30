@@ -1219,7 +1219,7 @@ def _build_inputs_from_wizard():
         bess_cost_kw=float(_v("_stored_bess_cost_kw", "_wiz_bess_cost_kw", INPUT_DEFAULTS["bess_cost_kw"])),
         bess_cost_kwh=float(_v("_stored_bess_cost_kwh", "_wiz_bess_cost_kwh", INPUT_DEFAULTS["bess_cost_kwh"])),
         bess_om_kw_yr=float(_v("_stored_bess_om_kw_yr", "_wiz_bess_om_kw_yr", INPUT_DEFAULTS["bess_om_kw_yr"])),
-        bess_autonomy_min=float(ss.get("_bess_autonomy_min", INPUT_DEFAULTS.get("bess_autonomy_min", 10.0))),
+        bess_autonomy_min=float(ss.get("_stored_bess_autonomy_min", ss.get("_bess_autonomy_min", INPUT_DEFAULTS.get("bess_autonomy_min", 10.0)))),
         bess_dod=float(INPUT_DEFAULTS.get("bess_dod", 0.85)),
         # CAPEX BOS adders (Fix M — P06)
         bos_pct=float(ss.get("_wiz_bos_pct", INPUT_DEFAULTS["bos_pct"]*100)) / 100,
@@ -1562,7 +1562,7 @@ def render_sidebar():
                 "BESS autonomy (minutes)",
                 min_value=0.5,
                 max_value=120.0,
-                value=float(st.session_state.get('_bess_autonomy_min', _autonomy_default)),
+                value=float(st.session_state.get('_stored_bess_autonomy_min', st.session_state.get('_bess_autonomy_min', _autonomy_default))),
                 step=0.5,
                 format="%.1f",
                 key='_bess_autonomy_min',
@@ -3025,7 +3025,7 @@ def render_bess_tab(r):
                 key="_bess_rerun_autonomy",
                 type="primary",
             ):
-                st.session_state["_bess_autonomy_min"] = bess_autonomy_override
+                st.session_state["_stored_bess_autonomy_min"] = bess_autonomy_override
                 st.rerun()
 
     st.divider()

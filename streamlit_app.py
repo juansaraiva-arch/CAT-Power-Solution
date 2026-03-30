@@ -1289,6 +1289,14 @@ def render_wizard():
 # =============================================================================
 # SIDEBAR -- INPUT SECTIONS
 # =============================================================================
+def _sidebar_default(stored_key: str, default_key: str, cast=float):
+    """Read sidebar initial value from wizard _stored_ key, fallback to INPUT_DEFAULTS."""
+    val = st.session_state.get(stored_key)
+    if val is not None:
+        return cast(val)
+    return cast(INPUT_DEFAULTS[default_key])
+
+
 def render_sidebar():
     """Render all sidebar input sections. Returns (inputs_dict, benchmark_price)."""
 
@@ -1350,9 +1358,10 @@ def render_sidebar():
 
     # ---- 4. Load Profile ----
     with st.sidebar.expander(":bar_chart: Load Profile", expanded=True):
+        _stored_dc = st.session_state.get("_stored_dc_type", INPUT_DEFAULTS["dc_type"])
         dc_type = st.selectbox(
             "Data Center Type", DC_TYPES,
-            index=DC_TYPES.index(st.session_state.get("_sidebar_dc_type", INPUT_DEFAULTS["dc_type"])),
+            index=DC_TYPES.index(_stored_dc) if _stored_dc in DC_TYPES else 0,
             key="_sidebar_dc_type",
             on_change=_apply_dc_type_defaults_sidebar,
             help=HELP_TEXTS.get("dc_type", ""),
@@ -1368,27 +1377,27 @@ def render_sidebar():
             st.session_state["_sidebar_dc_type_changed"] = False
         p_it = st.number_input(
             "IT Load (MW)", min_value=0.1, max_value=2000.0,
-            value=float(INPUT_DEFAULTS["p_it"]), step=1.0,
+            value=_sidebar_default("_stored_p_it", "p_it"), step=1.0,
             help=HELP_TEXTS.get("p_it", ""),
         )
         pue = st.number_input(
             "PUE", min_value=1.0, max_value=3.0,
-            value=float(INPUT_DEFAULTS["pue"]), step=0.05,
+            value=_sidebar_default("_stored_pue", "pue"), step=0.05,
             format="%.2f", help=HELP_TEXTS.get("pue", ""),
         )
         capacity_factor = st.slider(
             "Capacity Factor", min_value=0.50, max_value=1.0,
-            value=float(INPUT_DEFAULTS["capacity_factor"]), step=0.01,
+            value=_sidebar_default("_stored_capacity_factor", "capacity_factor"), step=0.01,
             help=HELP_TEXTS.get("capacity_factor", ""),
         )
         peak_avg_ratio = st.number_input(
             "Peak / Average Ratio", min_value=1.0, max_value=2.0,
-            value=float(INPUT_DEFAULTS["peak_avg_ratio"]), step=0.05,
+            value=_sidebar_default("_stored_peak_avg_ratio", "peak_avg_ratio"), step=0.05,
             format="%.2f", help=HELP_TEXTS.get("peak_avg_ratio", ""),
         )
         load_step_pct = st.number_input(
             "Max Step Load (%)", min_value=0.0, max_value=100.0,
-            value=float(INPUT_DEFAULTS["load_step_pct"]), step=5.0,
+            value=_sidebar_default("_stored_load_step_pct", "load_step_pct"), step=5.0,
             help=HELP_TEXTS.get("load_step_pct", ""),
         )
         # spinning_res_pct removed — now derived from physical contingencies (P04)
@@ -1418,18 +1427,18 @@ def render_sidebar():
 
         avail_req = st.number_input(
             "Availability Requirement (%)", min_value=90.0, max_value=100.0,
-            value=float(INPUT_DEFAULTS["avail_req"]), step=0.01,
+            value=_sidebar_default("_stored_avail_req", "avail_req"), step=0.01,
             format="%.2f", help=HELP_TEXTS.get("avail_req", ""),
         )
         load_ramp_req = st.number_input(
             "Load Ramp Rate (MW/min)", min_value=0.1, max_value=100.0,
-            value=float(INPUT_DEFAULTS["load_ramp_req"]), step=0.5,
+            value=_sidebar_default("_stored_load_ramp_req", "load_ramp_req"), step=0.5,
             help=HELP_TEXTS.get("load_ramp_req", ""),
         )
 
     # ---- 5. Site Conditions ----
     with st.sidebar.expander(":thermometer: Site Conditions"):
-        temp_default_c = float(INPUT_DEFAULTS["site_temp_c"])
+        temp_default_c = float(st.session_state.get("_stored_site_temp_c", INPUT_DEFAULTS["site_temp_c"]))
         temp_display_default = _to_display_temp(temp_default_c)
         temp_min = _to_display_temp(-40.0)
         temp_max = _to_display_temp(60.0)
@@ -1441,7 +1450,7 @@ def render_sidebar():
         )
         site_temp_c = _from_display_temp(site_temp_display)
 
-        alt_default_m = float(INPUT_DEFAULTS["site_alt_m"])
+        alt_default_m = float(st.session_state.get("_stored_site_alt_m", INPUT_DEFAULTS["site_alt_m"]))
         alt_display_default = _to_display_alt(alt_default_m)
         site_alt_display = st.number_input(
             f"Site Altitude ({_alt_label()})",
@@ -1453,7 +1462,7 @@ def render_sidebar():
 
         methane_number = st.number_input(
             "Methane Number", min_value=0, max_value=100,
-            value=int(INPUT_DEFAULTS["methane_number"]), step=5,
+            value=int(st.session_state.get("_stored_methane_number", INPUT_DEFAULTS["methane_number"])), step=5,
             help=HELP_TEXTS.get("methane_number", ""),
         )
         derate_mode = st.radio(
@@ -1507,7 +1516,7 @@ def render_sidebar():
             help=HELP_TEXTS.get("gen_filter", ""),
         )
         available_models = _get_filtered_models(gen_filter)
-        default_gen = INPUT_DEFAULTS["selected_gen_name"]
+        default_gen = st.session_state.get("_stored_generator_model", INPUT_DEFAULTS["selected_gen_name"])
         gen_idx = available_models.index(default_gen) if default_gen in available_models else 0
         generator_model = st.selectbox(
             "Generator Model", available_models, index=gen_idx,
@@ -1528,16 +1537,18 @@ def render_sidebar():
             help=HELP_TEXTS.get("freq_hz", ""),
         )
         use_bess = st.checkbox(
-            "Include BESS", value=INPUT_DEFAULTS["use_bess"],
+            "Include BESS", value=st.session_state.get("_stored_use_bess", INPUT_DEFAULTS["use_bess"]),
             help=HELP_TEXTS.get("use_bess", ""),
         )
-        bess_strategy = INPUT_DEFAULTS["bess_strategy"]
+        _stored_bess_strat = st.session_state.get("_stored_bess_strategy", INPUT_DEFAULTS["bess_strategy"])
+        bess_strategy = _stored_bess_strat
         bess_autonomy_min = float(INPUT_DEFAULTS.get("bess_autonomy_min", 10.0))
         bess_dod = float(INPUT_DEFAULTS.get("bess_dod", 0.85))
         if use_bess:
+            _bess_strat_idx = BESS_STRATEGIES.index(_stored_bess_strat) if _stored_bess_strat in BESS_STRATEGIES else 1
             bess_strategy = st.selectbox(
                 "BESS Strategy", BESS_STRATEGIES,
-                index=BESS_STRATEGIES.index(INPUT_DEFAULTS["bess_strategy"]),
+                index=_bess_strat_idx,
                 help=HELP_TEXTS.get("bess_strategy", ""),
             )
             # Default autonomy depends on selected strategy
@@ -1573,7 +1584,7 @@ def render_sidebar():
                 help="Usable fraction of total battery capacity (0.85 = 85% DoD typical for Li-ion).",
             )
         enable_black_start = st.checkbox(
-            "Black Start Capable", value=INPUT_DEFAULTS["enable_black_start"],
+            "Black Start Capable", value=st.session_state.get("_stored_enable_black_start", INPUT_DEFAULTS["enable_black_start"]),
             help=HELP_TEXTS.get("enable_black_start", ""),
         )
         max_maintenance_units = st.number_input(
@@ -1588,14 +1599,20 @@ def render_sidebar():
                 "1 = realistic default for fleets of 50+ units."
             ),
         )
+        _stored_cooling = st.session_state.get("_stored_cooling", "Air-Cooled")
+        _cooling_opts = ["Air-Cooled", "Water-Cooled"]
         cooling_method = st.radio(
-            "Cooling Method", ["Air-Cooled", "Water-Cooled"],
-            index=0, horizontal=True,
+            "Cooling Method", _cooling_opts,
+            index=_cooling_opts.index(_stored_cooling) if _stored_cooling in _cooling_opts else 0,
+            horizontal=True,
             help=HELP_TEXTS.get("cooling_method", ""),
         )
+        _stored_bt = st.session_state.get("_stored_bus_tie_mode", INPUT_DEFAULTS["bus_tie_mode"])
+        _bt_opts = ["closed", "open"]
         bus_tie_mode = st.radio(
-            "Bus-Tie Mode", ["closed", "open"],
-            index=0, horizontal=True,
+            "Bus-Tie Mode", _bt_opts,
+            index=_bt_opts.index(_stored_bt) if _stored_bt in _bt_opts else 0,
+            horizontal=True,
             help=HELP_TEXTS.get("bus_tie_mode", ""),
             format_func=lambda x: "Closed (Ring Bus)" if x == "closed" else "Open (Independent)",
         )
@@ -1605,12 +1622,14 @@ def render_sidebar():
             st.session_state["_elec_path_avail"] = _get_epf(bus_tie_mode)
         dist_loss_pct = st.number_input(
             "Distribution Losses (%)", min_value=0.0, max_value=10.0,
-            value=float(INPUT_DEFAULTS["dist_loss_pct"]), step=0.5,
+            value=_sidebar_default("_stored_dist_loss_pct", "dist_loss_pct"), step=0.5,
             help=HELP_TEXTS.get("dist_loss_pct", ""),
         )
+        _stored_fuel = st.session_state.get("_stored_fuel_mode", INPUT_DEFAULTS["fuel_mode"])
         fuel_mode = st.radio(
             "Fuel Supply", FUEL_MODES,
-            index=0, horizontal=True,
+            index=FUEL_MODES.index(_stored_fuel) if _stored_fuel in FUEL_MODES else 0,
+            horizontal=True,
             help=HELP_TEXTS.get("fuel_mode", ""),
         )
         lng_days = int(INPUT_DEFAULTS["lng_days"])
@@ -1772,55 +1791,56 @@ def render_sidebar():
 
     # ---- 9. Economics ----
     with st.sidebar.expander(":moneybag: Economics"):
+        _stored_region = st.session_state.get("_stored_region", INPUT_DEFAULTS["region"])
         region = st.selectbox(
             "Region", REGIONS,
-            index=REGIONS.index(INPUT_DEFAULTS["region"]),
+            index=REGIONS.index(_stored_region) if _stored_region in REGIONS else 0,
             help=HELP_TEXTS.get("region", ""),
         )
         gas_price = st.number_input(
             "Pipeline Gas Price ($/MMBtu)", min_value=0.0, max_value=50.0,
-            value=float(INPUT_DEFAULTS["gas_price_pipeline"]), step=0.5,
+            value=_sidebar_default("_stored_gas_price", "gas_price_pipeline"), step=0.5,
             help=HELP_TEXTS.get("gas_price_pipeline", ""),
         )
         wacc = st.number_input(
             "WACC (%)", min_value=0.0, max_value=30.0,
-            value=float(INPUT_DEFAULTS["wacc"]), step=0.5,
+            value=_sidebar_default("_stored_wacc", "wacc"), step=0.5,
             help=HELP_TEXTS.get("wacc", ""),
         )
         project_years = st.number_input(
             "Project Life (years)", min_value=1, max_value=40,
-            value=int(INPUT_DEFAULTS["project_years"]), step=1,
+            value=int(st.session_state.get("_stored_project_years", INPUT_DEFAULTS["project_years"])), step=1,
             help=HELP_TEXTS.get("project_years", ""),
         )
         benchmark_price = st.number_input(
             "Grid Benchmark ($/kWh)", min_value=0.0, max_value=1.0,
-            value=float(INPUT_DEFAULTS["benchmark_price"]), step=0.01,
+            value=_sidebar_default("_stored_benchmark_price", "benchmark_price"), step=0.01,
             format="%.3f", help=HELP_TEXTS.get("benchmark_price", ""),
         )
         carbon_price_per_ton = st.number_input(
             "Carbon Price ($/ton CO2)", min_value=0.0, max_value=500.0,
-            value=float(INPUT_DEFAULTS["carbon_price_per_ton"]), step=5.0,
+            value=_sidebar_default("_stored_carbon_price", "carbon_price_per_ton"), step=5.0,
             help=HELP_TEXTS.get("carbon_price_per_ton", ""),
         )
         enable_depreciation = st.checkbox(
-            "MACRS Depreciation", value=INPUT_DEFAULTS["enable_depreciation"],
+            "MACRS Depreciation", value=st.session_state.get("_stored_enable_depreciation", INPUT_DEFAULTS["enable_depreciation"]),
             help=HELP_TEXTS.get("enable_depreciation", ""),
         )
 
         st.markdown("**BESS Costs**")
         bess_cost_kw = st.number_input(
             "BESS Power Cost ($/kW)", min_value=0.0,
-            value=float(INPUT_DEFAULTS["bess_cost_kw"]), step=25.0,
+            value=_sidebar_default("_stored_bess_cost_kw", "bess_cost_kw"), step=25.0,
             help=HELP_TEXTS.get("bess_cost_kw", ""),
         )
         bess_cost_kwh = st.number_input(
             "BESS Energy Cost ($/kWh)", min_value=0.0,
-            value=float(INPUT_DEFAULTS["bess_cost_kwh"]), step=25.0,
+            value=_sidebar_default("_stored_bess_cost_kwh", "bess_cost_kwh"), step=25.0,
             help=HELP_TEXTS.get("bess_cost_kwh", ""),
         )
         bess_om_kw_yr = st.number_input(
             "BESS O&M ($/kW-yr)", min_value=0.0,
-            value=float(INPUT_DEFAULTS["bess_om_kw_yr"]), step=1.0,
+            value=_sidebar_default("_stored_bess_om_kw_yr", "bess_om_kw_yr"), step=1.0,
             help=HELP_TEXTS.get("bess_om_kw_yr", ""),
         )
 

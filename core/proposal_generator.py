@@ -356,7 +356,7 @@ def generate_proposal_docx(
 
     exec_summary_4 = (
         "This proposal includes the supply of the primary equipment and associated controls, "
-        "along with supporting systems required for reliable operation. A detailed description "
+        "along with supporting solutions required for reliable operation. A detailed description "
         "of the technical configuration, performance parameters, and solution interfaces is "
         "provided in the following sections. This offer has been configured to align with the "
         "project information provided and can be adapted to meet additional requirements as needed."

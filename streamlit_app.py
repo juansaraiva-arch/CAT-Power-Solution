@@ -482,17 +482,22 @@ def render_wizard_step_1():
     with col1:
         st.text_input("Project Name", key="_wiz_project_name",
                        placeholder="Phoenix DC-1 Prime Power",
-                       help=HELP_TEXTS.get("project_name", ""))
+                       help=HELP_TEXTS.get("project_name", ""),
+                       on_change=_make_wizard_persist_callback("_wiz_project_name", "_stored_project_name"))
         st.text_input("Contact Name", key="_wiz_contact_name",
-                       help=HELP_TEXTS.get("contact_name", ""))
+                       help=HELP_TEXTS.get("contact_name", ""),
+                       on_change=_make_wizard_persist_callback("_wiz_contact_name", "_stored_contact_name"))
         st.text_input("Contact Phone", key="_wiz_contact_phone",
-                       help=HELP_TEXTS.get("contact_phone", ""))
+                       help=HELP_TEXTS.get("contact_phone", ""),
+                       on_change=_make_wizard_persist_callback("_wiz_contact_phone", "_stored_contact_phone"))
     with col2:
         st.text_input("Client Name", key="_wiz_client_name",
                        placeholder="Acme Corp",
-                       help=HELP_TEXTS.get("client_name", ""))
+                       help=HELP_TEXTS.get("client_name", ""),
+                       on_change=_make_wizard_persist_callback("_wiz_client_name", "_stored_client_name"))
         st.text_input("Contact Email", key="_wiz_contact_email",
-                       help=HELP_TEXTS.get("contact_email", ""))
+                       help=HELP_TEXTS.get("contact_email", ""),
+                       on_change=_make_wizard_persist_callback("_wiz_contact_email", "_stored_contact_email"))
 
     st.divider()
     st.subheader("Site Location")
@@ -503,20 +508,24 @@ def render_wizard_step_1():
         if wiz_country in COUNTRIES:
             country_idx = COUNTRIES.index(wiz_country)
         st.selectbox("Country", COUNTRIES, index=country_idx,
-                      key="_wiz_country", help=HELP_TEXTS.get("country", ""))
+                      key="_wiz_country", help=HELP_TEXTS.get("country", ""),
+                      on_change=_make_wizard_persist_callback("_wiz_country", "_stored_country"))
     with col2:
         st.text_input("State / Province", key="_wiz_state_province",
-                       help=HELP_TEXTS.get("state_province", ""))
+                       help=HELP_TEXTS.get("state_province", ""),
+                       on_change=_make_wizard_persist_callback("_wiz_state_province", "_stored_state_province"))
     with col3:
         st.text_input("County / District", key="_wiz_county_district",
-                       help=HELP_TEXTS.get("county_district", ""))
+                       help=HELP_TEXTS.get("county_district", ""),
+                       on_change=_make_wizard_persist_callback("_wiz_county_district", "_stored_county_district"))
 
     st.divider()
     freq_options = [60, 50]
     freq_idx = freq_options.index(st.session_state.get("_wiz_freq_hz", 60)) if st.session_state.get("_wiz_freq_hz", 60) in freq_options else 0
     st.radio("Grid Frequency (Hz)", freq_options, index=freq_idx,
              horizontal=True, key="_wiz_freq_hz",
-             help=HELP_TEXTS.get("freq_hz", ""))
+             help=HELP_TEXTS.get("freq_hz", ""),
+             on_change=_make_wizard_persist_callback("_wiz_freq_hz", "_stored_freq_hz"))
 
 
 def _apply_dc_type_defaults():
@@ -1073,7 +1082,7 @@ def render_wizard_step_5():
 
     with col1:
         st.markdown("**Application**")
-        pn = ss.get("_wiz_project_name", "")
+        pn = ss.get("_stored_project_name", ss.get("_wiz_project_name", ""))
         if pn:
             st.write(f"Project: **{pn}**")
         st.write(f"Type: {ss.get('_stored_dc_type', ss.get('_wiz_dc_type', INPUT_DEFAULTS['dc_type']))}")
@@ -1090,7 +1099,7 @@ def render_wizard_step_5():
         bess_label = "Yes" if ss.get("_stored_use_bess", ss.get("_wiz_use_bess", INPUT_DEFAULTS["use_bess"])) else "No"
         st.write(f"BESS: {bess_label}")
         st.write(f"Fuel: {ss.get('_stored_fuel_mode', ss.get('_wiz_fuel_mode', INPUT_DEFAULTS['fuel_mode']))}")
-        st.write(f"Frequency: {ss.get('_wiz_freq_hz', INPUT_DEFAULTS['freq_hz'])} Hz")
+        st.write(f"Frequency: {ss.get('_stored_freq_hz', ss.get('_wiz_freq_hz', INPUT_DEFAULTS['freq_hz']))} Hz")
 
     with col3:
         st.markdown("**Economics**")
@@ -4798,8 +4807,8 @@ def render_proposal_tab(r):
     # Preview summary
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("Project", st.session_state.get("_wiz_project_name", "—"))
-        st.metric("Client", st.session_state.get("_wiz_client_name", "—"))
+        st.metric("Project", st.session_state.get("_stored_project_name", st.session_state.get("_wiz_project_name", "—")))
+        st.metric("Client", st.session_state.get("_stored_client_name", st.session_state.get("_wiz_client_name", "—")))
     with col2:
         st.metric("Generator", r.selected_gen)
         st.metric("Proposal Type", proposal_info["proposal_type"])
@@ -4810,14 +4819,15 @@ def render_proposal_tab(r):
     st.divider()
 
     if st.button("📄 Generate Proposal Document", type="primary", use_container_width=True):
+        ss_ = st.session_state
         header_info = {
-            "project_name":   st.session_state.get("_wiz_project_name", "Unnamed Project"),
-            "client_name":    st.session_state.get("_wiz_client_name", ""),
-            "contact_name":   st.session_state.get("_wiz_contact_name", ""),
-            "contact_email":  st.session_state.get("_wiz_contact_email", ""),
-            "contact_phone":  st.session_state.get("_wiz_contact_phone", ""),
-            "country":        st.session_state.get("_wiz_country", ""),
-            "state_province": st.session_state.get("_wiz_state_province", ""),
+            "project_name":   ss_.get("_stored_project_name",   ss_.get("_wiz_project_name",   "Unnamed Project")),
+            "client_name":    ss_.get("_stored_client_name",    ss_.get("_wiz_client_name",    "")),
+            "contact_name":   ss_.get("_stored_contact_name",   ss_.get("_wiz_contact_name",   "")),
+            "contact_email":  ss_.get("_stored_contact_email",  ss_.get("_wiz_contact_email",  "")),
+            "contact_phone":  ss_.get("_stored_contact_phone",  ss_.get("_wiz_contact_phone",  "")),
+            "country":        ss_.get("_stored_country",        ss_.get("_wiz_country",        "")),
+            "state_province": ss_.get("_stored_state_province", ss_.get("_wiz_state_province", "")),
         }
         try:
             with st.spinner("Generating proposal document..."):

@@ -122,6 +122,13 @@ class SizingInput(BaseModel):
     # ── Unit System ──
     unit_system: str = Field("Metric", description="'Metric' or 'Imperial'")
 
+    # ── Electrical Bus Topology ──
+    bus_tie_mode: str = Field("closed", description=(
+        "Bus-tie breaker mode. 'closed' = ring bus mallado (ties cerrados, "
+        "selective protection, max availability). 'open' = sections "
+        "independientes (lower fault current, lower availability)."
+    ))
+
 
 class ProjectHeader(BaseModel):
     """Project identification header."""
@@ -264,6 +271,7 @@ class SizingResult(BaseModel):
     # ── Availability ──
     system_availability: float
     availability_over_time: list[float]
+    electrical_path_factor: float = 0.999999
 
     # ── Emissions ──
     emissions: dict

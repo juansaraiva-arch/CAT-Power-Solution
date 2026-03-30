@@ -898,6 +898,11 @@ def render_wizard_step_3():
                             on_change=_make_wizard_persist_callback("_wiz_lng_days", "_stored_lng_days"),
                             help=HELP_TEXTS.get("lng_days", ""))
     with col2:
+        st.radio("Bus-Tie Mode", ["closed", "open"],
+                  index=0, horizontal=True, key="_wiz_bus_tie_mode",
+                  on_change=_make_wizard_persist_callback("_wiz_bus_tie_mode", "_stored_bus_tie_mode"),
+                  help=HELP_TEXTS.get("bus_tie_mode", ""),
+                  format_func=lambda x: "Closed (Ring Bus)" if x == "closed" else "Open (Independent)")
         volt_options = ["Auto-Recommend", "Manual"]
         st.radio("Voltage Mode", volt_options,
                   index=0, horizontal=True, key="_wiz_volt_mode",
@@ -1231,6 +1236,7 @@ def _build_inputs_from_wizard():
         max_area_m2=max_area_m2,
         region=_v("_stored_region", "_wiz_region", INPUT_DEFAULTS["region"]),
         unit_system=_v("_stored_unit_sys", "_wiz_unit_sys", "Metric"),
+        bus_tie_mode=_v("_stored_bus_tie_mode", "_wiz_bus_tie_mode", INPUT_DEFAULTS["bus_tie_mode"]),
     )
     return inputs_dict, benchmark_price
 
@@ -1574,6 +1580,16 @@ def render_sidebar():
             index=0, horizontal=True,
             help=HELP_TEXTS.get("cooling_method", ""),
         )
+        bus_tie_mode = st.radio(
+            "Bus-Tie Mode", ["closed", "open"],
+            index=0, horizontal=True,
+            help=HELP_TEXTS.get("bus_tie_mode", ""),
+            format_func=lambda x: "Closed (Ring Bus)" if x == "closed" else "Open (Independent)",
+        )
+        # Initialize _elec_path_avail from bus_tie_mode if Reliability tab hasn't set it yet
+        if "_elec_path_avail" not in st.session_state:
+            from core.engine import get_electrical_path_factor as _get_epf
+            st.session_state["_elec_path_avail"] = _get_epf(bus_tie_mode)
         dist_loss_pct = st.number_input(
             "Distribution Losses (%)", min_value=0.0, max_value=10.0,
             value=float(INPUT_DEFAULTS["dist_loss_pct"]), step=0.5,
@@ -1630,9 +1646,6 @@ def render_sidebar():
             value=float(gen_data_params.get('unit_availability', 0.965) * 100),
             step=0.5, format="%.1f",
         )
-        # Electrical path factor moved to Reliability tab (P16)
-        if "_elec_path_avail" not in st.session_state:
-            st.session_state["_elec_path_avail"] = 0.9950
         override_eff = st.number_input(
             "Efficiency (%)",
             value=float(gen_data_params.get('electrical_efficiency', 0.40) * 100),
@@ -2131,6 +2144,8 @@ def render_sidebar():
         fuel_system_pct=fuel_system_pct,
         epc_pct=epc_pct,
         contingency_pct=contingency_pct,
+        # Electrical bus topology (P24a)
+        bus_tie_mode=bus_tie_mode,
     )
 
     # ── Proposal Information (commercial fields for DOCX generation) ──
@@ -4901,8 +4916,10 @@ def main():
     r = st.session_state.result
 
     # Apply electrical path derating to reported system availability
-    # (conservative lumped factor per IEEE 493 — preliminary sizing only)
-    elec_path_avail = st.session_state.get('_elec_path_avail', 0.9950)
+    # (IEEE 493-2007 derived — topology based, not hardcoded)
+    from core.engine import get_electrical_path_factor as _get_epf
+    _btm = inputs_dict.get("bus_tie_mode", "closed")
+    elec_path_avail = st.session_state.get('_elec_path_avail', _get_epf(_btm))
     if hasattr(r, 'system_availability') and r.system_availability:
         r.system_availability = r.system_availability * elec_path_avail
 

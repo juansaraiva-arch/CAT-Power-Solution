@@ -668,6 +668,51 @@ def calculate_bess_reliability_credit(
 
 
 # ==============================================================================
+# 6b. ELECTRICAL PATH AVAILABILITY
+# ==============================================================================
+
+def get_electrical_path_factor(bus_tie_mode: str = "closed") -> float:
+    """Return electrical path availability factor based on MV bus topology.
+
+    Based on IEEE 493-2007 (Gold Book) reliability data for MV switchgear,
+    power transformers, and protective relaying.
+
+    Topology: Dual MV switchgear ring bus (SWGR-A + SWGR-B) with bus-tie
+    breaker 52T5 and MV/HV step-up transformers (one per section, each
+    rated for N-1 redundancy).
+
+    Args:
+        bus_tie_mode: "closed" = ties cerrados (ring bus mallado, selective
+                      protection isolates faults without affecting the rest)
+                      "open" = ties abiertos (independent sections)
+
+    Returns:
+        Electrical path availability factor (0 to 1)
+
+    Reference values derived from IEEE 493-2007 Table 3-4:
+    - MV switchgear bus section: lambda=0.0102 f/yr, MTTR=26.8h
+    - MV circuit breaker:        lambda=0.0036 f/yr, MTTR=83.1h
+    - Power transformer:         lambda=0.0030 f/yr, MTTR=342.0h
+    - Protective relay:          lambda=0.0002 f/yr, MTTR=5.0h
+    - MV cable (per circuit):    lambda=0.00141 f/yr, MTTR=26.5h
+
+    Ties closed: Both sections form a meshed network. A fault in any single
+    component is isolated by selective protection without loss of supply.
+    Only simultaneous faults in both sections cause an outage.
+    A_path = 1 - (1 - A_section)^2 ~= 0.999999
+
+    Ties open: Each section is independent. A fault in a section's path
+    causes loss of that section's generators.
+    A_path = A_section ~= 0.9999
+    """
+    TOPOLOGY_FACTORS = {
+        "closed": 0.999999,   # Ring bus, ties cerrados, N-1 transformers
+        "open":   0.9999,     # Sections independientes, componentes en serie
+    }
+    return TOPOLOGY_FACTORS.get(bus_tie_mode, TOPOLOGY_FACTORS["closed"])
+
+
+# ==============================================================================
 # 7. AVAILABILITY (Weibull / Binomial N+X)
 # ==============================================================================
 

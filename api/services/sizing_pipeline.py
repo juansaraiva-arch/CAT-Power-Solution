@@ -41,6 +41,7 @@ from core.engine import (
     footprint_optimization_recommendations,
     calculate_gas_pipeline,
     calculate_fleet_maintenance_configs,
+    get_electrical_path_factor,
 )
 from core.generator_library import GENERATOR_LIBRARY
 from api.services.generator_resolver import resolve_generator
@@ -1066,6 +1067,7 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         # Availability
         system_availability=system_availability,
         availability_over_time=availability_curve,
+        electrical_path_factor=get_electrical_path_factor(getattr(inputs, "bus_tie_mode", "closed")),
         # Emissions
         emissions=emissions,
         # Emissions Compliance

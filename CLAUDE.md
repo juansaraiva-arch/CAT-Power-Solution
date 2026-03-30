@@ -270,6 +270,23 @@ All `_wiz_` number_input widgets use: `value=float(st.session_state.get("_wiz_ke
 - **Resolves:** generator always G3516H, template not applying, BESS strategy not
   persisting, cooling/fuel/voltage resetting, region resetting on rerun.
 
+### P24a — Electrical path factor topology lookup (commit 0cfce70, 2026-03-29)
+- **Replaced** hardcoded `electrical_path_factor = 0.9950` (43.8 hrs/yr downtime)
+  with `get_electrical_path_factor(bus_tie_mode)` lookup in `core/engine.py`:
+  - `"closed"`: 0.999999 (ring bus, ties cerrados, IEEE 493-2007)
+  - `"open"`: 0.9999 (sections independientes)
+- **New input:** `bus_tie_mode` added to `SizingInput`, `INPUT_DEFAULTS`, `HELP_TEXTS`,
+  sidebar Technology expander, and wizard Step 3 (with `on_change` callback).
+- **`electrical_path_factor`** added to `SizingResult` (default 0.999999).
+- **Pipeline:** `sizing_pipeline.py` imports and calls `get_electrical_path_factor()`,
+  stores result in `SizingResult.electrical_path_factor`.
+- **`main()`:** fallback for `_elec_path_avail` now uses `get_electrical_path_factor(bus_tie_mode)`
+  instead of hardcoded 0.9950. Reliability tab topology selector still overrides it.
+- **Engineering basis:** IEEE 493-2007 Table 3-4 failure rates for MV switchgear,
+  power transformers, protective relays. Topology: SWGR-A + SWGR-B + 52T5 bus-tie.
+  Step-up transformers captured in binomial fleet model, NOT in this factor.
+- **Tests:** 48/48 pass.
+
 ### P25L — on_change + _stored_ pattern for all wizard widgets (commit 78f7566, 2026-03-29)
 - Extended the generator's proven `on_change` + `_stored_` pattern to ALL ~40
   wizard widgets across Steps 2-4.

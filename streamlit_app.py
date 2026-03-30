@@ -2470,6 +2470,7 @@ def render_reliability_tab(r):
     _sv_aux_load   = _sv_gen_data.get("aux_load_pct", 4.0)
     _sv_epf        = r.electrical_path_factor if hasattr(r, 'electrical_path_factor') else 0.999999
 
+    import pandas as pd  # noqa: E402 — needed here: pd is also imported locally later in the function, making it a local variable in Python's scope analysis
     _sv_col_left, _sv_col_right = st.columns(2)
 
     with _sv_col_left:

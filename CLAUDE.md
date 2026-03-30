@@ -301,6 +301,14 @@ All `_wiz_` number_input widgets use: `value=float(st.session_state.get("_wiz_ke
   Step-up transformers captured in binomial fleet model, NOT in this factor.
 - **Tests:** 48/48 pass.
 
+### P26b — Project Info persistence + proposal text residue (2026-03-30)
+- Step 1 widgets now have `on_change` + `_stored_` callbacks (same P25L pattern)
+  — covers project_name, client_name, contact_name/email/phone, country, state_province, county_district, freq_hz
+- `header_info` dict in Proposal tab reads `_stored_` first → `_wiz_` → default (Fix 1B)
+- Metrics preview in Proposal tab reads `_stored_` first (Fix 1B)
+- `render_wizard_step_5()` reads `_stored_project_name` and `_stored_freq_hz` first (Fix 1C)
+- Fixed residual `"supporting systems"` → `"supporting solutions"` in `exec_summary_4` (proposal_generator.py)
+
 ### P26 — Proposal generator content update (2026-03-30)
 - Updated `core/proposal_generator.py` with director-approved template changes (commit 5a253fd)
 - 24 content/terminology changes: section renames, definition updates, checkbox restructure

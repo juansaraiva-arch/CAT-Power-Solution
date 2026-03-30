@@ -301,6 +301,13 @@ All `_wiz_` number_input widgets use: `value=float(st.session_state.get("_wiz_ke
   Step-up transformers captured in binomial fleet model, NOT in this factor.
 - **Tests:** 48/48 pass.
 
+### P27b — Variables table + re-run fix (2026-03-30)
+- **Removed** tornado sensitivity chart (P27) — replaced with reference table
+- **Added** "Sizing Input Variables" table in Reliability tab showing all key
+  parameters: generator specs, site conditions, fleet size, availability
+- **Fixed** "Apply & Re-run Sizing" overwriting wizard values: `_config_rerun`
+  flag prevents sidebar reactive sizing from overwriting (same P25k pattern)
+
 ### P27 — Availability sensitivity tornado chart (2026-03-30)
 - Added tornado chart to Reliability tab showing impact of 3 key variables
   on system availability: unit availability (±0.05), reserve units (N±1), electrical path factor

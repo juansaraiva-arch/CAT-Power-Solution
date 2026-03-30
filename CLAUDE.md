@@ -301,6 +301,17 @@ All `_wiz_` number_input widgets use: `value=float(st.session_state.get("_wiz_ke
   Step-up transformers captured in binomial fleet model, NOT in this factor.
 - **Tests:** 48/48 pass.
 
+### P26 — Proposal generator content update (2026-03-30)
+- Updated `core/proposal_generator.py` with director-approved template changes (commit 5a253fd)
+- 24 content/terminology changes: section renames, definition updates, checkbox restructure
+- Key changes: 'Solution Overview' → 'Proposed Customer Solution', 'Appendix' → 'Exhibit' (A–H),
+  'package' → 'solution', 'applications' → 'Applications', dealer disclaimer strengthened,
+  `{client_name}` placeholder in exec summary, Technical Offer checkboxes 4-col → 2-col (Genset Only / BOP),
+  Exhibit G renamed to 'Service Agreement (SA) Overview' with SA intro paragraph,
+  Exhibit F: 'Extended Service Coverage Overview', new definitions: BOP, RTS, SOL, SA, updated: Base Price, Delivery, Feature Code, PO/LOA
+- No logic changes — all modifications are to hardcoded text strings
+- `core/pdf_report.py` NOT modified — separate document format
+
 ### P25L — on_change + _stored_ pattern for all wizard widgets (commit 78f7566, 2026-03-29)
 - Extended the generator's proven `on_change` + `_stored_` pattern to ALL ~40
   wizard widgets across Steps 2-4.

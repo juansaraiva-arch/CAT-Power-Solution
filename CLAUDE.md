@@ -270,6 +270,20 @@ All `_wiz_` number_input widgets use: `value=float(st.session_state.get("_wiz_ke
 - **Resolves:** generator always G3516H, template not applying, BESS strategy not
   persisting, cooling/fuel/voltage resetting, region resetting on rerun.
 
+### Callbacks must write ONLY to `_stored_` keys (commit 3f25f1f, 2026-03-30)
+- **Root cause:** `_on_template_change()` and `_apply_dc_type_defaults()` were writing
+  to `_wiz_X` keys from inside callbacks. Streamlit raises
+  "widget with key _wiz_X was created with a default value but also had its value set
+  via the Session State API" warning whenever a rendered widget's key is written from outside.
+- **Rule:** `_wiz_X` keys are the **exclusive property of their widgets**. No callback or
+  external code may write to them. Callbacks write ONLY to `_stored_X` keys.
+- **Fixed callbacks:**
+  - `_DC_DEFAULT_KEYS` targets changed from `_wiz_*` → `_stored_*`
+  - `_apply_dc_type_defaults()`: writes to `_stored_*` + also writes `_stored_dc_type`
+  - `_on_template_change()`: simplified to write only `_stored_*` keys (removed `_wiz_` writes)
+  - `_on_dc_type_change()` inline wrapper removed — `_apply_dc_type_defaults` used directly
+- `_build_inputs_from_wizard()` already reads `_stored_` first → values flow correctly
+
 ### P24a — Electrical path factor topology lookup (commit 0cfce70, 2026-03-29)
 - **Replaced** hardcoded `electrical_path_factor = 0.9950` (43.8 hrs/yr downtime)
   with `get_electrical_path_factor(bus_tie_mode)` lookup in `core/engine.py`:

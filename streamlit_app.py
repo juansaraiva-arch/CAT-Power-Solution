@@ -135,15 +135,18 @@ DC_TYPE_DEFAULTS = {
     },
 }
 
-# Keys that DC_TYPE_DEFAULTS populates — used by the on_change callback
+# Keys that DC_TYPE_DEFAULTS populates — used by the on_change callback.
+# Write ONLY to _stored_ keys (never _wiz_), because _wiz_ keys are owned
+# by their widgets and writing to them from a callback triggers Streamlit's
+# "widget default value overridden via Session State API" warning.
 _DC_DEFAULT_KEYS = [
-    ("_wiz_pue",            "pue"),
-    ("_wiz_capacity_factor","capacity_factor"),
-    ("_wiz_peak_avg_ratio", "peak_avg_ratio"),
-    ("_wiz_load_step_pct",  "load_step_pct"),
-    ("_wiz_spinning_res_pct","spinning_res_pct"),
-    ("_wiz_load_ramp_req",  "load_ramp_req"),
-    ("_wiz_avail_req",      "avail_req"),
+    ("_stored_pue",            "pue"),
+    ("_stored_capacity_factor","capacity_factor"),
+    ("_stored_peak_avg_ratio", "peak_avg_ratio"),
+    ("_stored_load_step_pct",  "load_step_pct"),
+    ("_stored_spinning_res_pct","spinning_res_pct"),
+    ("_stored_load_ramp_req",  "load_ramp_req"),
+    ("_stored_avail_req",      "avail_req"),
 ]
 
 BESS_STRATEGIES = ["Transient Only", "Hybrid (Balanced)", "Reliability Priority"]
@@ -519,7 +522,8 @@ def render_wizard_step_1():
 def _apply_dc_type_defaults():
     """
     Called when the user changes _wiz_dc_type.
-    Writes DC-type-specific defaults into wizard session state keys.
+    Writes DC-type-specific defaults into _stored_ session state keys ONLY.
+    Never writes to _wiz_ keys — those are owned by their widgets.
     """
     dc_type = st.session_state.get("_wiz_dc_type", "")
     defaults = DC_TYPE_DEFAULTS.get(dc_type, {})
@@ -528,7 +532,9 @@ def _apply_dc_type_defaults():
     for ss_key, defaults_key in _DC_DEFAULT_KEYS:
         if defaults_key in defaults:
             st.session_state[ss_key] = defaults[defaults_key]
-    # Record which dc_type last triggered the auto-fill (for UI note)
+    # Also persist the dc_type itself to _stored_ (for _build_inputs_from_wizard)
+    st.session_state["_stored_dc_type"] = dc_type
+    # Record which dc_type last triggered the auto-fill (for UI note — non-widget key, safe)
     st.session_state["_wiz_dc_type_last_autofilled"] = dc_type
 
 
@@ -554,29 +560,29 @@ def _apply_dc_type_defaults_sidebar():
 
 def _on_template_change():
     """Called when user selects a Quick Start Template in Step 2.
-    Maps TEMPLATES keys → _wiz_ and _stored_ session state keys."""
+    Writes ONLY to _stored_ keys — never to _wiz_ keys.
+    _wiz_ keys are owned by their widgets; writing to them from a callback
+    triggers Streamlit's 'widget default value overridden via Session State API' warning.
+    _build_inputs_from_wizard() reads _stored_ first, so the correct values are used."""
     template = st.session_state.get("_wiz_template", "Custom (Manual)")
     if template == "Custom (Manual)" or template not in TEMPLATES:
         return
     tpl = TEMPLATES[template]
-    _TPL_KEY_MAP = {
-        "dc_type":          ("_wiz_dc_type",         "_stored_dc_type"),
-        "p_it":             ("_wiz_p_it",             "_stored_p_it"),
-        "avail_req":        ("_wiz_avail_req",        "_stored_avail_req"),
-        "pue":              ("_wiz_pue",              "_stored_pue"),
-        "load_step_pct":    ("_wiz_load_step_pct",   "_stored_load_step_pct"),
-        "capacity_factor":  ("_wiz_capacity_factor", "_stored_capacity_factor"),
-        "peak_avg_ratio":   ("_wiz_peak_avg_ratio",  "_stored_peak_avg_ratio"),
-        "load_ramp_req":    ("_wiz_load_ramp_req",   "_stored_load_ramp_req"),
-        "gen_filter":       ("_wiz_gen_filter",       None),  # no stored for filter
-        "use_bess":         ("_wiz_use_bess",         "_stored_use_bess"),
+    _TPL_STORED_MAP = {
+        "dc_type":         "_stored_dc_type",
+        "p_it":            "_stored_p_it",
+        "avail_req":       "_stored_avail_req",
+        "pue":             "_stored_pue",
+        "load_step_pct":   "_stored_load_step_pct",
+        "capacity_factor": "_stored_capacity_factor",
+        "peak_avg_ratio":  "_stored_peak_avg_ratio",
+        "load_ramp_req":   "_stored_load_ramp_req",
+        "use_bess":        "_stored_use_bess",
+        # gen_filter has no _stored_ key (multiselect handled separately)
     }
-    for tpl_key, keys in _TPL_KEY_MAP.items():
+    for tpl_key, stored_key in _TPL_STORED_MAP.items():
         if tpl_key in tpl:
-            wiz_key, stored_key = keys
-            st.session_state[wiz_key] = tpl[tpl_key]
-            if stored_key:
-                st.session_state[stored_key] = tpl[tpl_key]
+            st.session_state[stored_key] = tpl[tpl_key]
 
 
 def _make_wizard_persist_callback(wiz_key: str, stored_key: str):
@@ -626,13 +632,11 @@ def render_wizard_step_2():
     with col1:
         _dc_default = INPUT_DEFAULTS.get("dc_type", "AI Training")
         _dc_idx = DC_TYPES.index(_dc_default) if _dc_default in DC_TYPES else 0
-        def _on_dc_type_change():
-            _apply_dc_type_defaults()
-            _make_wizard_persist_callback("_wiz_dc_type", "_stored_dc_type")()
+        # on_change: _apply_dc_type_defaults already writes to _stored_dc_type
         st.selectbox("Data Center Type", DC_TYPES,
                       index=_dc_idx,
                       key="_wiz_dc_type",
-                      on_change=_on_dc_type_change,
+                      on_change=_apply_dc_type_defaults,
                       help=HELP_TEXTS.get("dc_type", ""))
         # Show auto-fill notice if defaults were just applied
         _last = st.session_state.get("_wiz_dc_type_last_autofilled", "")

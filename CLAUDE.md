@@ -301,6 +301,13 @@ All `_wiz_` number_input widgets use: `value=float(st.session_state.get("_wiz_ke
   Step-up transformers captured in binomial fleet model, NOT in this factor.
 - **Tests:** 48/48 pass.
 
+### P27 — Availability sensitivity tornado chart (2026-03-30)
+- Added tornado chart to Reliability tab showing impact of 3 key variables
+  on system availability: unit availability (±0.05), reserve units (N±1), electrical path factor
+- Uses binomial model for instant calculation (no pipeline re-execution)
+- Variables reuse already-computed `a_gen_active`, `epf`, `n_total` from tab scope
+- Includes summary table and methodology caption; variables sorted by impact magnitude
+
 ### P26b — Project Info persistence + proposal text residue (2026-03-30)
 - Step 1 widgets now have `on_change` + `_stored_` callbacks (same P25L pattern)
   — covers project_name, client_name, contact_name/email/phone, country, state_province, county_district, freq_hz

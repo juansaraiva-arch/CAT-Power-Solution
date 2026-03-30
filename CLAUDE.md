@@ -301,6 +301,13 @@ All `_wiz_` number_input widgets use: `value=float(st.session_state.get("_wiz_ke
   Step-up transformers captured in binomial fleet model, NOT in this factor.
 - **Tests:** 48/48 pass.
 
+### P28 — Sidebar initializes from wizard values (2026-03-30)
+- All sidebar widgets read `_stored_*` keys as initial values, falling back
+  to `INPUT_DEFAULTS` if no wizard values exist
+- Added `_sidebar_default()` helper for consistent `_stored_ → INPUT_DEFAULTS` pattern
+- Covers ~25 widgets: IT load, PUE, generator model, site conditions, economics, etc.
+- Ensures wizard→sidebar transition preserves all user-configured values
+
 ### P27b — Variables table + re-run fix (2026-03-30)
 - **Removed** tornado sensitivity chart (P27) — replaced with reference table
 - **Added** "Sizing Input Variables" table in Reliability tab showing all key

@@ -327,6 +327,24 @@ def run_full_sizing(inputs: SizingInput) -> dict:
     pod_result['maintenance_margin_mw'] = round(
         pod_result['cap_combined'] - p_total_peak, 3)
 
+    # ── P30: Override fleet variables from selected maintenance config ──
+    # Must run BEFORE electrical sizing and all downstream calculations so that
+    # n_total, installed_cap, n_pods, n_per_pod, load_per_unit_pct all reflect
+    # the user-selected config (A / B / C) rather than the base pod optimizer result.
+    _sel_maint_cfg = getattr(inputs, 'selected_fleet_config_maint', None)
+    if _sel_maint_cfg and fleet_maintenance_configs and _sel_maint_cfg in fleet_maintenance_configs:
+        _mc = fleet_maintenance_configs[_sel_maint_cfg]
+        n_running               = _mc['n_running']
+        n_reserve               = _mc['n_reserve']
+        n_total_pod             = _mc['n_total']
+        installed_cap_pod       = _mc['installed_cap']
+        load_per_unit_pct       = _mc['loading_normal_pct']
+        n_pods                  = _mc['n_pods']
+        n_per_pod               = _mc['n_per_pod']
+        cap_contingency         = _mc['cap_contingency']
+        loading_contingency_pct = _mc['loading_contingency_pct']
+        a_system_calculated     = _mc['a_system_calculated']
+
     # ── Electrical Sizing (P08) ──
     from api.services.electrical_sizing import calculate_electrical_sizing
     electrical = calculate_electrical_sizing(

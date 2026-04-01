@@ -301,6 +301,17 @@ All `_wiz_` number_input widgets use: `value=float(st.session_state.get("_wiz_ke
   Step-up transformers captured in binomial fleet model, NOT in this factor.
 - **Tests:** 48/48 pass.
 
+### P30 — Fix preferred_config propagation to downstream results (2026-04-01)
+- Fixed `selected_fleet_config_maint` (A/B/C) not changing CAPEX, LCOE, or other results
+- **Root cause:** pipeline stored configs but never overrode fleet variables before downstream calcs
+- **Fix:** inserted override block in `sizing_pipeline.py` immediately after `fleet_maintenance_configs`
+  is computed but BEFORE electrical sizing and all downstream calculations
+- Overrides: `n_running`, `n_reserve`, `n_total_pod`, `installed_cap_pod`, `load_per_unit_pct`,
+  `n_pods`, `n_per_pod`, `cap_contingency`, `loading_contingency_pct`, `a_system_calculated`
+- `n_total = n_total_pod` and `installed_cap = installed_cap_pod` at Step 10 then propagate
+  the overridden values to all CAPEX, O&M, LCOE, emissions, footprint, and frequency calcs
+- Verified: Config A (60 gens, $312M), B (66 gens, $342M), C (63 gens, $327M) now distinct
+
 ### P28 — Sidebar initializes from wizard values (2026-03-30)
 - All sidebar widgets read `_stored_*` keys as initial values, falling back
   to `INPUT_DEFAULTS` if no wizard values exist

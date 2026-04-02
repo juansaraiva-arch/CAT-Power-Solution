@@ -1215,7 +1215,7 @@ def _build_inputs_from_wizard():
         gas_supply_pressure_psia=float(INPUT_DEFAULTS.get("gas_supply_pressure_psia", 100.0)),
         gas_pipeline_length_miles=float(INPUT_DEFAULTS.get("gas_pipeline_length_miles", 1.0)),
         max_maintenance_units=int(INPUT_DEFAULTS.get("max_maintenance_units", 1)),
-        selected_fleet_config_maint=INPUT_DEFAULTS.get("selected_fleet_config_maint", "B"),
+        selected_fleet_config_maint=st.session_state.get("fleet_maint_config_sel", INPUT_DEFAULTS.get("selected_fleet_config_maint", "B")),
         bess_cost_kw=float(_v("_stored_bess_cost_kw", "_wiz_bess_cost_kw", INPUT_DEFAULTS["bess_cost_kw"])),
         bess_cost_kwh=float(_v("_stored_bess_cost_kwh", "_wiz_bess_cost_kwh", INPUT_DEFAULTS["bess_cost_kwh"])),
         bess_om_kw_yr=float(_v("_stored_bess_om_kw_yr", "_wiz_bess_om_kw_yr", INPUT_DEFAULTS["bess_om_kw_yr"])),
@@ -5000,10 +5000,12 @@ def main():
     if _skip_wizard:
         pass  # First render after wizard — result already correct
     elif _do_config_rerun:
-        # Re-run sizing with wizard values, not sidebar defaults
+        # Re-run sizing with current sidebar inputs_dict, which already contains
+        # the user's fleet config selection from st.session_state['fleet_maint_config_sel'].
+        # Using _build_inputs_from_wizard() here was wrong: it hardcoded
+        # selected_fleet_config_maint=INPUT_DEFAULTS, ignoring the radio button.
         try:
-            wiz_inputs, wiz_benchmark = _build_inputs_from_wizard()
-            sizing_input = SizingInput(**wiz_inputs)
+            sizing_input = SizingInput(**inputs_dict)
             result = run_full_sizing(sizing_input)
             st.session_state.result = result
         except Exception as e:

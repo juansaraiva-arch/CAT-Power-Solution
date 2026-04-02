@@ -147,7 +147,7 @@ Use fixtures from `conftest.py`:
 3. Site derating (CAT tables, validated vs EM7206-05-001 P11) → 4. BESS sizing →
 5. Spinning reserve (physical: max(load_step, N-1) — BESS credit validated) →
 6. **Pod fleet optimizer** (N+1 pod architecture, prime/standby loading) →
-7. Availability (Binomial) → 8. Voltage recommendation →
+7. **Fleet optimization — single config meeting avail_req** (Binomial availability) → 8. Voltage recommendation →
 9. Transient stability (coupled to SR load_step_mw) →
 10. Frequency screening (inertia H from library) → 11. Emissions →
 12. Footprint → 13. Financial (CAPEX with BOS + LCOE corrected denominator) →
@@ -190,20 +190,6 @@ The `frequency_screening` dict returned by `calculate_frequency_screening()` in 
 - `H_system` — alias for `H_total` (backward compat from P06)
 
 The Streamlit UI displays all three H components separately with a warning if `H_per_unit > 2.0 s` (atypical for recip gas engines).
-
-### Fleet Maintenance Configs (P12)
-`calculate_fleet_maintenance_configs()` in `core/engine.py` — produces three alternative fleet configurations satisfying **C4** (N+1 pod capacity minus generators in scheduled maintenance ≥ peak load).
-
-**Constraint C4:** `(N_pods−1) × n_per × P_gen − max_maint × P_gen ≥ P_peak`
-
-| Config | Strategy | Description |
-|--------|----------|-------------|
-| A — Distributed | min n_total, max n_pods | More smaller pods, same or fewer gens |
-| B — Conservative | same n_pods as base | Add gens to existing topology, no electrical changes |
-| C — Balanced | base_n_pods + 1 | One extra pod, moderate gen increase |
-
-**Parameters:** `max_maintenance_units` (default 1), `selected_fleet_config_maint` (default 'B').
-The base `pod_fleet_optimizer()` also enforces C4 via `max_maintenance_units` kwarg (default 0 = backward compatible).
 
 ### BESS Autonomy-Based Energy Sizing (P13)
 **Formula:** `bess_energy_mwh = bess_power_mw × (autonomy_min / 60) / bess_dod`
@@ -301,26 +287,21 @@ All `_wiz_` number_input widgets use: `value=float(st.session_state.get("_wiz_ke
   Step-up transformers captured in binomial fleet model, NOT in this factor.
 - **Tests:** 48/48 pass.
 
-### P31 — Fix config override not reaching pipeline (2026-04-02)
-- P30's `sizing_pipeline.py` override IS correct — produces A=$312M, B=$342M, C=$327M when called directly
-- **Root cause:** Two bugs in `streamlit_app.py`, not in the pipeline:
-  1. `_build_inputs_from_wizard()` hardcoded `selected_fleet_config_maint=INPUT_DEFAULTS['B']`,
-     ignoring the user's radio button selection (`fleet_maint_config_sel`)
-  2. `_config_rerun` handler called `_build_inputs_from_wizard()` (bug 1) instead of
-     `inputs_dict` from sidebar (which already has correct `fleet_maint_config_sel`)
-- **Fix:** Read `fleet_maint_config_sel` from session state in `_build_inputs_from_wizard()`;
-  `_config_rerun` now uses `inputs_dict` directly — no wizard rebuild needed
+### P32 — Simplify reliability to single config (2026-04-02)
+- Eliminated 3-config (A/B/C) maintenance architecture selector and all associated plumbing
+- **Removed from `sizing_pipeline.py`:** `calculate_fleet_maintenance_configs` call + P30 override block + 5 maintenance fields from SizingResult assembly + import of `calculate_fleet_maintenance_configs`
+- **Removed from `api/schemas/sizing.py`:** `max_maintenance_units` and `selected_fleet_config_maint` from `SizingInput`; `cap_combined`, `maintenance_margin_mw`, `max_maintenance_units`, `fleet_maintenance_configs`, `selected_fleet_config_maint` Optional fields from `SizingResult`
+- **Removed from `streamlit_app.py`:** `max_maintenance_units` sidebar number_input; fleet maintenance fields from `inputs_dict` and `_build_inputs_from_wizard()`; entire Maintenance-Aware Fleet Configurations section with comparison table, radio selector, and "Apply & Re-run Sizing" button; `_config_rerun` handler in `main()`; maintenance config banner from `render_electrical_tab()`; `r.reliability_configs` iteration in BESS checklist
+- **Added:** Simple "Fleet Configuration" metrics display in Reliability tab (4 fleet metrics + 3 efficiency/availability metrics + availability target check)
+- **Net result:** Pipeline computes one optimal fleet that meets `avail_req` — used for ALL downstream calculations (CAPEX, LCOE, footprint, emissions). No user selection, no radio buttons, no re-run button. −199 lines.
 
-### P30 — Fix preferred_config propagation to downstream results (2026-04-01)
+### P31 — Fix config override not reaching pipeline (2026-04-02) [superseded by P32]
+- P30's `sizing_pipeline.py` override IS correct — produces A=$312M, B=$342M, C=$327M when called directly
+- **Root cause:** Two bugs in `streamlit_app.py`; fixed — then entire 3-config system removed by P32
+
+### P30 — Fix preferred_config propagation to downstream results (2026-04-01) [superseded by P32]
 - Fixed `selected_fleet_config_maint` (A/B/C) not changing CAPEX, LCOE, or other results
-- **Root cause:** pipeline stored configs but never overrode fleet variables before downstream calcs
-- **Fix:** inserted override block in `sizing_pipeline.py` immediately after `fleet_maintenance_configs`
-  is computed but BEFORE electrical sizing and all downstream calculations
-- Overrides: `n_running`, `n_reserve`, `n_total_pod`, `installed_cap_pod`, `load_per_unit_pct`,
-  `n_pods`, `n_per_pod`, `cap_contingency`, `loading_contingency_pct`, `a_system_calculated`
-- `n_total = n_total_pod` and `installed_cap = installed_cap_pod` at Step 10 then propagate
-  the overridden values to all CAPEX, O&M, LCOE, emissions, footprint, and frequency calcs
-- Verified: Config A (60 gens, $312M), B (66 gens, $342M), C (63 gens, $327M) now distinct
+- Entire multi-config system removed by P32
 
 ### P28 — Sidebar initializes from wizard values (2026-03-30)
 - All sidebar widgets read `_stored_*` keys as initial values, falling back
@@ -333,8 +314,7 @@ All `_wiz_` number_input widgets use: `value=float(st.session_state.get("_wiz_ke
 - **Removed** tornado sensitivity chart (P27) — replaced with reference table
 - **Added** "Sizing Input Variables" table in Reliability tab showing all key
   parameters: generator specs, site conditions, fleet size, availability
-- **Fixed** "Apply & Re-run Sizing" overwriting wizard values: `_config_rerun`
-  flag prevents sidebar reactive sizing from overwriting (same P25k pattern)
+- **Fixed** sizing overwrite on re-run via `_config_rerun` flag (removed in P32 along with the entire multi-config system)
 
 ### P27 — Availability sensitivity tornado chart (2026-03-30)
 - Added tornado chart to Reliability tab showing impact of 3 key variables

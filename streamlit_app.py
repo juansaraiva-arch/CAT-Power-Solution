@@ -1214,8 +1214,6 @@ def _build_inputs_from_wizard():
         pipeline_diameter_inch=float(INPUT_DEFAULTS["pipeline_diameter_inch"]),
         gas_supply_pressure_psia=float(INPUT_DEFAULTS.get("gas_supply_pressure_psia", 100.0)),
         gas_pipeline_length_miles=float(INPUT_DEFAULTS.get("gas_pipeline_length_miles", 1.0)),
-        max_maintenance_units=int(INPUT_DEFAULTS.get("max_maintenance_units", 1)),
-        selected_fleet_config_maint=st.session_state.get("fleet_maint_config_sel", INPUT_DEFAULTS.get("selected_fleet_config_maint", "B")),
         bess_cost_kw=float(_v("_stored_bess_cost_kw", "_wiz_bess_cost_kw", INPUT_DEFAULTS["bess_cost_kw"])),
         bess_cost_kwh=float(_v("_stored_bess_cost_kwh", "_wiz_bess_cost_kwh", INPUT_DEFAULTS["bess_cost_kwh"])),
         bess_om_kw_yr=float(_v("_stored_bess_om_kw_yr", "_wiz_bess_om_kw_yr", INPUT_DEFAULTS["bess_om_kw_yr"])),
@@ -1586,18 +1584,6 @@ def render_sidebar():
         enable_black_start = st.checkbox(
             "Black Start Capable", value=st.session_state.get("_stored_enable_black_start", INPUT_DEFAULTS["enable_black_start"]),
             help=HELP_TEXTS.get("enable_black_start", ""),
-        )
-        max_maintenance_units = st.number_input(
-            "Max generators in maintenance simultaneously",
-            min_value=0, max_value=10,
-            value=int(INPUT_DEFAULTS.get('max_maintenance_units', 1)),
-            step=1,
-            help=(
-                "Maximum number of generators that may be under scheduled maintenance "
-                "when a pod-level fault occurs simultaneously. "
-                "0 = strict scheduling (no maintenance during risk windows). "
-                "1 = realistic default for fleets of 50+ units."
-            ),
         )
         _stored_cooling = st.session_state.get("_stored_cooling", "Air-Cooled")
         _cooling_opts = ["Air-Cooled", "Water-Cooled"]
@@ -2168,9 +2154,6 @@ def render_sidebar():
         voltage_sag_limit_pct=voltage_sag_limit_pct,
         freq_nadir_limit_hz=freq_nadir_limit_hz,
         freq_rocof_limit_hz_s=freq_rocof_limit_hz_s,
-        # Fleet Maintenance (P12)
-        max_maintenance_units=max_maintenance_units,
-        selected_fleet_config_maint=st.session_state.get('fleet_maint_config_sel', 'B'),
         # CAPEX BOS adders (P08 Fix 6)
         bos_pct=bos_pct,
         civil_pct=civil_pct,
@@ -2581,110 +2564,26 @@ def render_reliability_tab(r):
     )
     st.plotly_chart(fig_dist, use_container_width=True)
 
-    # ── Maintenance-Aware Fleet Configurations (P12) ──
-    maint_n = getattr(r, 'max_maintenance_units', 0)
-    maint_configs = getattr(r, 'fleet_maintenance_configs', {}) or {}
+    # ── Fleet Configuration (P32 — single optimal config) ──
+    st.divider()
+    st.subheader("Fleet Configuration")
 
-    if maint_n > 0 and maint_configs:
-        st.divider()
-        st.subheader("Maintenance-Aware Fleet Configurations")
-        st.caption(
-            f"The following configurations satisfy both N+1 pod redundancy AND "
-            f"the combined contingency with **{maint_n} generator(s) in scheduled "
-            f"maintenance**. Select one to use for CAPEX calculation."
-        )
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Running Units", r.n_running)
+    col2.metric("Reserve Units", r.n_reserve)
+    col3.metric("Total Fleet", r.n_total)
+    col4.metric("Installed Capacity", f"{r.installed_cap:.1f} MW")
 
-        # Build comparison table
-        config_labels = {
-            'A': ('Distributed', 'More pods · same or fewer gens · min CAPEX gen+inst'),
-            'B': ('Conservative', 'Same pod topology · add gens · min electrical changes'),
-            'C': ('Balanced', '+1 pod · minimal gen increase · moderate margin'),
-        }
+    col5, col6, col7 = st.columns(3)
+    col5.metric("Load per Unit", f"{r.load_per_unit_pct:.1f}%")
+    col6.metric("Fleet Efficiency", f"{r.fleet_efficiency * 100:.1f}%")
+    col7.metric("System Availability", f"{r.system_availability * 100:.4f}%")
 
-        # Get base values for delta computation
-        base_gens   = r.n_total
-        base_pods   = r.n_pods
-        base_trafos = r.n_pods // 2
-
-        cfg_data = []
-        for key in ['A', 'B', 'C']:
-            cfg = maint_configs.get(key)
-            if not cfg:
-                continue
-            dn = cfg['n_total'] - base_gens
-            dp = cfg['n_pods']  - base_pods
-            dt = (cfg['n_pods'] // 2) - base_trafos
-            lbl, desc = config_labels.get(key, (key, ''))
-            cfg_data.append({
-                'Key': key,
-                'Config': f"{key} — {lbl}",
-                'Architecture': f"{cfg['n_pods']} pods × {cfg['n_per_pod']} gens = {cfg['n_total']}",
-                'Combined cap': f"{cfg['cap_combined']:.1f} MW",
-                'Margin': f"{cfg['maintenance_margin_mw']:+.1f} MW",
-                'Loading': f"{cfg['loading_normal_pct']:.1f}%",
-                'Δ Pods': f"{dp:+d}",
-                'Δ Gens': f"{dn:+d}",
-                'Δ Trafos': f"{dt:+d}",
-                'Description': desc,
-            })
-
-        if cfg_data:
-            import pandas as pd
-            df = pd.DataFrame(cfg_data).drop(columns=['Key', 'Description'])
-            st.dataframe(df, use_container_width=True, hide_index=True)
-
-            # Descriptions
-            for row in cfg_data:
-                st.caption(f"**Config {row['Key']}:** {row['Description']}")
-
-            # Selector
-            current_sel = getattr(r, 'selected_fleet_config_maint', 'B')
-            available_keys = [d['Key'] for d in cfg_data]
-            sel = st.radio(
-                "Select configuration for CAPEX calculation",
-                options=available_keys,
-                index=available_keys.index(current_sel) if current_sel in available_keys else 0,
-                horizontal=True,
-                key='fleet_maint_config_sel',
-                help="The selected configuration's fleet size drives the generator and installation CAPEX.",
-            )
-
-            # st.radio with key= already stores selection in session_state
-
-            # Show selected config details
-            sel_cfg = maint_configs.get(sel)
-            if sel_cfg:
-                st.info(
-                    f"**Selected: Config {sel}** — "
-                    f"{sel_cfg['n_pods']} pods × {sel_cfg['n_per_pod']} gens = "
-                    f"{sel_cfg['n_total']} generators · "
-                    f"{sel_cfg['n_total'] * r.unit_site_cap:.1f} MW installed · "
-                    f"Combined contingency: {sel_cfg['cap_combined']:.1f} MW "
-                    f"({sel_cfg['maintenance_margin_mw']:+.1f} MW margin)."
-                )
-
-                # Re-run button — applies selected maintenance config to CAPEX
-                col_btn, col_note = st.columns([1, 3])
-                with col_btn:
-                    if st.button(
-                        "▶ Apply & Re-run Sizing",
-                        type="primary",
-                        key="rerun_fleet_config",
-                        help="Applies the selected fleet configuration and recalculates all results including CAPEX.",
-                    ):
-                        st.session_state["_config_rerun"] = True
-                        st.rerun()
-                with col_note:
-                    st.caption(
-                        "Applies the selected maintenance configuration and recalculates "
-                        "CAPEX, LCOE, and all dependent results."
-                    )
-
-    elif maint_n == 0:
-        st.caption(
-            "ℹ️ Set 'Max generators in maintenance' > 0 in the sidebar to generate "
-            "maintenance-aware fleet configurations."
-        )
+    avail_target = getattr(r, 'avail_req', 99.98) if hasattr(r, 'avail_req') else 99.98
+    if r.system_availability * 100 >= avail_target:
+        st.success("Fleet meets availability target.")
+    else:
+        st.warning("Fleet does not meet availability target. Consider increasing reserve units.")
 
     # Pod Architecture — rendered at top of tab (P08), removed duplicate here
     if False:
@@ -3119,9 +3018,7 @@ def render_bess_tab(r):
          'black_start' in r.bess_breakdown),
         ("Peak Shaving", r.bess_strategy in ("Hybrid (Balanced)", "Reliability Priority")),
         ("Frequency Regulation Support", r.bess_power_mw > 0),
-        ("Reliability Credit (N+X reduction)", any(
-            cfg.bess_credit > 0 for cfg in r.reliability_configs
-        ) if r.reliability_configs else False),
+        ("Reliability Credit (N+X reduction)", r.spinning_from_bess > 0),
     ]
 
     for func_name, func_active in bess_functions:
@@ -3142,10 +3039,6 @@ def render_electrical_tab(r):
     n_trafos = getattr(r, 'n_trafos', None)
     p_inst   = getattr(r, 'installed_cap', None)
     loading  = getattr(r, 'loading_normal_pct', None)
-    cap_comb = getattr(r, 'cap_combined', None)
-    sel_cfg  = getattr(r, 'selected_fleet_config_maint', None)
-    maint_n  = getattr(r, 'max_maintenance_units', 0)
-
     if n_pods and n_per and n_total:
         col1, col2, col3, col4, col5 = st.columns(5)
         col1.metric("Pod Architecture",   f"{n_pods} pods × {n_per} gens")
@@ -3153,31 +3046,6 @@ def render_electrical_tab(r):
         col3.metric("P Installed",        f"{p_inst:.1f} MW" if p_inst else "—")
         col4.metric("Normal Loading",     f"{loading:.1f}%" if loading else "—")
         col5.metric("Transformers",       f"{n_trafos}" if n_trafos else "—")
-
-        if sel_cfg and sel_cfg in ('A', 'B', 'C'):
-            cfg_label = f"Maintenance Config {sel_cfg}"
-            combined_str = f"{cap_comb:.1f} MW" if cap_comb else "—"
-            st.info(
-                f"**Active configuration: {cfg_label}** — "
-                f"{n_pods} pods × {n_per} gens = {n_total} generators · "
-                f"Combined contingency capacity: {combined_str} "
-                f"(N+1 pod + {maint_n} unit{'s' if maint_n != 1 else ''} in maintenance). "
-                f"All electrical sizing below reflects this architecture."
-            )
-        else:
-            if maint_n and maint_n > 0 and cap_comb and cap_comb < getattr(r, 'p_total_peak', 999):
-                st.warning(
-                    f"**Base design active** — with max_maintenance_units = {maint_n}, "
-                    f"the base design (combined cap {cap_comb:.1f} MW) does not cover the "
-                    f"combined contingency. Go to the **Reliability tab** to select "
-                    f"Config A, B, or C and click **▶ Apply & Re-run Sizing**."
-                )
-            else:
-                st.caption(
-                    f"Base design: {n_pods} pods × {n_per} gens = {n_total} generators. "
-                    f"To apply a maintenance-aware configuration, go to the "
-                    f"Reliability tab and select Config A, B, or C."
-                )
 
         st.divider()
 
@@ -4995,23 +4863,9 @@ def main():
 
     # Auto-run sizing on every input change (reactive)
     _skip_wizard = st.session_state.pop("_wizard_just_completed", False)
-    _do_config_rerun = st.session_state.pop("_config_rerun", False)
 
     if _skip_wizard:
         pass  # First render after wizard — result already correct
-    elif _do_config_rerun:
-        # Re-run sizing with current sidebar inputs_dict, which already contains
-        # the user's fleet config selection from st.session_state['fleet_maint_config_sel'].
-        # Using _build_inputs_from_wizard() here was wrong: it hardcoded
-        # selected_fleet_config_maint=INPUT_DEFAULTS, ignoring the radio button.
-        try:
-            sizing_input = SizingInput(**inputs_dict)
-            result = run_full_sizing(sizing_input)
-            st.session_state.result = result
-        except Exception as e:
-            st.error(f"Re-run sizing failed: {e}")
-            import traceback
-            st.code(traceback.format_exc())
     else:
         try:
             sizing_input = SizingInput(**inputs_dict)

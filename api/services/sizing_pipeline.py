@@ -40,7 +40,6 @@ from core.engine import (
     lcoe_gap_recommender,
     footprint_optimization_recommendations,
     calculate_gas_pipeline,
-    calculate_fleet_maintenance_configs,
     get_electrical_path_factor,
 )
 from core.generator_library import GENERATOR_LIBRARY
@@ -309,41 +308,6 @@ def run_full_sizing(inputs: SizingInput) -> dict:
     a_system_calculated  = pod_result['a_system_calculated']
     a_gen_derived        = a_gen
     max_normal_loading_pct = max_normal_loading * 100.0
-
-    # ── Fleet Maintenance Configs (P12) ──
-    max_maint_units = getattr(inputs, 'max_maintenance_units', 0)
-    fleet_maintenance_configs = calculate_fleet_maintenance_configs(
-        p_total_peak          = p_total_peak,
-        unit_site_cap         = unit_site_cap,
-        a_gen                 = a_gen,
-        avail_req             = avail_decimal,
-        max_normal_loading    = max_normal_loading,
-        max_maintenance_units = max_maint_units,
-        base_n_pods           = pod_result['n_pods'],
-    )
-    # Annotate base pod_result with C4 fields
-    pod_result['max_maintenance_units'] = max_maint_units
-    pod_result['cap_combined'] = pod_result.get('cap_combined', pod_result['cap_contingency'])
-    pod_result['maintenance_margin_mw'] = round(
-        pod_result['cap_combined'] - p_total_peak, 3)
-
-    # ── P30: Override fleet variables from selected maintenance config ──
-    # Must run BEFORE electrical sizing and all downstream calculations so that
-    # n_total, installed_cap, n_pods, n_per_pod, load_per_unit_pct all reflect
-    # the user-selected config (A / B / C) rather than the base pod optimizer result.
-    _sel_maint_cfg = getattr(inputs, 'selected_fleet_config_maint', None)
-    if _sel_maint_cfg and fleet_maintenance_configs and _sel_maint_cfg in fleet_maintenance_configs:
-        _mc = fleet_maintenance_configs[_sel_maint_cfg]
-        n_running               = _mc['n_running']
-        n_reserve               = _mc['n_reserve']
-        n_total_pod             = _mc['n_total']
-        installed_cap_pod       = _mc['installed_cap']
-        load_per_unit_pct       = _mc['loading_normal_pct']
-        n_pods                  = _mc['n_pods']
-        n_per_pod               = _mc['n_per_pod']
-        cap_contingency         = _mc['cap_contingency']
-        loading_contingency_pct = _mc['loading_contingency_pct']
-        a_system_calculated     = _mc['a_system_calculated']
 
     # ── Electrical Sizing (P08) ──
     from api.services.electrical_sizing import calculate_electrical_sizing
@@ -1131,12 +1095,6 @@ def run_full_sizing(inputs: SizingInput) -> dict:
         electrical_sizing=electrical,
         # Gas pipeline (P10)
         gas_pipeline=gas_pipeline,
-        # Fleet Maintenance (P12)
-        cap_combined=pod_result.get('cap_combined'),
-        maintenance_margin_mw=pod_result.get('maintenance_margin_mw'),
-        max_maintenance_units=max_maint_units,
-        fleet_maintenance_configs=fleet_maintenance_configs if fleet_maintenance_configs else None,
-        selected_fleet_config_maint=getattr(inputs, 'selected_fleet_config_maint', 'B'),
     )
 
 

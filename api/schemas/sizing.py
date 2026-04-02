@@ -108,10 +108,6 @@ class SizingInput(BaseModel):
     n_phases: int = Field(3, ge=1, le=5)
     months_between_phases: int = Field(6, ge=1, le=24)
 
-    # ── Fleet Maintenance (P12) ──
-    max_maintenance_units: int = Field(0, ge=0, le=10, description="Max gens in simultaneous maintenance")
-    selected_fleet_config_maint: str = Field("B", description="Fleet maint config for CAPEX: A/B/C")
-
     # ── Footprint ──
     enable_footprint_limit: bool = False
     max_area_m2: float = Field(10000.0, gt=0)
@@ -213,13 +209,6 @@ class SizingResult(BaseModel):
     a_system_calculated: float = 0.0
     a_gen_derived: float = 0.0
     max_normal_loading_pct: float = 0.0
-    # Fleet Maintenance (P12)
-    cap_combined: Optional[float] = None
-    maintenance_margin_mw: Optional[float] = None
-    max_maintenance_units: Optional[int] = None
-    fleet_maintenance_configs: Optional[dict] = None
-    selected_fleet_config_maint: Optional[str] = None
-
     # ── Spinning Reserve ──
     spinning_reserve_mw: float
     spinning_from_gens: float

@@ -301,6 +301,16 @@ All `_wiz_` number_input widgets use: `value=float(st.session_state.get("_wiz_ke
   Step-up transformers captured in binomial fleet model, NOT in this factor.
 - **Tests:** 48/48 pass.
 
+### P31 — Fix config override not reaching pipeline (2026-04-02)
+- P30's `sizing_pipeline.py` override IS correct — produces A=$312M, B=$342M, C=$327M when called directly
+- **Root cause:** Two bugs in `streamlit_app.py`, not in the pipeline:
+  1. `_build_inputs_from_wizard()` hardcoded `selected_fleet_config_maint=INPUT_DEFAULTS['B']`,
+     ignoring the user's radio button selection (`fleet_maint_config_sel`)
+  2. `_config_rerun` handler called `_build_inputs_from_wizard()` (bug 1) instead of
+     `inputs_dict` from sidebar (which already has correct `fleet_maint_config_sel`)
+- **Fix:** Read `fleet_maint_config_sel` from session state in `_build_inputs_from_wizard()`;
+  `_config_rerun` now uses `inputs_dict` directly — no wizard rebuild needed
+
 ### P30 — Fix preferred_config propagation to downstream results (2026-04-01)
 - Fixed `selected_fleet_config_maint` (A/B/C) not changing CAPEX, LCOE, or other results
 - **Root cause:** pipeline stored configs but never overrode fleet variables before downstream calcs

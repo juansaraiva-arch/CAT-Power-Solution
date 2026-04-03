@@ -287,6 +287,14 @@ All `_wiz_` number_input widgets use: `value=float(st.session_state.get("_wiz_ke
   Step-up transformers captured in binomial fleet model, NOT in this factor.
 - **Tests:** 48/48 pass.
 
+### P34 — Remove BESS Strategy selectbox (2026-04-02)
+- Removed `BESS_STRATEGIES` constant and BESS Strategy selectbox from wizard Step 3 and sidebar
+- Pipeline always uses `"Hybrid (Balanced)"` internally — hardcoded in `_build_inputs_from_wizard()` and `inputs_dict`
+- User controls BESS sizing via autonomy slider only (minutes)
+- BESS tab now shows autonomy instead of strategy name
+- BESS checklist "Peak Shaving" now driven by `r.use_bess` instead of strategy name check
+- Cleaned up strategy-dependent autonomy warning messages in BESS tab
+
 ### P32 — Simplify reliability to single config (2026-04-02)
 - Eliminated 3-config (A/B/C) maintenance architecture selector and all associated plumbing
 - **Removed from `sizing_pipeline.py`:** `calculate_fleet_maintenance_configs` call + P30 override block + 5 maintenance fields from SizingResult assembly + import of `calculate_fleet_maintenance_configs`

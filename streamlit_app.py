@@ -742,8 +742,11 @@ def render_sidebar():
             value=float(INPUT_DEFAULTS["load_ramp_req"]), step=0.5,
             help=HELP_TEXTS.get("load_ramp_req", ""),
         )
-        # spinning_res_pct removed — now derived from physical contingencies (P04)
-        spinning_res_pct = 0.0
+        spinning_res_pct = st.number_input(
+            "Spinning Reserve (%)", min_value=0.0, max_value=100.0,
+            value=float(INPUT_DEFAULTS["spinning_res_pct"]), step=5.0,
+            help=HELP_TEXTS.get("spinning_res_pct", ""),
+        )
 
         st.markdown("---")
 

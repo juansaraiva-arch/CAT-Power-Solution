@@ -3660,79 +3660,177 @@ def render_gas_consumption_tab(r):
 # =============================================================================
 # TAB 15: PDF REPORT
 # =============================================================================
-def render_pdf_tab(r):
-    """PDF report download."""
+# =============================================================================
+# TAB: PROPOSAL
+# =============================================================================
+def render_proposal_tab(r):
+    """Proposal document generation with exhibit selection."""
 
-    st.subheader("Download Sizing Report")
+    st.subheader("Customer Proposal")
     st.markdown(
-        "Generate a comprehensive PDF report with all sizing results, "
-        "charts, and technical specifications."
+        "Generate the customer proposal document. Select which exhibits "
+        "to include. CVA and ESC are always included as mandatory appendices."
     )
 
-    try:
-        pdf_data = r.model_dump()
+    st.divider()
 
-        # ── gen_data ─────────────────────────────────────────────────────────
-        gen_data = GENERATOR_LIBRARY.get(r.selected_gen, {})
-        pdf_data["gen_data"] = gen_data
+    # ---- Mandatory Appendices (always included, shown as info) ----
+    st.markdown("**Mandatory Appendices** (always included)")
+    col1, col2, col3 = st.columns(3)
+    col1.markdown("✅ Appendix A — Definitions")
+    col2.markdown("✅ Appendix B — Extended Service Coverage (ESC)")
+    col3.markdown("✅ Appendix C — Customer Value Agreement (CVA)")
 
-        # ── Flatten emissions dict → top-level PDF fields ────────────────────
-        emissions = r.emissions or {}
-        co2_tpy   = emissions.get('co2_tpy', 0.0)   # tons/year
-        nox_tpy   = emissions.get('nox_tpy', 0.0)   # tons/year
-        co_tpy    = emissions.get('co_tpy',  0.0)   # tons/year
+    st.divider()
 
-        # 1 ton/yr ÷ 8760 hr × 2204.62 lb/ton = lb/hr
-        _T_TO_LB_HR = 2204.62 / 8760.0
+    # ---- Optional Exhibits (user selects via checkboxes) ----
+    st.markdown("**Optional Exhibits** (select to include)")
 
-        pdf_data['co2_ton_yr']       = round(co2_tpy, 1)
-        pdf_data['nox_lb_hr']        = round(nox_tpy * _T_TO_LB_HR, 3)
-        pdf_data['co_lb_hr']         = round(co_tpy  * _T_TO_LB_HR, 3)
-
-        # Carbon cost = CO2 tons/year × carbon_price ($/ton)
-        _carbon_price = getattr(r, 'carbon_price_per_ton', 0.0) or 0.0
-        pdf_data['carbon_cost_year'] = round(co2_tpy * _carbon_price, 2)
-
-        # ── CAPEX items (from r.capex_breakdown — same source as Financial tab) ──
-        # pdf_report.py expects: item.get('label') and item.get('value_m')
-        _capex_bd = r.capex_breakdown or {}
-        pdf_data['capex_items'] = [
-            {
-                'label':   k.replace('_', ' ').title(),
-                'value_m': round(float(v) / 1e6, 2) if v else 0.0,
-            }
-            for k, v in _capex_bd.items()
-        ]
-        # pdf_report.py line 524 reads 'initial_capex_sum' for TOTAL row
-        pdf_data['initial_capex_sum'] = getattr(r, 'total_capex', 0)
-
-        # ── Field name alignment ─────────────────────────────────────────────
-        # pdf_report.py reads 'selected_config' as dict for spinning reserve
-        pdf_data['selected_config'] = {
-            'spinning_reserve_mw': getattr(r, 'spinning_reserve_mw', 0),
-            'spinning_from_gens':  getattr(r, 'spinning_from_gens', 0),
-            'spinning_from_bess':  getattr(r, 'spinning_from_bess', 0),
-            'headroom_mw':         getattr(r, 'headroom_mw', 0),
-        }
-
-        # pdf_report.py reads 'pue_actual'
-        pdf_data['pue_actual'] = r.pue if hasattr(r, 'pue') else r.p_total_dc / max(r.p_it, 1)
-
-        # Pod architecture
-        pdf_data['n_pods']    = getattr(r, 'n_pods', None)
-        pdf_data['n_per_pod'] = getattr(r, 'n_per_pod', None)
-
-        pdf_bytes = generate_comprehensive_pdf(pdf_data)
-
-        st.download_button(
-            label=":page_facing_up: Download PDF Report",
-            data=pdf_bytes,
-            file_name=f"CAT_Sizing_{r.selected_gen}_{r.p_it:.0f}MW.pdf",
-            mime="application/pdf",
-            type="primary",
+    col1, col2 = st.columns(2)
+    with col1:
+        include_datasheets = st.checkbox(
+            "Datasheets",
+            value=True,
+            help="Equipment datasheets for the selected generator model.",
+            key="_exhibit_datasheets",
         )
-    except Exception as e:
-        st.error(f"Error generating PDF: {e}")
+        include_warranty = st.checkbox(
+            "Warranty Statement",
+            value=False,
+            help="Warranty terms and conditions (dealer-specific).",
+            key="_exhibit_warranty",
+        )
+        include_layout = st.checkbox(
+            "Conceptual Layout",
+            value=False,
+            help="Preliminary site layout drawing.",
+            key="_exhibit_layout",
+        )
+
+    with col2:
+        include_scope = st.checkbox(
+            "Scope of Supply Matrix",
+            value=False,
+            help="Detailed scope of supply breakdown.",
+            key="_exhibit_scope",
+        )
+        include_sizing_report = st.checkbox(
+            "Sizing Report (PDF)",
+            value=True,
+            help="Comprehensive sizing results from this tool — fleet, BESS, "
+                 "electrical, financial, emissions, and all calculated parameters.",
+            key="_exhibit_sizing_report",
+        )
+        include_additional_docs = st.checkbox(
+            "Additional Technical Documents",
+            value=False,
+            help="Fuel analyses, engineering assumptions, or other supporting documents.",
+            key="_exhibit_additional_docs",
+        )
+
+    # Build the selected exhibits list with dynamic lettering
+    selected_exhibits = []
+    exhibit_options = [
+        ("Datasheets", include_datasheets, "Equipment datasheets for the selected generator."),
+        ("Warranty Statement", include_warranty, "Dealer-specific warranty terms."),
+        ("Conceptual Layout", include_layout, "Preliminary site layout."),
+        ("Scope of Supply Matrix", include_scope, "Detailed scope breakdown."),
+        ("Sizing Report", include_sizing_report, "Comprehensive sizing results from CAT Power Solution."),
+        ("Additional Technical Documents", include_additional_docs, "Supporting technical documents."),
+    ]
+
+    for name, included, description in exhibit_options:
+        if included:
+            letter = chr(ord('D') + len(selected_exhibits))
+            selected_exhibits.append({
+                "letter": letter,
+                "name": name,
+                "description": description,
+            })
+
+    # Store in session state for P41B (Word generation)
+    st.session_state["_proposal_exhibits"] = selected_exhibits
+    st.session_state["_proposal_mandatory"] = [
+        {"letter": "A", "name": "Definitions"},
+        {"letter": "B", "name": "Extended Service Coverage (ESC)"},
+        {"letter": "C", "name": "Customer Value Agreement (CVA)"},
+    ]
+
+    # ---- Preview: Table of Contents for Appendices ----
+    st.divider()
+    st.markdown("**Appendices Preview**")
+
+    toc_items = [
+        "Appendix A — Definitions",
+        "Appendix B — Extended Service Coverage (ESC)",
+        "Appendix C — Customer Value Agreement (CVA)",
+    ]
+    for exhibit in selected_exhibits:
+        toc_items.append(f"Appendix {exhibit['letter']} — {exhibit['name']}")
+
+    for item in toc_items:
+        st.markdown(f"- {item}")
+
+    # ---- Download Buttons ----
+    st.divider()
+
+    col_pdf, col_docx = st.columns(2)
+
+    # Sizing Report PDF
+    with col_pdf:
+        st.markdown("**Sizing Report (PDF)**")
+        try:
+            pdf_data = r.model_dump()
+            gen_data = GENERATOR_LIBRARY.get(r.selected_gen, {})
+            pdf_data["gen_data"] = gen_data
+
+            emissions = r.emissions or {}
+            co2_tpy = emissions.get('co2_tpy', 0.0)
+            nox_tpy = emissions.get('nox_tpy', 0.0)
+            co_tpy  = emissions.get('co_tpy',  0.0)
+            _T_TO_LB_HR = 2204.62 / 8760.0
+            pdf_data['co2_ton_yr']       = round(co2_tpy, 1)
+            pdf_data['nox_lb_hr']        = round(nox_tpy * _T_TO_LB_HR, 3)
+            pdf_data['co_lb_hr']         = round(co_tpy  * _T_TO_LB_HR, 3)
+            _carbon_price = getattr(r, 'carbon_price_per_ton', 0.0) or 0.0
+            pdf_data['carbon_cost_year'] = round(co2_tpy * _carbon_price, 2)
+            _capex_bd = r.capex_breakdown or {}
+            pdf_data['capex_items'] = [
+                {'label': k.replace('_', ' ').title(),
+                 'value_m': round(float(v) / 1e6, 2) if v else 0.0}
+                for k, v in _capex_bd.items()
+            ]
+            pdf_data['initial_capex_sum'] = getattr(r, 'total_capex', 0)
+            pdf_data['selected_config'] = {
+                'spinning_reserve_mw': getattr(r, 'spinning_reserve_mw', 0),
+                'spinning_from_gens':  getattr(r, 'spinning_from_gens', 0),
+                'spinning_from_bess':  getattr(r, 'spinning_from_bess', 0),
+                'headroom_mw':         getattr(r, 'headroom_mw', 0),
+            }
+            pdf_data['pue_actual'] = r.pue if hasattr(r, 'pue') else r.p_total_dc / max(r.p_it, 1)
+            pdf_data['n_pods']    = getattr(r, 'n_pods', None)
+            pdf_data['n_per_pod'] = getattr(r, 'n_per_pod', None)
+
+            pdf_bytes = generate_comprehensive_pdf(pdf_data)
+            st.download_button(
+                label=":page_facing_up: Download Sizing Report",
+                data=pdf_bytes,
+                file_name=f"CAT_Sizing_{r.selected_gen}_{r.p_it:.0f}MW.pdf",
+                mime="application/pdf",
+                type="primary",
+            )
+        except Exception as e:
+            st.error(f"Error generating PDF: {e}")
+
+    # Word Proposal (placeholder for P41B)
+    with col_docx:
+        st.markdown("**Customer Proposal (Word)**")
+        st.info(
+            "Word proposal generation coming soon. "
+            "The document will include all mandatory appendices (Definitions, ESC, CVA) "
+            f"plus {len(selected_exhibits)} selected exhibit(s)."
+        )
+        # P41B will replace this st.info with actual Word generation
 
 
 # =============================================================================
@@ -3834,8 +3932,8 @@ def _build_proposal_info_from_session() -> dict:
     }
 
 
-def render_proposal_tab(r):
-    """Render the Proposal Document generation tab."""
+def render_docx_proposal_tab(r):
+    """Render the DOCX Proposal Document generation tab (ENABLE_PROPOSAL_GEN)."""
     st.subheader("Customer Proposal Document")
     st.markdown(
         "Generate a formatted Word (.docx) proposal for this project. "
@@ -4000,7 +4098,7 @@ def main():
         tab_labels.append(":fuelpump: LNG Logistics")
     if ENABLE_PROPOSAL_GEN:
         tab_labels.append(":memo: Proposal Doc")
-    tab_labels.append(":page_facing_up: PDF Report")
+    tab_labels.append(":page_facing_up: Proposal")
 
     tabs = st.tabs(tab_labels)
 
@@ -4083,12 +4181,12 @@ def main():
     # Tab: Proposal Doc (conditional on feature flag)
     if ENABLE_PROPOSAL_GEN:
         with tabs[tab_idx]:
-            render_proposal_tab(r)
+            render_docx_proposal_tab(r)
         tab_idx += 1
 
-    # Tab: PDF Report
+    # Tab: Proposal
     with tabs[tab_idx]:
-        render_pdf_tab(r)
+        render_proposal_tab(r)
     tab_idx += 1
 
 

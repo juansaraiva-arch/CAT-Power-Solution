@@ -746,6 +746,7 @@ def render_sidebar():
             "Spinning Reserve (%)", min_value=0.0, max_value=100.0,
             value=float(INPUT_DEFAULTS["spinning_res_pct"]), step=5.0,
             help=HELP_TEXTS.get("spinning_res_pct", ""),
+            key="spinning_res_pct_input",
         )
 
         st.markdown("---")

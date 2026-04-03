@@ -284,6 +284,13 @@ All sidebar widgets use `value=INPUT_DEFAULTS[...]` directly — no `_stored_*` 
   Step-up transformers captured in binomial fleet model, NOT in this factor.
 - **Tests:** 48/48 pass.
 
+### P40 — SR shortfall advisory below Design Validation Scorecard (2026-04-03)
+- Added SR shortfall advisory block in `render_summary_tab()` BELOW the design scorecard
+- When spinning reserve is insufficient (`sr_deficit > 0`): shows `st.warning` with deficit MW, available vs required breakdown, and 3 actionable options (enable/increase BESS, add N generators, increase BESS autonomy)
+- When SR passes with thin margin (<20%): shows `st.info` with margin percentage
+- Added SR pass/fail summary in `render_electrical_tab()` after the SR detail table: `st.error` on deficit, `st.success` with margin MW when satisfied
+- No changes to scorecard tile rendering, `core/`, or `api/`
+
 ### P37 — Reorganize sidebar Basic + Advanced (2026-04-03)
 - Restructured `render_sidebar()` from 13 flat expanders → 6 expanders: Project Info, Load Profile, Generator & BESS, Site Conditions, Economics, Advanced
 - **Load Profile** slimmed to 4 fields: DC Type, IT Load, PUE, Capacity Factor

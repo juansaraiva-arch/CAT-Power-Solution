@@ -149,7 +149,6 @@ _DC_DEFAULT_KEYS = [
     ("_stored_avail_req",      "avail_req"),
 ]
 
-BESS_STRATEGIES = ["Transient Only", "Hybrid (Balanced)", "Reliability Priority"]
 
 REGIONS = [
     "US - Gulf Coast", "US - West Coast", "US - Northeast",
@@ -882,15 +881,6 @@ def render_wizard_step_3():
                      on_change=_make_wizard_persist_callback("_wiz_include_chp", "_stored_include_chp"),
                      help=HELP_TEXTS.get("include_chp", ""))
 
-    if st.session_state.get("_wiz_use_bess", True):
-        _bess_default = INPUT_DEFAULTS["bess_strategy"]
-        _bess_idx = BESS_STRATEGIES.index(_bess_default) if _bess_default in BESS_STRATEGIES else 1
-        st.selectbox("BESS Strategy", BESS_STRATEGIES,
-                      index=_bess_idx,
-                      key="_wiz_bess_strategy",
-                      on_change=_make_wizard_persist_callback("_wiz_bess_strategy", "_stored_bess_strategy"),
-                      help=HELP_TEXTS.get("bess_strategy", ""))
-
     col1, col2 = st.columns(2)
     with col1:
         cooling_options = ["Air-Cooled", "Water-Cooled"]
@@ -1192,7 +1182,7 @@ def _build_inputs_from_wizard():
         generator_model=gen_model,
         gen_overrides=None,
         use_bess=_v("_stored_use_bess", "_wiz_use_bess", INPUT_DEFAULTS["use_bess"]),
-        bess_strategy=_v("_stored_bess_strategy", "_wiz_bess_strategy", INPUT_DEFAULTS["bess_strategy"]),
+        bess_strategy="Hybrid (Balanced)",
         enable_black_start=_v("_stored_enable_black_start", "_wiz_enable_black_start", INPUT_DEFAULTS["enable_black_start"]),
         cooling_method=_v("_stored_cooling", "_wiz_cooling", INPUT_DEFAULTS["cooling_method"]),
         freq_hz=int(ss.get("_wiz_freq_hz", INPUT_DEFAULTS["freq_hz"])),
@@ -1538,24 +1528,11 @@ def render_sidebar():
             "Include BESS", value=st.session_state.get("_stored_use_bess", INPUT_DEFAULTS["use_bess"]),
             help=HELP_TEXTS.get("use_bess", ""),
         )
-        _stored_bess_strat = st.session_state.get("_stored_bess_strategy", INPUT_DEFAULTS["bess_strategy"])
-        bess_strategy = _stored_bess_strat
+        bess_strategy = "Hybrid (Balanced)"
         bess_autonomy_min = float(INPUT_DEFAULTS.get("bess_autonomy_min", 10.0))
         bess_dod = float(INPUT_DEFAULTS.get("bess_dod", 0.85))
         if use_bess:
-            _bess_strat_idx = BESS_STRATEGIES.index(_stored_bess_strat) if _stored_bess_strat in BESS_STRATEGIES else 1
-            bess_strategy = st.selectbox(
-                "BESS Strategy", BESS_STRATEGIES,
-                index=_bess_strat_idx,
-                help=HELP_TEXTS.get("bess_strategy", ""),
-            )
-            # Default autonomy depends on selected strategy
-            _autonomy_defaults = {
-                'Transient Only':        INPUT_DEFAULTS.get('bess_autonomy_min_transient', 1.0),
-                'Hybrid (Balanced)':     INPUT_DEFAULTS.get('bess_autonomy_min_hybrid', 10.0),
-                'Reliability Priority':  INPUT_DEFAULTS.get('bess_autonomy_min_reliability', 30.0),
-            }
-            _autonomy_default = _autonomy_defaults.get(bess_strategy, 10.0)
+            _autonomy_default = INPUT_DEFAULTS.get('bess_autonomy_min', 10.0)
             bess_autonomy_min = st.number_input(
                 "BESS autonomy (minutes)",
                 min_value=0.5,
@@ -2836,34 +2813,22 @@ def render_bess_tab(r):
     # ── BESS Autonomy Control ─────────────────────────────────────────────
     st.subheader("BESS Autonomy")
 
-    _auto_min_calc  = getattr(r, 'bess_autonomy_min', None)
+    _auto_min_calc  = getattr(r, 'bess_autonomy_min', 10.0) or 10.0
     _auto_basis     = getattr(r, 'bess_autonomy_min_basis', '')
-    _strategy       = getattr(r, 'bess_strategy', 'Hybrid (Balanced)')
-
-    # Per-strategy minimums for reference (mirrors sizing_pipeline.py defaults)
-    _AUTONOMY_MINS = {
-        "Transient Only":       1,
-        "Hybrid (Balanced)":   10,
-        "Reliability Priority": 30,
-    }
-    _min_for_strategy = _AUTONOMY_MINS.get(_strategy, 10)
-    _calc_min = _auto_min_calc if _auto_min_calc else _min_for_strategy
 
     st.info(
-        f"**Strategy: {_strategy}**  \n"
-        f"Minimum required autonomy: **{_calc_min:.0f} minutes** "
+        f"**BESS Autonomy: {_auto_min_calc:.0f} minutes** "
         + (f"({_auto_basis})" if _auto_basis else
-           f"(transient support + spinning reserve coverage for this strategy)") +
-        "  \nYou may increase autonomy for additional resilience. "
-        "Reducing below the minimum will trigger a warning — the BESS may not "
-        "fulfill its spinning reserve obligation."
+           f"(transient support + spinning reserve coverage)") +
+        "  \nYou may increase autonomy via the sidebar for additional resilience. "
+        "Reducing below the spinning reserve obligation window will trigger a warning."
     )
 
     _c1, _c2, _c3 = st.columns(3)
     _c1.metric(
-        "Calculated Minimum",
-        f"{_calc_min:.0f} min",
-        help=f"Minimum autonomy required by the '{_strategy}' strategy to fulfill spinning reserve.",
+        "Configured Autonomy",
+        f"{_auto_min_calc:.0f} min",
+        help="BESS autonomy configured by the user (sidebar or wizard).",
     )
     _c2.metric(
         "Calculated Energy",
@@ -2878,7 +2843,7 @@ def render_bess_tab(r):
 
     # Override input
     _override_key = "_bess_autonomy_override_min"
-    _current_override = st.session_state.get(_override_key, float(_calc_min))
+    _current_override = st.session_state.get(_override_key, float(_auto_min_calc))
 
     bess_autonomy_override = st.number_input(
         "Override Autonomy (minutes)",
@@ -2889,24 +2854,23 @@ def render_bess_tab(r):
         format="%.0f",
         key=_override_key,
         help=(
-            "Override the calculated autonomy. Values above the minimum add resilience "
+            "Override the configured autonomy. Values above the current setting add resilience "
             "and increase BESS energy proportionally. "
-            f"Values below {_calc_min:.0f} min will trigger a warning."
+            f"Values below {_auto_min_calc:.0f} min will trigger a warning."
         ),
     )
 
-    # Warning if override is below minimum
-    if bess_autonomy_override < _calc_min * 0.999:  # 0.1% tolerance
+    # Warning if override is below configured minimum
+    if bess_autonomy_override < _auto_min_calc * 0.999:  # 0.1% tolerance
         st.warning(
-            f"⚠️ **Autonomy below calculated minimum.** "
-            f"The '{_strategy}' strategy requires at least **{_calc_min:.0f} minutes** "
-            f"to fulfill its spinning reserve obligation "
-            f"({_min_for_strategy} min is the strategy baseline). "
+            f"⚠️ **Autonomy below configured minimum.** "
+            f"The design requires at least **{_auto_min_calc:.0f} minutes** "
+            f"to fulfill its spinning reserve obligation. "
             f"With {bess_autonomy_override:.0f} minutes, the BESS may not bridge a "
             f"generator start-up event or maintain frequency during a contingency. "
-            f"**Increase autonomy or change strategy before finalizing the design.**"
+            f"**Increase autonomy before finalizing the design.**"
         )
-    elif bess_autonomy_override > _calc_min * 1.001:
+    elif bess_autonomy_override > _auto_min_calc * 1.001:
         # Show what the override means in MWh
         _dod = getattr(r, 'bess_dod', 0.85) or 0.85
         _override_energy = r.bess_power_mw * (bess_autonomy_override / 60) / _dod
@@ -2944,7 +2908,7 @@ def render_bess_tab(r):
         f" = {r.bess_energy_mwh:.2f} MWh"
     )
 
-    st.markdown(f"**Strategy:** {r.bess_strategy}")
+    st.markdown(f"**BESS Autonomy:** {getattr(r, 'bess_autonomy_min', 10):.0f} minutes")
 
     # Breakdown bar chart
     breakdown = r.bess_breakdown
@@ -3016,7 +2980,7 @@ def render_bess_tab(r):
         ("Black Start Capability", hasattr(r, 'bess_breakdown') and
          isinstance(r.bess_breakdown, dict) and
          'black_start' in r.bess_breakdown),
-        ("Peak Shaving", r.bess_strategy in ("Hybrid (Balanced)", "Reliability Priority")),
+        ("Peak Shaving", r.use_bess),
         ("Frequency Regulation Support", r.bess_power_mw > 0),
         ("Reliability Credit (N+X reduction)", r.spinning_from_bess > 0),
     ]

@@ -437,23 +437,8 @@ def render_sidebar():
         freq_hz = st.radio("Grid Frequency (Hz)", [60, 50], index=0, horizontal=True,
                            key="_freq_hz_proposal", help=HELP_TEXTS.get("freq_hz", ""))
 
-    # ---- 4. GERP PDF Import ----
-    with st.sidebar.expander(":page_facing_up: GERP PDF Import"):
-        uploaded_pdf = st.file_uploader("Upload GERP PDF", type=["pdf"], key="gerp_pdf")
-        if uploaded_pdf:
-            try:
-                gerp_data = parse_gerp_pdf(uploaded_pdf)
-                if gerp_data:
-                    st.success(f"Parsed: {gerp_data.get('model', 'Unknown')}")
-                    for k, v in gerp_data.items():
-                        st.caption(f"**{k}**: {v}")
-                else:
-                    st.warning("Could not extract data from PDF.")
-            except Exception as e:
-                st.error(f"PDF parse error: {e}")
-
-    # ---- 4. Load Profile ----
-    with st.sidebar.expander(":bar_chart: Load Profile", expanded=True):
+    # ---- 4. Load Profile (Basic — expanded) ----
+    with st.sidebar.expander("\U0001f4ca Load Profile", expanded=True):
         _dc_default = INPUT_DEFAULTS["dc_type"]
         dc_type = st.selectbox(
             "Data Center Type", DC_TYPES,
@@ -475,54 +460,76 @@ def render_sidebar():
             value=float(INPUT_DEFAULTS["capacity_factor"]), step=0.01,
             help=HELP_TEXTS.get("capacity_factor", ""),
         )
-        peak_avg_ratio = st.number_input(
-            "Peak / Average Ratio", min_value=1.0, max_value=2.0,
-            value=float(INPUT_DEFAULTS["peak_avg_ratio"]), step=0.05,
-            format="%.2f", help=HELP_TEXTS.get("peak_avg_ratio", ""),
-        )
-        load_step_pct = st.number_input(
-            "Max Step Load (%)", min_value=0.0, max_value=100.0,
-            value=float(INPUT_DEFAULTS["load_step_pct"]), step=5.0,
-            help=HELP_TEXTS.get("load_step_pct", ""),
-        )
-        # spinning_res_pct removed — now derived from physical contingencies (P04)
-        spinning_res_pct = 0.0
 
-        st.markdown("**Protection Limits**")
-        voltage_sag_limit_pct = st.number_input(
-            "Max Voltage Sag (%)", min_value=5.0, max_value=35.0,
-            value=float(INPUT_DEFAULTS.get('voltage_sag_limit_pct', 15.0)), step=1.0,
-            help="Maximum acceptable voltage sag at generator bus during a load step event. "
-                 "Typical data center requirement: 10-20%.",
+    # ---- 5. Generator & BESS (Basic — expanded) ----
+    with st.sidebar.expander("\u26a1 Generator & BESS", expanded=True):
+        gen_filter = st.multiselect(
+            "Generator Types", GEN_TYPE_OPTIONS,
+            default=INPUT_DEFAULTS["gen_filter"],
+            help=HELP_TEXTS.get("gen_filter", ""),
         )
-        _freq_default = float(INPUT_DEFAULTS.get("freq_hz", 60))
-        freq_nadir_limit_hz = st.number_input(
-            "Min Frequency Nadir (Hz)", min_value=55.0, max_value=_freq_default - 0.1,
-            value=float(INPUT_DEFAULTS.get('freq_nadir_limit_hz', _freq_default - 0.5)),
-            step=0.1, format="%.1f",
-            help="Minimum acceptable frequency during a contingency event. "
-                 "IEEE 1547 / NERC: 59.5 Hz for 60 Hz systems.",
-        )
-        freq_rocof_limit_hz_s = st.number_input(
-            "Max RoCoF (Hz/s)", min_value=0.1, max_value=10.0,
-            value=float(INPUT_DEFAULTS.get('freq_rocof_limit_hz_s', 2.0)),
-            step=0.1, format="%.1f",
-            help="Maximum rate of change of frequency. IEEE 1547: 2.0 Hz/s.",
+        available_models = _get_filtered_models(gen_filter)
+        default_gen = INPUT_DEFAULTS["selected_gen_name"]
+        gen_idx = available_models.index(default_gen) if default_gen in available_models else 0
+        generator_model = st.selectbox(
+            "Generator Model", available_models, index=gen_idx,
+            help=HELP_TEXTS.get("selected_gen_name", ""),
         )
 
-        avail_req = st.number_input(
-            "Availability Requirement (%)", min_value=90.0, max_value=100.0,
-            value=float(INPUT_DEFAULTS["avail_req"]), step=0.01,
-            format="%.2f", help=HELP_TEXTS.get("avail_req", ""),
+        # Show selected gen specs
+        gen_data = GENERATOR_LIBRARY.get(generator_model, {})
+        if gen_data:
+            st.caption(gen_data.get("description", ""))
+            col_a, col_b = st.columns(2)
+            col_a.metric("ISO Rating", f"{gen_data['iso_rating_mw']} MW")
+            col_b.metric("Efficiency", f"{gen_data['electrical_efficiency']*100:.1f}%")
+
+        use_bess = st.checkbox(
+            "Include BESS", value=INPUT_DEFAULTS["use_bess"],
+            help=HELP_TEXTS.get("use_bess", ""),
         )
-        load_ramp_req = st.number_input(
-            "Load Ramp Rate (MW/min)", min_value=0.1, max_value=100.0,
-            value=float(INPUT_DEFAULTS["load_ramp_req"]), step=0.5,
-            help=HELP_TEXTS.get("load_ramp_req", ""),
+        bess_strategy = "Hybrid (Balanced)"
+        bess_autonomy_min = float(INPUT_DEFAULTS.get("bess_autonomy_min", 10.0))
+        bess_dod = float(INPUT_DEFAULTS.get("bess_dod", 0.85))
+        if use_bess:
+            _autonomy_default = INPUT_DEFAULTS.get('bess_autonomy_min', 10.0)
+            bess_autonomy_min = st.number_input(
+                "BESS autonomy (minutes)",
+                min_value=0.5,
+                max_value=120.0,
+                value=float(st.session_state.get('_stored_bess_autonomy_min', st.session_state.get('_bess_autonomy_min', _autonomy_default))),
+                step=0.5,
+                format="%.1f",
+                key='_bess_autonomy_min',
+                help=(
+                    "Time the BESS must sustain its rated power output. "
+                    "Drives energy capacity: MWh = MW × (min ÷ 60) ÷ DoD.\n\n"
+                    "Typical values by role:\n"
+                    "• 1 min — Transient only (governor gap cover)\n"
+                    "• 10 min — Hybrid (time to start and sync one unit)\n"
+                    "• 30 min — Reliability priority (operator response window)\n"
+                    "• 60–120 min — Short-term backup (client-specific requirement)"
+                ),
+            )
+            bess_dod = st.number_input(
+                "BESS Depth of Discharge",
+                min_value=0.50, max_value=1.00,
+                value=float(INPUT_DEFAULTS.get("bess_dod", 0.85)),
+                step=0.05, format="%.2f",
+                help="Usable fraction of total battery capacity (0.85 = 85% DoD typical for Li-ion).",
+            )
+        enable_black_start = st.checkbox(
+            "Black Start Capable", value=INPUT_DEFAULTS["enable_black_start"],
+            help=HELP_TEXTS.get("enable_black_start", ""),
+        )
+        include_chp = st.checkbox(
+            "Include CHP / Tri-Generation",
+            value=INPUT_DEFAULTS.get("include_chp", False),
+            help=HELP_TEXTS.get("include_chp", ""),
         )
 
-    # ---- 5. Site Conditions ----
-    with st.sidebar.expander(":thermometer: Site Conditions"):
+    # ---- 6. Site Conditions (collapsed) ----
+    with st.sidebar.expander("\U0001f321\ufe0f Site Conditions"):
         temp_default_c = float(INPUT_DEFAULTS["site_temp_c"])
         temp_display_default = _to_display_temp(temp_default_c)
         temp_min = _to_display_temp(-40.0)
@@ -593,67 +600,190 @@ def render_sidebar():
                 format="%.2f", help=HELP_TEXTS.get("derate_factor_manual", ""),
             )
 
-    # ---- 6. Technology ----
-    with st.sidebar.expander(":gear: Technology"):
-        gen_filter = st.multiselect(
-            "Generator Types", GEN_TYPE_OPTIONS,
-            default=INPUT_DEFAULTS["gen_filter"],
-            help=HELP_TEXTS.get("gen_filter", ""),
+    # ---- 7. Economics (collapsed) ----
+    with st.sidebar.expander("\U0001f4b0 Economics"):
+        _region_default = INPUT_DEFAULTS["region"]
+        region = st.selectbox(
+            "Region", REGIONS,
+            index=REGIONS.index(_region_default) if _region_default in REGIONS else 0,
+            help=HELP_TEXTS.get("region", ""),
         )
-        available_models = _get_filtered_models(gen_filter)
-        default_gen = INPUT_DEFAULTS["selected_gen_name"]
-        gen_idx = available_models.index(default_gen) if default_gen in available_models else 0
-        generator_model = st.selectbox(
-            "Generator Model", available_models, index=gen_idx,
-            help=HELP_TEXTS.get("selected_gen_name", ""),
+        gas_price = st.number_input(
+            "Pipeline Gas Price ($/MMBtu)", min_value=0.0, max_value=50.0,
+            value=float(INPUT_DEFAULTS["gas_price_pipeline"]), step=0.5,
+            help=HELP_TEXTS.get("gas_price_pipeline", ""),
+        )
+        wacc = st.number_input(
+            "WACC (%)", min_value=0.0, max_value=30.0,
+            value=float(INPUT_DEFAULTS["wacc"]), step=0.5,
+            help=HELP_TEXTS.get("wacc", ""),
+        )
+        project_years = st.number_input(
+            "Project Life (years)", min_value=1, max_value=40,
+            value=int(INPUT_DEFAULTS["project_years"]), step=1,
+            help=HELP_TEXTS.get("project_years", ""),
+        )
+        benchmark_price = st.number_input(
+            "Grid Benchmark ($/kWh)", min_value=0.0, max_value=1.0,
+            value=float(INPUT_DEFAULTS["benchmark_price"]), step=0.01,
+            format="%.3f", help=HELP_TEXTS.get("benchmark_price", ""),
+        )
+        carbon_price_per_ton = st.number_input(
+            "Carbon Price ($/ton CO2)", min_value=0.0, max_value=500.0,
+            value=float(INPUT_DEFAULTS["carbon_price_per_ton"]), step=5.0,
+            help=HELP_TEXTS.get("carbon_price_per_ton", ""),
+        )
+        enable_depreciation = st.checkbox(
+            "MACRS Depreciation", value=INPUT_DEFAULTS["enable_depreciation"],
+            help=HELP_TEXTS.get("enable_depreciation", ""),
         )
 
-        # Show selected gen specs
-        gen_data = GENERATOR_LIBRARY.get(generator_model, {})
-        if gen_data:
-            st.caption(gen_data.get("description", ""))
-            col_a, col_b = st.columns(2)
-            col_a.metric("ISO Rating", f"{gen_data['iso_rating_mw']} MW")
-            col_b.metric("Efficiency", f"{gen_data['electrical_efficiency']*100:.1f}%")
+        st.markdown("**CAPEX Adders** *(% of gen + install base)*")
+        with st.expander("Advanced CAPEX Adders", expanded=False):
+            st.caption(
+                "Applied as a percentage of (generator equipment + installation) subtotal. "
+                "Defaults calibrated to CAT prime power data center projects."
+            )
+            col1, col2 = st.columns(2)
+            with col1:
+                bos_pct = st.number_input(
+                    "BOS / Switchgear + Xfmr (%)", 0.0, 50.0,
+                    value=float(INPUT_DEFAULTS.get('bos_pct', 0.17)) * 100, step=1.0,
+                    help="MV switchgear, transformers, protection relays.",
+                ) / 100.0
+                civil_pct = st.number_input(
+                    "Civil / Site Work (%)", 0.0, 50.0,
+                    value=float(INPUT_DEFAULTS.get('civil_pct', 0.13)) * 100, step=1.0,
+                    help="Foundations, grading, drainage, fencing.",
+                ) / 100.0
+                fuel_system_pct = st.number_input(
+                    "Fuel System (%)", 0.0, 30.0,
+                    value=float(INPUT_DEFAULTS.get('fuel_system_pct', 0.06)) * 100, step=0.5,
+                    help="Gas piping, regulators, metering.",
+                ) / 100.0
+            with col2:
+                epc_pct = st.number_input(
+                    "EPC Management (%)", 0.0, 30.0,
+                    value=float(INPUT_DEFAULTS.get('epc_pct', 0.12)) * 100, step=1.0,
+                    help="Engineering, procurement, construction management.",
+                ) / 100.0
+                contingency_pct = st.number_input(
+                    "Contingency (%)", 0.0, 30.0,
+                    value=float(INPUT_DEFAULTS.get('contingency_pct', 0.10)) * 100, step=1.0,
+                    help="Project contingency allowance.",
+                ) / 100.0
 
-        # freq_hz is now in Project Info expander — read from session state
-        use_bess = st.checkbox(
-            "Include BESS", value=INPUT_DEFAULTS["use_bess"],
-            help=HELP_TEXTS.get("use_bess", ""),
-        )
-        bess_strategy = "Hybrid (Balanced)"
-        bess_autonomy_min = float(INPUT_DEFAULTS.get("bess_autonomy_min", 10.0))
-        bess_dod = float(INPUT_DEFAULTS.get("bess_dod", 0.85))
-        if use_bess:
-            _autonomy_default = INPUT_DEFAULTS.get('bess_autonomy_min', 10.0)
-            bess_autonomy_min = st.number_input(
-                "BESS autonomy (minutes)",
-                min_value=0.5,
-                max_value=120.0,
-                value=float(st.session_state.get('_stored_bess_autonomy_min', st.session_state.get('_bess_autonomy_min', _autonomy_default))),
-                step=0.5,
-                format="%.1f",
-                key='_bess_autonomy_min',
+            # Infrastructure costs (absolute $)
+            st.markdown("**Infrastructure (absolute $)**")
+            col3, col4 = st.columns(2)
+            with col3:
+                pipeline_cost_usd = st.number_input(
+                    "Gas Pipeline ($)", min_value=0.0,
+                    value=float(INPUT_DEFAULTS.get('pipeline_cost_usd', 500000.0)),
+                    step=50000.0, format="%.0f",
+                    help="Gas supply pipeline to site. Default: $500k (typical short run).",
+                )
+            with col4:
+                permitting_cost_usd = st.number_input(
+                    "Permitting ($)", min_value=0.0,
+                    value=float(INPUT_DEFAULTS.get('permitting_cost_usd', 250000.0)),
+                    step=25000.0, format="%.0f",
+                    help="Environmental, electrical, and construction permits.",
+                )
+            commissioning_cost_usd = st.number_input(
+                "Commissioning ($)", min_value=0.0,
+                value=float(INPUT_DEFAULTS.get('commissioning_cost_usd', 0.0)),
+                step=50000.0, format="%.0f",
+                help="Startup and commissioning. If 0, calculated automatically from "
+                     "CAPEX adder (2.5% of gen+install).",
+            )
+
+            st.markdown("**Gas Supply Parameters**")
+            gas_supply_pressure_psia = st.number_input(
+                "Supply Pressure (psia)", min_value=10.0, max_value=1500.0,
+                value=float(INPUT_DEFAULTS.get('gas_supply_pressure_psia', 100.0)),
+                step=10.0, format="%.0f",
                 help=(
-                    "Time the BESS must sustain its rated power output. "
-                    "Drives energy capacity: MWh = MW × (min ÷ 60) ÷ DoD.\n\n"
-                    "Typical values by role:\n"
-                    "• 1 min — Transient only (governor gap cover)\n"
-                    "• 10 min — Hybrid (time to start and sync one unit)\n"
-                    "• 30 min — Reliability priority (operator response window)\n"
-                    "• 60–120 min — Short-term backup (client-specific requirement)"
+                    "Gas utility supply pressure at site boundary. "
+                    "Typical values: 60-100 psia (medium pressure industrial distribution), "
+                    "250-500 psia (high pressure transmission). "
+                    "Gas turbines require 200-300 psia — compressor may be needed."
                 ),
             )
-            bess_dod = st.number_input(
-                "BESS Depth of Discharge",
-                min_value=0.50, max_value=1.00,
-                value=float(INPUT_DEFAULTS.get("bess_dod", 0.85)),
-                step=0.05, format="%.2f",
-                help="Usable fraction of total battery capacity (0.85 = 85% DoD typical for Li-ion).",
+            gas_pipeline_length_miles = st.number_input(
+                "Pipeline Distance (miles)", min_value=0.1, max_value=50.0,
+                value=float(INPUT_DEFAULTS.get('gas_pipeline_length_miles', 1.0)),
+                step=0.5, format="%.1f",
+                help="Distance from utility tap to site boundary (Weymouth equation).",
             )
-        enable_black_start = st.checkbox(
-            "Black Start Capable", value=INPUT_DEFAULTS["enable_black_start"],
-            help=HELP_TEXTS.get("enable_black_start", ""),
+
+    # ---- 8. Advanced (collapsed — single expander, no nesting) ----
+    with st.sidebar.expander("\u2699\ufe0f Advanced", expanded=False):
+
+        # -- Load Dynamics --
+        st.markdown("**Load Dynamics**")
+        peak_avg_ratio = st.number_input(
+            "Peak / Average Ratio", min_value=1.0, max_value=2.0,
+            value=float(INPUT_DEFAULTS["peak_avg_ratio"]), step=0.05,
+            format="%.2f", help=HELP_TEXTS.get("peak_avg_ratio", ""),
+        )
+        load_step_pct = st.number_input(
+            "Max Step Load (%)", min_value=0.0, max_value=100.0,
+            value=float(INPUT_DEFAULTS["load_step_pct"]), step=5.0,
+            help=HELP_TEXTS.get("load_step_pct", ""),
+        )
+        avail_req = st.number_input(
+            "Availability Requirement (%)", min_value=90.0, max_value=100.0,
+            value=float(INPUT_DEFAULTS["avail_req"]), step=0.01,
+            format="%.2f", help=HELP_TEXTS.get("avail_req", ""),
+        )
+        load_ramp_req = st.number_input(
+            "Load Ramp Rate (MW/min)", min_value=0.1, max_value=100.0,
+            value=float(INPUT_DEFAULTS["load_ramp_req"]), step=0.5,
+            help=HELP_TEXTS.get("load_ramp_req", ""),
+        )
+        # spinning_res_pct removed — now derived from physical contingencies (P04)
+        spinning_res_pct = 0.0
+
+        st.markdown("---")
+
+        # -- Voltage & Electrical --
+        st.markdown("**Voltage & Electrical**")
+        volt_mode = st.radio(
+            "Voltage Mode", ["Auto-Recommend", "Manual"],
+            index=0, horizontal=True,
+            help=HELP_TEXTS.get("volt_mode", ""),
+        )
+        manual_voltage_kv = 13.8
+        if volt_mode == "Manual":
+            manual_voltage_kv = st.number_input(
+                "Manual Voltage (kV)", min_value=0.48, max_value=69.0,
+                value=float(INPUT_DEFAULTS["manual_voltage_kv"]), step=0.1,
+                format="%.1f",
+            )
+        # ── HV Switchgear Topology (P18) ────────────────────────────────
+        _SWG_TOPOLOGY_OPTIONS = {
+            "Single SWG (radial)":                    {"n_swg": 1, "normal_factor": 1.0, "contingency_factor": 1.0},
+            "Dual SWG — ring / sectionalized (N-1)":  {"n_swg": 2, "normal_factor": 0.5, "contingency_factor": 1.0},
+            "Double bus / double breaker":             {"n_swg": 2, "normal_factor": 0.5, "contingency_factor": 1.0},
+        }
+        swg_topology = st.selectbox(
+            "HV SWG Architecture",
+            options=list(_SWG_TOPOLOGY_OPTIONS.keys()),
+            index=1,  # default: Dual SWG ring/sectionalized
+            key="_swg_topology",
+            help=(
+                "Defines how many HV switchgear panels share the generator output. "
+                "Dual SWG (ring/sectionalized): normal operation at 50% each; "
+                "N-1 contingency requires surviving SWG to carry 100% of load. "
+                "Bus and breakers are rated for the N-1 condition. "
+                "Single SWG: bus always carries 100% — more conservative sizing."
+            ),
+        )
+        dist_loss_pct = st.number_input(
+            "Distribution Losses (%)", min_value=0.0, max_value=10.0,
+            value=float(INPUT_DEFAULTS["dist_loss_pct"]), step=0.5,
+            help=HELP_TEXTS.get("dist_loss_pct", ""),
         )
         _cooling_opts = ["Air-Cooled", "Water-Cooled"]
         _cooling_default = INPUT_DEFAULTS.get("cooling_method", "Air-Cooled")
@@ -676,11 +806,31 @@ def render_sidebar():
         if "_elec_path_avail" not in st.session_state:
             from core.engine import get_electrical_path_factor as _get_epf
             st.session_state["_elec_path_avail"] = _get_epf(bus_tie_mode)
-        dist_loss_pct = st.number_input(
-            "Distribution Losses (%)", min_value=0.0, max_value=10.0,
-            value=float(INPUT_DEFAULTS["dist_loss_pct"]), step=0.5,
-            help=HELP_TEXTS.get("dist_loss_pct", ""),
+        voltage_sag_limit_pct = st.number_input(
+            "Max Voltage Sag (%)", min_value=5.0, max_value=35.0,
+            value=float(INPUT_DEFAULTS.get('voltage_sag_limit_pct', 15.0)), step=1.0,
+            help="Maximum acceptable voltage sag at generator bus during a load step event. "
+                 "Typical data center requirement: 10-20%.",
         )
+        _freq_default = float(INPUT_DEFAULTS.get("freq_hz", 60))
+        freq_nadir_limit_hz = st.number_input(
+            "Min Frequency Nadir (Hz)", min_value=55.0, max_value=_freq_default - 0.1,
+            value=float(INPUT_DEFAULTS.get('freq_nadir_limit_hz', _freq_default - 0.5)),
+            step=0.1, format="%.1f",
+            help="Minimum acceptable frequency during a contingency event. "
+                 "IEEE 1547 / NERC: 59.5 Hz for 60 Hz systems.",
+        )
+        freq_rocof_limit_hz_s = st.number_input(
+            "Max RoCoF (Hz/s)", min_value=0.1, max_value=10.0,
+            value=float(INPUT_DEFAULTS.get('freq_rocof_limit_hz_s', 2.0)),
+            step=0.1, format="%.1f",
+            help="Maximum rate of change of frequency. IEEE 1547: 2.0 Hz/s.",
+        )
+
+        st.markdown("---")
+
+        # -- Fuel & LNG --
+        st.markdown("**Fuel & LNG**")
         _fuel_default = INPUT_DEFAULTS["fuel_mode"]
         fuel_mode = st.radio(
             "Fuel Supply", FUEL_MODES,
@@ -691,7 +841,6 @@ def render_sidebar():
         lng_days = int(INPUT_DEFAULTS["lng_days"])
         lng_backup_pct = 30.0
         gas_price_lng = float(INPUT_DEFAULTS.get("gas_price_lng", 8.0))
-
         if fuel_mode in ("LNG", "Dual-Fuel"):
             lng_days = st.number_input(
                 "LNG Storage (days)", min_value=1, max_value=30,
@@ -710,10 +859,11 @@ def render_sidebar():
                     help="Percentage of load backed by LNG in dual-fuel mode.",
                 )
 
-    # ---- 7. Generator Parameters ----
-    with st.sidebar.expander(":wrench: Generator Parameters"):
-        gen_data_params = GENERATOR_LIBRARY.get(generator_model, {})
+        st.markdown("---")
 
+        # -- Generator Overrides --
+        st.markdown("**Generator Overrides**")
+        gen_data_params = GENERATOR_LIBRARY.get(generator_model, {})
         override_iso = st.number_input(
             "ISO Rating (MW)",
             value=float(gen_data_params.get('iso_rating_mw', 2.5)),
@@ -810,79 +960,9 @@ def render_sidebar():
         if gen_overrides:
             st.info(f"{len(gen_overrides)} parameter(s) overridden")
 
-    # ---- 8. Voltage ----
-    with st.sidebar.expander(":electric_plug: Voltage"):
-        volt_mode = st.radio(
-            "Voltage Mode", ["Auto-Recommend", "Manual"],
-            index=0, horizontal=True,
-            help=HELP_TEXTS.get("volt_mode", ""),
-        )
-        manual_voltage_kv = 13.8
-        if volt_mode == "Manual":
-            manual_voltage_kv = st.number_input(
-                "Manual Voltage (kV)", min_value=0.48, max_value=69.0,
-                value=float(INPUT_DEFAULTS["manual_voltage_kv"]), step=0.1,
-                format="%.1f",
-            )
+        st.markdown("---")
 
-        # ── HV Switchgear Topology (P18) ────────────────────────────────
-        _SWG_TOPOLOGY_OPTIONS = {
-            "Single SWG (radial)":                    {"n_swg": 1, "normal_factor": 1.0, "contingency_factor": 1.0},
-            "Dual SWG — ring / sectionalized (N-1)":  {"n_swg": 2, "normal_factor": 0.5, "contingency_factor": 1.0},
-            "Double bus / double breaker":             {"n_swg": 2, "normal_factor": 0.5, "contingency_factor": 1.0},
-        }
-        swg_topology = st.selectbox(
-            "HV SWG Architecture",
-            options=list(_SWG_TOPOLOGY_OPTIONS.keys()),
-            index=1,  # default: Dual SWG ring/sectionalized
-            key="_swg_topology",
-            help=(
-                "Defines how many HV switchgear panels share the generator output. "
-                "Dual SWG (ring/sectionalized): normal operation at 50% each; "
-                "N-1 contingency requires surviving SWG to carry 100% of load. "
-                "Bus and breakers are rated for the N-1 condition. "
-                "Single SWG: bus always carries 100% — more conservative sizing."
-            ),
-        )
-
-    # ---- 9. Economics ----
-    with st.sidebar.expander(":moneybag: Economics"):
-        _region_default = INPUT_DEFAULTS["region"]
-        region = st.selectbox(
-            "Region", REGIONS,
-            index=REGIONS.index(_region_default) if _region_default in REGIONS else 0,
-            help=HELP_TEXTS.get("region", ""),
-        )
-        gas_price = st.number_input(
-            "Pipeline Gas Price ($/MMBtu)", min_value=0.0, max_value=50.0,
-            value=float(INPUT_DEFAULTS["gas_price_pipeline"]), step=0.5,
-            help=HELP_TEXTS.get("gas_price_pipeline", ""),
-        )
-        wacc = st.number_input(
-            "WACC (%)", min_value=0.0, max_value=30.0,
-            value=float(INPUT_DEFAULTS["wacc"]), step=0.5,
-            help=HELP_TEXTS.get("wacc", ""),
-        )
-        project_years = st.number_input(
-            "Project Life (years)", min_value=1, max_value=40,
-            value=int(INPUT_DEFAULTS["project_years"]), step=1,
-            help=HELP_TEXTS.get("project_years", ""),
-        )
-        benchmark_price = st.number_input(
-            "Grid Benchmark ($/kWh)", min_value=0.0, max_value=1.0,
-            value=float(INPUT_DEFAULTS["benchmark_price"]), step=0.01,
-            format="%.3f", help=HELP_TEXTS.get("benchmark_price", ""),
-        )
-        carbon_price_per_ton = st.number_input(
-            "Carbon Price ($/ton CO2)", min_value=0.0, max_value=500.0,
-            value=float(INPUT_DEFAULTS["carbon_price_per_ton"]), step=5.0,
-            help=HELP_TEXTS.get("carbon_price_per_ton", ""),
-        )
-        enable_depreciation = st.checkbox(
-            "MACRS Depreciation", value=INPUT_DEFAULTS["enable_depreciation"],
-            help=HELP_TEXTS.get("enable_depreciation", ""),
-        )
-
+        # -- BESS Costs --
         st.markdown("**BESS Costs**")
         bess_cost_kw = st.number_input(
             "BESS Power Cost ($/kW)", min_value=0.0,
@@ -900,92 +980,56 @@ def render_sidebar():
             help=HELP_TEXTS.get("bess_om_kw_yr", ""),
         )
 
-        st.markdown("**CAPEX Adders** *(% of gen + install base)*")
-        with st.expander("Advanced CAPEX Adders", expanded=False):
-            st.caption(
-                "Applied as a percentage of (generator equipment + installation) subtotal. "
-                "Defaults calibrated to CAT prime power data center projects."
-            )
-            col1, col2 = st.columns(2)
-            with col1:
-                bos_pct = st.number_input(
-                    "BOS / Switchgear + Xfmr (%)", 0.0, 50.0,
-                    value=float(INPUT_DEFAULTS.get('bos_pct', 0.17)) * 100, step=1.0,
-                    help="MV switchgear, transformers, protection relays.",
-                ) / 100.0
-                civil_pct = st.number_input(
-                    "Civil / Site Work (%)", 0.0, 50.0,
-                    value=float(INPUT_DEFAULTS.get('civil_pct', 0.13)) * 100, step=1.0,
-                    help="Foundations, grading, drainage, fencing.",
-                ) / 100.0
-                fuel_system_pct = st.number_input(
-                    "Fuel System (%)", 0.0, 30.0,
-                    value=float(INPUT_DEFAULTS.get('fuel_system_pct', 0.06)) * 100, step=0.5,
-                    help="Gas piping, regulators, metering.",
-                ) / 100.0
-            with col2:
-                epc_pct = st.number_input(
-                    "EPC Management (%)", 0.0, 30.0,
-                    value=float(INPUT_DEFAULTS.get('epc_pct', 0.12)) * 100, step=1.0,
-                    help="Engineering, procurement, construction management.",
-                ) / 100.0
-                contingency_pct = st.number_input(
-                    "Contingency (%)", 0.0, 30.0,
-                    value=float(INPUT_DEFAULTS.get('contingency_pct', 0.10)) * 100, step=1.0,
-                    help="Project contingency allowance.",
-                ) / 100.0
+        st.markdown("---")
 
-            # Infrastructure costs (absolute $)
-            st.markdown("**Infrastructure (absolute $)**")
-            col3, col4 = st.columns(2)
-            with col3:
-                pipeline_cost_usd = st.number_input(
-                    "Gas Pipeline ($)", min_value=0.0,
-                    value=float(INPUT_DEFAULTS.get('pipeline_cost_usd', 500000.0)),
-                    step=50000.0, format="%.0f",
-                    help="Gas supply pipeline to site. Default: $500k (typical short run).",
-                )
-            with col4:
-                permitting_cost_usd = st.number_input(
-                    "Permitting ($)", min_value=0.0,
-                    value=float(INPUT_DEFAULTS.get('permitting_cost_usd', 250000.0)),
-                    step=25000.0, format="%.0f",
-                    help="Environmental, electrical, and construction permits.",
-                )
-            commissioning_cost_usd = st.number_input(
-                "Commissioning ($)", min_value=0.0,
-                value=float(INPUT_DEFAULTS.get('commissioning_cost_usd', 0.0)),
-                step=50000.0, format="%.0f",
-                help="Startup and commissioning. If 0, calculated automatically from "
-                     "CAPEX adder (2.5% of gen+install).",
-            )
-
-            st.markdown("**Gas Supply Parameters**")
-            gas_supply_pressure_psia = st.number_input(
-                "Supply Pressure (psia)", min_value=10.0, max_value=1500.0,
-                value=float(INPUT_DEFAULTS.get('gas_supply_pressure_psia', 100.0)),
-                step=10.0, format="%.0f",
-                help=(
-                    "Gas utility supply pressure at site boundary. "
-                    "Typical values: 60-100 psia (medium pressure industrial distribution), "
-                    "250-500 psia (high pressure transmission). "
-                    "Gas turbines require 200-300 psia — compressor may be needed."
-                ),
-            )
-            gas_pipeline_length_miles = st.number_input(
-                "Pipeline Distance (miles)", min_value=0.1, max_value=50.0,
-                value=float(INPUT_DEFAULTS.get('gas_pipeline_length_miles', 1.0)),
-                step=0.5, format="%.1f",
-                help="Distance from utility tap to site boundary (Weymouth equation).",
-            )
-
-    # ---- 10. CHP / Tri-Gen ----
-    with st.sidebar.expander(":fire: CHP / Tri-Gen"):
-        include_chp = st.checkbox(
-            "Include CHP / Tri-Generation",
-            value=INPUT_DEFAULTS.get("include_chp", False),
-            help=HELP_TEXTS.get("include_chp", ""),
+        # -- Emissions & Noise --
+        st.markdown("**Emissions & Noise**")
+        include_scr = st.checkbox(
+            "Include SCR (NOx Reduction)",
+            value=False,
+            help="Selective Catalytic Reduction for NOx control.",
         )
+        include_oxicat = st.checkbox(
+            "Include Oxidation Catalyst (CO Reduction)",
+            value=False,
+            help="Oxidation catalyst for CO and VOC control.",
+        )
+        noise_limit_db = st.number_input(
+            "Noise Limit at Property Line (dBA)",
+            min_value=30.0, max_value=100.0,
+            value=65.0, step=1.0,
+            help="Maximum allowable noise level at the property boundary.",
+        )
+        dist_prop_default = 100.0
+        dist_prop_display = _to_display_dist(dist_prop_default)
+        distance_to_property_display = st.number_input(
+            f"Distance to Property Line ({_dist_label()})",
+            min_value=_to_display_dist(1.0),
+            value=dist_prop_display, step=10.0,
+            help="Distance from power plant center to nearest property boundary.",
+        )
+        distance_to_property_m = _from_display_dist(distance_to_property_display)
+        dist_res_default = 300.0
+        dist_res_display = _to_display_dist(dist_res_default)
+        distance_to_residence_display = st.number_input(
+            f"Distance to Nearest Residence ({_dist_label()})",
+            min_value=_to_display_dist(1.0),
+            value=dist_res_display, step=10.0,
+            help="Distance from power plant center to nearest residence.",
+        )
+        distance_to_residence_m = _from_display_dist(distance_to_residence_display)
+        acoustic_treatment = st.selectbox(
+            "Acoustic Treatment Level",
+            ACOUSTIC_TREATMENTS,
+            index=0,
+            help="Standard: basic enclosure. Enhanced: additional barriers. "
+                 "Critical: hospital-grade. Building: fully enclosed.",
+        )
+
+        st.markdown("---")
+
+        # -- CHP / Tri-Gen --
+        st.markdown("**CHP / Tri-Gen**")
         chp_recovery_eff = 0.50
         absorption_cop = 0.70
         cooling_load_mw = 0.0
@@ -1005,58 +1049,13 @@ def render_sidebar():
                 value=0.0, step=1.0,
                 help="Site cooling demand in MW thermal.",
             )
+        else:
+            st.caption("Enable CHP in Generator & BESS section to configure details.")
 
-    # ---- 11. Emissions Control ----
-    with st.sidebar.expander(":factory: Emissions Control"):
-        include_scr = st.checkbox(
-            "Include SCR (NOx Reduction)",
-            value=False,
-            help="Selective Catalytic Reduction for NOx control.",
-        )
-        include_oxicat = st.checkbox(
-            "Include Oxidation Catalyst (CO Reduction)",
-            value=False,
-            help="Oxidation catalyst for CO and VOC control.",
-        )
+        st.markdown("---")
 
-    # ---- 12. Noise ----
-    with st.sidebar.expander(":loud_sound: Noise"):
-        noise_limit_db = st.number_input(
-            "Noise Limit at Property Line (dBA)",
-            min_value=30.0, max_value=100.0,
-            value=65.0, step=1.0,
-            help="Maximum allowable noise level at the property boundary.",
-        )
-        dist_prop_default = 100.0
-        dist_prop_display = _to_display_dist(dist_prop_default)
-        distance_to_property_display = st.number_input(
-            f"Distance to Property Line ({_dist_label()})",
-            min_value=_to_display_dist(1.0),
-            value=dist_prop_display, step=10.0,
-            help="Distance from power plant center to nearest property boundary.",
-        )
-        distance_to_property_m = _from_display_dist(distance_to_property_display)
-
-        dist_res_default = 300.0
-        dist_res_display = _to_display_dist(dist_res_default)
-        distance_to_residence_display = st.number_input(
-            f"Distance to Nearest Residence ({_dist_label()})",
-            min_value=_to_display_dist(1.0),
-            value=dist_res_display, step=10.0,
-            help="Distance from power plant center to nearest residence.",
-        )
-        distance_to_residence_m = _from_display_dist(distance_to_residence_display)
-
-        acoustic_treatment = st.selectbox(
-            "Acoustic Treatment Level",
-            ACOUSTIC_TREATMENTS,
-            index=0,
-            help="Standard: basic enclosure. Enhanced: additional barriers. "
-                 "Critical: hospital-grade. Building: fully enclosed.",
-        )
-
-    # ---- 13. Phasing ----
-    with st.sidebar.expander(":calendar: Phasing"):
+        # -- Phasing --
+        st.markdown("**Phasing**")
         enable_phasing = st.checkbox(
             "Enable Phased Deployment",
             value=False,
@@ -1074,23 +1073,10 @@ def render_sidebar():
                 value=6, step=1,
             )
 
-    # ---- 14. Infrastructure ----
-    with st.sidebar.expander(":building_construction: Infrastructure"):
-        pipeline_cost_usd = st.number_input(
-            "Pipeline Cost ($)", min_value=0.0,
-            value=float(INPUT_DEFAULTS["pipeline_cost_usd"]), step=10000.0,
-            format="%.0f",
-        )
-        permitting_cost_usd = st.number_input(
-            "Permitting Cost ($)", min_value=0.0,
-            value=float(INPUT_DEFAULTS["permitting_cost_usd"]), step=10000.0,
-            format="%.0f",
-        )
-        commissioning_cost_usd = st.number_input(
-            "Commissioning Cost ($)", min_value=0.0,
-            value=float(INPUT_DEFAULTS["commissioning_cost_usd"]), step=10000.0,
-            format="%.0f",
-        )
+        st.markdown("---")
+
+        # -- Infrastructure --
+        st.markdown("**Infrastructure**")
         pipeline_distance_km = st.number_input(
             "Pipeline Distance (km)", min_value=0.0,
             value=0.0, step=0.5,
@@ -1102,8 +1088,10 @@ def render_sidebar():
             help="Nominal pipeline diameter in inches.",
         )
 
-    # ---- 15. Footprint ----
-    with st.sidebar.expander(":world_map: Footprint"):
+        st.markdown("---")
+
+        # -- Footprint --
+        st.markdown("**Footprint**")
         enable_footprint_limit = st.checkbox(
             "Limit Site Area", value=INPUT_DEFAULTS["enable_footprint_limit"],
             help=HELP_TEXTS.get("enable_footprint_limit", ""),
@@ -1117,6 +1105,23 @@ def render_sidebar():
                 help=HELP_TEXTS.get("max_area_m2", ""),
             )
             max_area_m2 = _from_display_area(max_area_display)
+
+        st.markdown("---")
+
+        # -- GERP PDF Import --
+        st.markdown("**GERP PDF Import**")
+        uploaded_pdf = st.file_uploader("Upload GERP PDF", type=["pdf"], key="gerp_pdf")
+        if uploaded_pdf:
+            try:
+                gerp_data = parse_gerp_pdf(uploaded_pdf)
+                if gerp_data:
+                    st.success(f"Parsed: {gerp_data.get('model', 'Unknown')}")
+                    for k, v in gerp_data.items():
+                        st.caption(f"**{k}**: {v}")
+                else:
+                    st.warning("Could not extract data from PDF.")
+            except Exception as e:
+                st.error(f"PDF parse error: {e}")
 
     st.sidebar.divider()
 

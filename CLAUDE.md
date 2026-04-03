@@ -284,6 +284,12 @@ All sidebar widgets use `value=INPUT_DEFAULTS[...]` directly — no `_stored_*` 
   Step-up transformers captured in binomial fleet model, NOT in this factor.
 - **Tests:** 48/48 pass.
 
+### P41A — Proposal tab with exhibit selection checkboxes (2026-04-03)
+- PDF Report tab renamed to **Proposal** tab (`render_pdf_tab` → `render_proposal_tab`)
+- Old DOCX proposal function renamed to `render_docx_proposal_tab` (still behind `ENABLE_PROPOSAL_GEN`)
+- New `render_proposal_tab()` shows: mandatory appendices (A=Definitions, B=ESC, C=CVA), 6 optional exhibit checkboxes (Datasheets, Warranty, Conceptual Layout, Scope of Supply, Sizing Report PDF, Additional Docs), dynamic appendix lettering D/E/F..., live appendices preview, PDF download (identical to old render_pdf_tab), Word placeholder for P41B
+- `_proposal_exhibits` and `_proposal_mandatory` stored in session state for P41B
+
 ### P40 — SR shortfall advisory below Design Validation Scorecard (2026-04-03)
 - Added SR shortfall advisory block in `render_summary_tab()` BELOW the design scorecard
 - When spinning reserve is insufficient (`sr_deficit > 0`): shows `st.warning` with deficit MW, available vs required breakdown, and 3 actionable options (enable/increase BESS, add N generators, increase BESS autonomy)

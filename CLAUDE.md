@@ -70,15 +70,16 @@ frontend/              ← React source (Vite + TypeScript + shadcn/ui)
 - **Dependencies:** `requirements.txt` — only Streamlit-specific deps (no FastAPI, asyncpg, etc.)
 - **API deps separate:** `requirements-api.txt` — for FastAPI server
 
-### Streamlit Wizard Flow
-After login, users see a 5-step guided wizard before results:
-1. **Project Info** — name, client, location, grid frequency
-2. **Load Profile** — template, DC type, IT load, PUE, dynamics, live preview
-3. **Site & Technology** — derate (auto/manual), generator, BESS, fuel, voltage
-4. **Economics** — gas price, WACC, region, BESS costs, CAPEX BOS adders, footprint
-5. **Review & Run** — summary + "Run Sizing" button
+### Sidebar-Only Architecture (P35)
+Sidebar-only architecture. All inputs in sidebar with Basic (expanded) and Advanced (collapsed) sections. Sizing runs reactively on every input change. No wizard, no `_wiz_*` keys, no `_stored_*` keys.
 
-After wizard: full sidebar available for fine-tuning, reactive re-sizing on changes.
+**Sidebar sections:**
+- 📋 **Project Info** (collapsed) — project name, client, contacts, country, state/province, county, grid frequency. Stored to `_project_name`, `_client_name`, etc. session state keys for proposal generator.
+- 📊 **Load Profile** (expanded) — DC type, IT load, PUE, capacity factor, template
+- ⚡ **Generator & BESS** (expanded) — generator filter/model, BESS include/autonomy, black start, CHP
+- 🌡️ **Site Conditions** (collapsed) — derate mode, temperature, altitude, methane number
+- 💰 **Economics** (collapsed) — gas price, benchmark, WACC, project life, region
+- ⚙️ **Advanced Settings** (collapsed parent) → sub-expanders: Load Dynamics, Generator Overrides, Voltage & Electrical, Fuel & LNG, BESS Costs, Emissions & Noise, CHP/Tri-Gen, Phasing, Infrastructure, Footprint, Financial, CAPEX BOS Adders, GERP PDF Import
 
 ### Proposal Generation (Tab 📄 Proposal)
 After sizing completes, users can generate a professional DOCX proposal:
@@ -89,10 +90,11 @@ After sizing completes, users can generate a professional DOCX proposal:
 - **Output:** Branded .docx with Caterpillar logo, 7 sections + 7 appendices
 - **Logo:** `assets/logo_caterpillar.png` (official Caterpillar wordmark)
 
-### Wizard Session State Keys
-- `_wizard_step` (int 0-4), `_wizard_complete` (bool), `_wizard_running` (bool)
-- All wizard inputs use `_wiz_` prefix (e.g., `_wiz_p_it`, `_wiz_dc_type`)
-- Sidebar widgets use their own keys — no collision since wizard and sidebar never render together
+### Session State Keys (post-P35)
+- `result` — the current `SizingResult` object
+- `_benchmark_price`, `_site_temp`, `_site_alt`, `_mn`, `_fuel_mode`, `_dist_loss_pct`, `_include_chp`, `_enable_phasing` — cross-tab values set by `main()` after each sizing run
+- `_project_name`, `_client_name`, `_contact_name`, `_contact_email`, `_contact_phone`, `_country`, `_state_province`, `_county_district` — proposal metadata from Project Info sidebar expander
+- `_stored_bess_autonomy_min` — BESS tab autonomy override (written by render_bess_tab re-run button, read by sidebar BESS autonomy widget)
 - `spinning_res_pct` removed from UI (P04) — SR now derived from physical contingencies
 
 ## Running the Project
@@ -223,16 +225,11 @@ Replaces the hardcoded 2.0h/2.5h coverage in `sizing_pipeline.py`. User-configur
   Shows n_pods × n_per, n_total, installed cap, normal loading, n_trafos.
   Config A/B/C label shown if maintenance config is active.
 
-### Wizard Session State Pattern (P15/P20/P23/Definitivo)
-All `_wiz_` number_input widgets use: `value=float(st.session_state.get("_wiz_key", INPUT_DEFAULTS["key"]))`.
-- `_init_wizard_state()` at line ~391 pre-populates all `_wiz_` keys from INPUT_DEFAULTS.
-- `_apply_dc_type_defaults()` callback updates keys when DC type changes (P20).
-- `_on_template_change()` callback applies TEMPLATES presets to `_wiz_` keys when template selectbox changes.
-- `DC_TYPE_DEFAULTS` dict maps DC types to preset values (PUE, load_step, etc.).
-- BOS adder widgets use `INPUT_DEFAULTS['x']*100` as fallback (pct conversion).
-- Unit-converted widgets (temp, alt, area) use `_to_display_X()` conversion functions.
-- `_build_inputs_from_wizard()` reads `_wiz_site_temp_display`/`_wiz_site_alt_display` with inline
-  unit conversion (avoids desync when user switches unit system mid-session).
+### Sidebar Widget Pattern (post-P35)
+All sidebar widgets use `value=INPUT_DEFAULTS[...]` directly — no `_stored_*` or `_wiz_*` indirection.
+- Streamlit's own widget state persistence handles reruns.
+- `inputs_dict` is built from local widget variables at end of `render_sidebar()`.
+- Exception: `_stored_bess_autonomy_min` — only surviving `_stored_*` key, used by BESS tab autonomy override button to persist across reruns.
 
 ### Bug Fix: Generator model selector persistencia (commit c916f8a)
 - `render_wizard_step_3()`: `gen_idx` ahora lee desde `st.session_state.get("_wiz_generator_model")`
@@ -286,6 +283,15 @@ All `_wiz_` number_input widgets use: `value=float(st.session_state.get("_wiz_ke
   power transformers, protective relays. Topology: SWGR-A + SWGR-B + 52T5 bus-tie.
   Step-up transformers captured in binomial fleet model, NOT in this factor.
 - **Tests:** 48/48 pass.
+
+### P35 — Eliminate wizard, sidebar-only architecture (2026-04-02)
+- Deleted all wizard code: `WIZARD_STEPS`, `_init_wizard_state`, `render_wizard_stepper`, `render_wizard_step_1` through `render_wizard_step_5`, `render_wizard_navigation`, `render_wizard`, `_build_inputs_from_wizard`, `_make_wizard_persist_callback`, `_sidebar_default`, `_on_generator_change`, `_apply_dc_type_defaults`, `_on_template_change`, `_DC_DEFAULT_KEYS`
+- **−926 lines** (4985 → 4059)
+- Rewrote `main()` — always runs `render_sidebar()` → `run_full_sizing()` reactively; no wizard gates, no "Back to Wizard" button
+- Added `📋 Project Info` sidebar expander (project/client/contact/country/freq fields for proposal generator)
+- All sidebar widgets use `value=INPUT_DEFAULTS[...]` directly — no `_stored_*` or `_wiz_*` keys
+- `initial_sidebar_state` changed from `"collapsed"` → `"expanded"`
+- Only surviving `_stored_*` key: `_stored_bess_autonomy_min` (BESS tab override button — intentional)
 
 ### P34 — Remove BESS Strategy selectbox (2026-04-02)
 - Removed `BESS_STRATEGIES` constant and BESS Strategy selectbox from wizard Step 3 and sidebar
@@ -529,7 +535,7 @@ Applied as % of (generator + installation) base cost:
 - **Add a new template:** Edit `core/project_manager.py` TEMPLATES dict
 - **Add a new endpoint:** Create in appropriate router, add Pydantic schema, add auth
 - **Change default inputs:** Edit `core/project_manager.py` INPUT_DEFAULTS
-- **Add a wizard step field:** Add widget in `render_wizard_step_N()`, add key to `_build_inputs_from_wizard()`
+- **Add a sidebar input field:** Add widget in the appropriate `render_sidebar()` expander, add key to `inputs_dict` at bottom of that function
 - **Change proposal defaults:** Edit `core/proposal_defaults.py` PROPOSAL_DEFAULTS dict
 - **Modify proposal document:** Edit `core/proposal_generator.py` section builders (`_build_section_*`)
 - **Change CAPEX BOS defaults:** Edit `core/project_manager.py` INPUT_DEFAULTS (bos_pct, civil_pct, etc.)

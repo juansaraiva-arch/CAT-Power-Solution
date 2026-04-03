@@ -415,46 +415,27 @@ def render_sidebar():
 
     # ---- 3. Project Info ----
     with st.sidebar.expander("\U0001f4cb Project Info", expanded=False):
-        proj_name = st.text_input("Project Name", key="_project_name",
-                                   value=st.session_state.get("_project_name", ""),
-                                   placeholder="Phoenix DC-1 Prime Power",
-                                   help=HELP_TEXTS.get("project_name", ""))
-        client_name = st.text_input("Client Name", key="_client_name",
-                                     value=st.session_state.get("_client_name", ""),
-                                     placeholder="Acme Corp",
-                                     help=HELP_TEXTS.get("client_name", ""))
-        contact_name = st.text_input("Contact Name", key="_contact_name",
-                                      value=st.session_state.get("_contact_name", ""),
-                                      help=HELP_TEXTS.get("contact_name", ""))
-        contact_email = st.text_input("Contact Email", key="_contact_email",
-                                       value=st.session_state.get("_contact_email", ""),
-                                       help=HELP_TEXTS.get("contact_email", ""))
-        contact_phone = st.text_input("Contact Phone", key="_contact_phone",
-                                       value=st.session_state.get("_contact_phone", ""),
-                                       help=HELP_TEXTS.get("contact_phone", ""))
+        st.caption("Fill these fields when generating the proposal document.")
+        st.text_input("Project Name", placeholder="Phoenix DC-1 Prime Power",
+                      key="_project_name", help=HELP_TEXTS.get("project_name", ""))
+        st.text_input("Client Name", placeholder="Acme Corp",
+                      key="_client_name", help=HELP_TEXTS.get("client_name", ""))
+        st.text_input("Contact Name", key="_contact_name",
+                      help=HELP_TEXTS.get("contact_name", ""))
+        st.text_input("Contact Email", key="_contact_email",
+                      help=HELP_TEXTS.get("contact_email", ""))
+        st.text_input("Contact Phone", key="_contact_phone",
+                      help=HELP_TEXTS.get("contact_phone", ""))
         _country_default = HEADER_DEFAULTS.get("country", COUNTRIES[0] if COUNTRIES else "")
         _country_idx = COUNTRIES.index(_country_default) if _country_default in COUNTRIES else 0
-        country = st.selectbox("Country", COUNTRIES, index=_country_idx,
-                                key="_country", help=HELP_TEXTS.get("country", ""))
-        state_province = st.text_input("State / Province", key="_state_province",
-                                        value=st.session_state.get("_state_province", ""),
-                                        help=HELP_TEXTS.get("state_province", ""))
-        county_district = st.text_input("County / District", key="_county_district",
-                                         value=st.session_state.get("_county_district", ""),
-                                         help=HELP_TEXTS.get("county_district", ""))
+        st.selectbox("Country", COUNTRIES, index=_country_idx,
+                     key="_country", help=HELP_TEXTS.get("country", ""))
+        st.text_input("State / Province", key="_state_province",
+                      help=HELP_TEXTS.get("state_province", ""))
+        st.text_input("County / District", key="_county_district",
+                      help=HELP_TEXTS.get("county_district", ""))
         freq_hz = st.radio("Grid Frequency (Hz)", [60, 50], index=0, horizontal=True,
-                            key="_freq_hz", help=HELP_TEXTS.get("freq_hz", ""))
-        st.caption("Fill these fields when generating the proposal document.")
-        # Persist project info to session state
-        st.session_state["_project_name"] = proj_name
-        st.session_state["_client_name"] = client_name
-        st.session_state["_contact_name"] = contact_name
-        st.session_state["_contact_email"] = contact_email
-        st.session_state["_contact_phone"] = contact_phone
-        st.session_state["_country"] = country
-        st.session_state["_state_province"] = state_province
-        st.session_state["_county_district"] = county_district
-        st.session_state["_freq_hz_val"] = freq_hz
+                           key="_freq_hz_proposal", help=HELP_TEXTS.get("freq_hz", ""))
 
     # ---- 4. GERP PDF Import ----
     with st.sidebar.expander(":page_facing_up: GERP PDF Import"):

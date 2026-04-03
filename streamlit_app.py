@@ -1487,6 +1487,39 @@ def render_summary_tab(r):
                     f"(dominant: {r.sr_dominant_contingency.replace('_', ' ')} event)."
                 )
 
+    # ---- Spinning Reserve Advisory ----
+    sr_required = r.spinning_reserve_mw
+    sr_available = r.spinning_from_gens + r.spinning_from_bess
+    sr_deficit = sr_required - sr_available
+
+    if sr_deficit > 0:
+        import math
+        additional_gens = 0
+        if r.unit_site_cap > 0:
+            additional_gens = math.ceil(sr_deficit / r.unit_site_cap)
+
+        st.warning(
+            f"⚠️ **Spinning Reserve Shortfall: {sr_deficit:.1f} MW**\n\n"
+            f"Required: {sr_required:.1f} MW | Available: {sr_available:.1f} MW "
+            f"(Generators: {r.spinning_from_gens:.1f} MW + BESS: {r.spinning_from_bess:.1f} MW)\n\n"
+            f"**Options to resolve:**\n"
+            f"1. **Enable or increase BESS** — add {sr_deficit:.1f} MW of BESS power to cover the deficit\n"
+            f"2. **Add ~{additional_gens} generator(s)** — increases fleet headroom by "
+            f"~{additional_gens * r.unit_site_cap:.1f} MW\n"
+            f"3. **Increase BESS autonomy** — if BESS is already enabled, increasing autonomy "
+            f"may improve spinning reserve contribution"
+        )
+    elif hasattr(r, 'headroom_mw') and r.headroom_mw > 0:
+        sr_margin = sr_available - sr_required
+        if sr_margin > 0 and sr_required > 0:
+            margin_pct = (sr_margin / sr_required) * 100
+            if margin_pct < 20:
+                st.info(
+                    f"ℹ️ Spinning Reserve meets requirements with a thin margin: "
+                    f"{sr_available:.1f} MW available vs {sr_required:.1f} MW required "
+                    f"({margin_pct:.0f}% margin). Consider BESS to increase reserve."
+                )
+
 
 # =============================================================================
 # TAB 2: RELIABILITY
@@ -2239,6 +2272,20 @@ def render_electrical_tab(r):
                    f"{r.spinning_from_bess:.2f}", f"{r.headroom_mw:.2f}"],
         }
     st.table(pd.DataFrame(data).set_index("Component"))
+
+    # SR advisory
+    sr_available = r.spinning_from_gens + r.spinning_from_bess
+    sr_deficit = r.spinning_reserve_mw - sr_available
+    if sr_deficit > 0:
+        st.error(
+            f"Spinning Reserve deficit: {sr_deficit:.1f} MW. "
+            f"Enable BESS or add generators to cover the shortfall."
+        )
+    else:
+        st.success(
+            f"Spinning Reserve satisfied: {sr_available:.1f} MW available "
+            f"({sr_available - r.spinning_reserve_mw:.1f} MW margin)."
+        )
 
     # ── HV Switchgear Bus Sizing — N-1 Corrected (P18) ──────────────────
     import math as _math

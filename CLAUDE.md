@@ -75,11 +75,11 @@ Sidebar-only architecture. All inputs in sidebar with Basic (expanded) and Advan
 
 **Sidebar sections:**
 - 📋 **Project Info** (collapsed) — project name, client, contacts, country, state/province, county, grid frequency. Stored to `_project_name`, `_client_name`, etc. session state keys for proposal generator.
-- 📊 **Load Profile** (expanded) — DC type, IT load, PUE, capacity factor, template
-- ⚡ **Generator & BESS** (expanded) — generator filter/model, BESS include/autonomy, black start, CHP
+- 📊 **Load Profile** (expanded) — DC type, IT load, PUE, capacity factor
+- ⚡ **Generator & BESS** (expanded) — generator filter/model, BESS include/autonomy, black start, CHP checkbox
 - 🌡️ **Site Conditions** (collapsed) — derate mode, temperature, altitude, methane number
-- 💰 **Economics** (collapsed) — gas price, benchmark, WACC, project life, region
-- ⚙️ **Advanced Settings** (collapsed parent) → sub-expanders: Load Dynamics, Generator Overrides, Voltage & Electrical, Fuel & LNG, BESS Costs, Emissions & Noise, CHP/Tri-Gen, Phasing, Infrastructure, Footprint, Financial, CAPEX BOS Adders, GERP PDF Import
+- 💰 **Economics** (collapsed) — gas price, benchmark, WACC, project life, region, carbon price, MACRS, CAPEX BOS Adders
+- ⚙️ **Advanced** (collapsed) → flat sections with markdown dividers: Load Dynamics, Voltage & Electrical, Fuel & LNG, Generator Overrides, BESS Costs, Emissions & Noise, CHP/Tri-Gen, Phasing, Infrastructure, Footprint, GERP PDF Import
 
 ### Proposal Generation (Tab 📄 Proposal)
 After sizing completes, users can generate a professional DOCX proposal:
@@ -283,6 +283,13 @@ All sidebar widgets use `value=INPUT_DEFAULTS[...]` directly — no `_stored_*` 
   power transformers, protective relays. Topology: SWGR-A + SWGR-B + 52T5 bus-tie.
   Step-up transformers captured in binomial fleet model, NOT in this factor.
 - **Tests:** 48/48 pass.
+
+### P37 — Reorganize sidebar Basic + Advanced (2026-04-03)
+- Restructured `render_sidebar()` from 13 flat expanders → 6 expanders: Project Info, Load Profile, Generator & BESS, Site Conditions, Economics, Advanced
+- **Load Profile** slimmed to 4 fields: DC Type, IT Load, PUE, Capacity Factor
+- **Generator & BESS** new combined expander: gen filter/model/specs, BESS, Black Start, CHP checkbox
+- **Advanced** single collapsed expander with flat sub-sections (no nested expanders): Load Dynamics, Voltage & Electrical, Fuel & LNG, Generator Overrides, BESS Costs, Emissions & Noise, CHP/Tri-Gen, Phasing, Infrastructure, Footprint, GERP PDF Import
+- All `inputs_dict` keys and variable names unchanged — no logic changes
 
 ### P35 — Eliminate wizard, sidebar-only architecture (2026-04-02)
 - Deleted all wizard code: `WIZARD_STEPS`, `_init_wizard_state`, `render_wizard_stepper`, `render_wizard_step_1` through `render_wizard_step_5`, `render_wizard_navigation`, `render_wizard`, `_build_inputs_from_wizard`, `_make_wizard_persist_callback`, `_sidebar_default`, `_on_generator_change`, `_apply_dc_type_defaults`, `_on_template_change`, `_DC_DEFAULT_KEYS`

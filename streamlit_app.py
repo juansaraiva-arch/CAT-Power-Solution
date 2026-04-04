@@ -418,41 +418,63 @@ def render_sidebar():
         freq_hz = st.radio("Grid Frequency (Hz)", [60, 50], index=0, horizontal=True,
                            key="_freq_hz_proposal", help=HELP_TEXTS.get("freq_hz", ""))
 
+    # ---- Pre-render: transfer _dcdefault_* → widget keys (P48) ----
+    # The _on_dc_type_change callback writes _dcdefault_<field> when DC Type changes.
+    # We transfer those values here — BEFORE widgets render — so widgets can use
+    # key= only (no value=). This avoids the Streamlit "key+value conflict" and
+    # the "value= ignored after first render" bugs.
+    _LP_FIELD_DEFAULTS = {
+        "pue":              float(INPUT_DEFAULTS["pue"]),
+        "capacity_factor":  float(INPUT_DEFAULTS["capacity_factor"]),
+        "peak_avg_ratio":   float(INPUT_DEFAULTS["peak_avg_ratio"]),
+        "load_step_pct":    float(INPUT_DEFAULTS["load_step_pct"]),
+        "avail_req":        float(INPUT_DEFAULTS["avail_req"]),
+        "load_ramp_req":    float(INPUT_DEFAULTS["load_ramp_req"]),
+        "spinning_res_pct": float(INPUT_DEFAULTS["spinning_res_pct"]),
+    }
+    for _field, _default in _LP_FIELD_DEFAULTS.items():
+        _dckey = f"_dcdefault_{_field}"
+        if _dckey in st.session_state:
+            # Callback just fired — force the DC type default onto the widget key
+            st.session_state[_field] = st.session_state.pop(_dckey)
+        elif _field not in st.session_state:
+            # First run — seed from INPUT_DEFAULTS
+            st.session_state[_field] = _default
+
     # ---- 4. Load Profile (Basic — expanded) ----
     with st.sidebar.expander("\U0001f4ca Load Profile", expanded=True):
         pue = st.number_input(
             "PUE", min_value=1.0, max_value=3.0,
-            value=st.session_state.get("_dcdefault_pue", float(INPUT_DEFAULTS["pue"])),
             step=0.05, format="%.2f", help=HELP_TEXTS.get("pue", ""),
+            key="pue",
         )
         capacity_factor = st.slider(
             "Capacity Factor", min_value=0.50, max_value=1.0,
-            value=st.session_state.get("_dcdefault_capacity_factor", float(INPUT_DEFAULTS["capacity_factor"])),
             step=0.01, help=HELP_TEXTS.get("capacity_factor", ""),
+            key="capacity_factor",
         )
         peak_avg_ratio = st.number_input(
             "Peak / Average Ratio", min_value=1.0, max_value=2.0,
-            value=st.session_state.get("_dcdefault_peak_avg_ratio", float(INPUT_DEFAULTS["peak_avg_ratio"])),
             step=0.05, format="%.2f", help=HELP_TEXTS.get("peak_avg_ratio", ""),
+            key="peak_avg_ratio",
         )
         load_step_pct = st.number_input(
             "Max Step Load (%)", min_value=1.0, max_value=100.0,
-            value=st.session_state.get("_dcdefault_load_step_pct", float(INPUT_DEFAULTS["load_step_pct"])),
             step=1.0, help=HELP_TEXTS.get("load_step_pct", ""),
+            key="load_step_pct",
         )
         avail_req = st.number_input(
             "Availability Req (%)", min_value=99.0, max_value=100.0,
-            value=st.session_state.get("_dcdefault_avail_req", float(INPUT_DEFAULTS["avail_req"])),
             step=0.01, format="%.4f", help=HELP_TEXTS.get("avail_req", ""),
+            key="avail_req",
         )
         load_ramp_req = st.number_input(
             "Load Ramp Rate (MW/min)", min_value=0.1, max_value=20.0,
-            value=st.session_state.get("_dcdefault_load_ramp_req", float(INPUT_DEFAULTS["load_ramp_req"])),
             step=0.5, help=HELP_TEXTS.get("load_ramp_req", ""),
+            key="load_ramp_req",
         )
         spinning_res_pct = st.number_input(
             "Spinning Reserve (%)", min_value=0.0, max_value=50.0,
-            value=st.session_state.get("_dcdefault_spinning_res_pct", float(INPUT_DEFAULTS["spinning_res_pct"])),
             step=1.0, help=HELP_TEXTS.get("spinning_res_pct", ""),
             key="spinning_res_pct",
         )

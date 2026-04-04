@@ -1127,6 +1127,7 @@ def generate_proposal_docx(
     project_info=None,
     selected_exhibits=None,
     sizing_pdf_bytes=None,
+    output_path: str = None,
 ) -> bytes:
     """
     Generate a customer proposal Word document (P41B).

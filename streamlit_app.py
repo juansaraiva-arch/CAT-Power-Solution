@@ -323,9 +323,12 @@ def render_sidebar():
     st.sidebar.divider()
 
     # ---- 1. Unit System Toggle ----
+    _unit_opts = ["Metric", "Imperial"]
+    _unit_restored = st.session_state.get("_unit_sys", "Metric")
     unit_sys = st.sidebar.radio(
-        "Unit System", ["Metric", "Imperial"],
-        index=0, horizontal=True,
+        "Unit System", _unit_opts,
+        index=_unit_opts.index(_unit_restored) if _unit_restored in _unit_opts else 0,
+        horizontal=True,
         help=HELP_TEXTS.get("unit_system", ""),
     )
     st.session_state["_unit_sys"] = unit_sys
@@ -362,17 +365,18 @@ def render_sidebar():
 
     p_it = st.sidebar.number_input(
         "IT Load (MW)", min_value=0.1, max_value=2000.0,
-        value=float(INPUT_DEFAULTS["p_it"]), step=1.0,
+        value=float(st.session_state.pop("_restore_p_it", INPUT_DEFAULTS["p_it"])), step=1.0,
         help=HELP_TEXTS.get("p_it", ""),
     )
 
     gen_filter = st.sidebar.multiselect(
         "Generator Types", GEN_TYPE_OPTIONS,
-        default=INPUT_DEFAULTS["gen_filter"],
+        default=st.session_state.pop("_restore_gen_filter", INPUT_DEFAULTS["gen_filter"]),
         help=HELP_TEXTS.get("gen_filter", ""),
     )
     available_models = _get_filtered_models(gen_filter)
-    default_gen = INPUT_DEFAULTS["selected_gen_name"]
+    _restored_gen = st.session_state.pop("_restore_generator_model", None)
+    default_gen = _restored_gen if (_restored_gen and _restored_gen in available_models) else INPUT_DEFAULTS["selected_gen_name"]
     gen_idx = available_models.index(default_gen) if default_gen in available_models else 0
     generator_model = st.sidebar.selectbox(
         "Generator Model", available_models, index=gen_idx,
@@ -385,10 +389,10 @@ def render_sidebar():
         col_a.metric("ISO Rating", f"{gen_data['iso_rating_mw']} MW")
         col_b.metric("Efficiency", f"{gen_data['electrical_efficiency']*100:.1f}%")
 
-    _region_default = INPUT_DEFAULTS["region"]
+    _region_restored = st.session_state.pop("_restore_region", INPUT_DEFAULTS["region"])
     region = st.sidebar.selectbox(
         "Region", REGIONS,
-        index=REGIONS.index(_region_default) if _region_default in REGIONS else 0,
+        index=REGIONS.index(_region_restored) if _region_restored in REGIONS else 0,
         help=HELP_TEXTS.get("region", ""),
     )
 
@@ -503,12 +507,12 @@ def render_sidebar():
     # ---- 5. Generator & BESS (Basic — expanded) ----
     with st.sidebar.expander("\u26a1 Generator & BESS", expanded=True):
         use_bess = st.checkbox(
-            "Include BESS", value=INPUT_DEFAULTS["use_bess"],
+            "Include BESS", value=bool(st.session_state.pop("_restore_use_bess", INPUT_DEFAULTS["use_bess"])),
             help=HELP_TEXTS.get("use_bess", ""),
         )
         bess_strategy = "Hybrid (Balanced)"
         bess_autonomy_min = float(INPUT_DEFAULTS.get("bess_autonomy_min", 10.0))
-        bess_dod = float(INPUT_DEFAULTS.get("bess_dod", 0.85))
+        bess_dod = float(st.session_state.pop("_restore_bess_dod", INPUT_DEFAULTS.get("bess_dod", 0.85)))
         if use_bess:
             _autonomy_default = INPUT_DEFAULTS.get('bess_autonomy_min', 10.0)
             bess_autonomy_min = st.number_input(
@@ -532,23 +536,24 @@ def render_sidebar():
             bess_dod = st.number_input(
                 "BESS Depth of Discharge",
                 min_value=0.50, max_value=1.00,
-                value=float(INPUT_DEFAULTS.get("bess_dod", 0.85)),
+                value=float(st.session_state.pop("_restore_bess_dod", INPUT_DEFAULTS.get("bess_dod", 0.85))),
                 step=0.05, format="%.2f",
                 help="Usable fraction of total battery capacity (0.85 = 85% DoD typical for Li-ion).",
             )
         enable_black_start = st.checkbox(
-            "Black Start Capable", value=INPUT_DEFAULTS["enable_black_start"],
+            "Black Start Capable", value=bool(st.session_state.pop("_restore_enable_black_start", INPUT_DEFAULTS["enable_black_start"])),
             help=HELP_TEXTS.get("enable_black_start", ""),
         )
         include_chp = st.checkbox(
             "Include CHP / Tri-Generation",
-            value=INPUT_DEFAULTS.get("include_chp", False),
+            value=bool(st.session_state.pop("_restore_include_chp", INPUT_DEFAULTS.get("include_chp", False))),
             help=HELP_TEXTS.get("include_chp", ""),
         )
 
     # ---- 6. Site Conditions (collapsed) ----
     with st.sidebar.expander("\U0001f321\ufe0f Site Conditions"):
-        temp_default_c = float(INPUT_DEFAULTS["site_temp_c"])
+        _restore_temp_c = st.session_state.pop("_restore_site_temp_c", None)
+        temp_default_c = float(_restore_temp_c) if _restore_temp_c is not None else float(INPUT_DEFAULTS["site_temp_c"])
         temp_display_default = _to_display_temp(temp_default_c)
         temp_min = _to_display_temp(-40.0)
         temp_max = _to_display_temp(60.0)
@@ -560,7 +565,8 @@ def render_sidebar():
         )
         site_temp_c = _from_display_temp(site_temp_display)
 
-        alt_default_m = float(INPUT_DEFAULTS["site_alt_m"])
+        _restore_alt_m = st.session_state.pop("_restore_site_alt_m", None)
+        alt_default_m = float(_restore_alt_m) if _restore_alt_m is not None else float(INPUT_DEFAULTS["site_alt_m"])
         alt_display_default = _to_display_alt(alt_default_m)
         site_alt_display = st.number_input(
             f"Site Altitude ({_alt_label()})",
@@ -572,12 +578,15 @@ def render_sidebar():
 
         methane_number = st.number_input(
             "Methane Number", min_value=0, max_value=100,
-            value=int(INPUT_DEFAULTS["methane_number"]), step=5,
+            value=int(st.session_state.pop("_restore_methane_number", INPUT_DEFAULTS["methane_number"])), step=5,
             help=HELP_TEXTS.get("methane_number", ""),
         )
+        _derate_opts = ["Auto-Calculate", "Manual"]
+        _derate_restored = st.session_state.pop("_restore_derate_mode", "Auto-Calculate")
         derate_mode = st.radio(
-            "Derate Mode", ["Auto-Calculate", "Manual"],
-            index=0, horizontal=True,
+            "Derate Mode", _derate_opts,
+            index=_derate_opts.index(_derate_restored) if _derate_restored in _derate_opts else 0,
+            horizontal=True,
             help=HELP_TEXTS.get("derate_mode", ""),
         )
         derate_factor_manual = 0.9
@@ -614,7 +623,7 @@ def render_sidebar():
         else:
             derate_factor_manual = st.number_input(
                 "Manual Derate Factor", min_value=0.01, max_value=1.0,
-                value=float(INPUT_DEFAULTS["derate_factor_manual"]), step=0.05,
+                value=float(st.session_state.pop("_restore_derate_factor_manual", INPUT_DEFAULTS["derate_factor_manual"])), step=0.05,
                 format="%.2f", help=HELP_TEXTS.get("derate_factor_manual", ""),
             )
 
@@ -622,31 +631,31 @@ def render_sidebar():
     with st.sidebar.expander("\U0001f4b0 Economics"):
         gas_price = st.number_input(
             "Pipeline Gas Price ($/MMBtu)", min_value=0.0, max_value=50.0,
-            value=float(INPUT_DEFAULTS["gas_price_pipeline"]), step=0.5,
+            value=float(st.session_state.pop("_restore_gas_price", INPUT_DEFAULTS["gas_price_pipeline"])), step=0.5,
             help=HELP_TEXTS.get("gas_price_pipeline", ""),
         )
         wacc = st.number_input(
             "WACC (%)", min_value=0.0, max_value=30.0,
-            value=float(INPUT_DEFAULTS["wacc"]), step=0.5,
+            value=float(st.session_state.pop("_restore_wacc", INPUT_DEFAULTS["wacc"])), step=0.5,
             help=HELP_TEXTS.get("wacc", ""),
         )
         project_years = st.number_input(
             "Project Life (years)", min_value=1, max_value=40,
-            value=int(INPUT_DEFAULTS["project_years"]), step=1,
+            value=int(st.session_state.pop("_restore_project_years", INPUT_DEFAULTS["project_years"])), step=1,
             help=HELP_TEXTS.get("project_years", ""),
         )
         benchmark_price = st.number_input(
             "Grid Benchmark ($/kWh)", min_value=0.0, max_value=1.0,
-            value=float(INPUT_DEFAULTS["benchmark_price"]), step=0.01,
+            value=float(st.session_state.pop("_restore_benchmark_price", INPUT_DEFAULTS["benchmark_price"])), step=0.01,
             format="%.3f", help=HELP_TEXTS.get("benchmark_price", ""),
         )
         carbon_price_per_ton = st.number_input(
             "Carbon Price ($/ton CO2)", min_value=0.0, max_value=500.0,
-            value=float(INPUT_DEFAULTS["carbon_price_per_ton"]), step=5.0,
+            value=float(st.session_state.pop("_restore_carbon_price_per_ton", INPUT_DEFAULTS["carbon_price_per_ton"])), step=5.0,
             help=HELP_TEXTS.get("carbon_price_per_ton", ""),
         )
         enable_depreciation = st.checkbox(
-            "MACRS Depreciation", value=INPUT_DEFAULTS["enable_depreciation"],
+            "MACRS Depreciation", value=bool(st.session_state.pop("_restore_enable_depreciation", INPUT_DEFAULTS["enable_depreciation"])),
             help=HELP_TEXTS.get("enable_depreciation", ""),
         )
 
@@ -660,28 +669,28 @@ def render_sidebar():
             with col1:
                 bos_pct = st.number_input(
                     "BOS / Switchgear + Xfmr (%)", 0.0, 50.0,
-                    value=float(INPUT_DEFAULTS.get('bos_pct', 0.17)) * 100, step=1.0,
+                    value=float(st.session_state.pop("_restore_bos_pct", INPUT_DEFAULTS.get('bos_pct', 0.17))) * 100, step=1.0,
                     help="MV switchgear, transformers, protection relays.",
                 ) / 100.0
                 civil_pct = st.number_input(
                     "Civil / Site Work (%)", 0.0, 50.0,
-                    value=float(INPUT_DEFAULTS.get('civil_pct', 0.13)) * 100, step=1.0,
+                    value=float(st.session_state.pop("_restore_civil_pct", INPUT_DEFAULTS.get('civil_pct', 0.13))) * 100, step=1.0,
                     help="Foundations, grading, drainage, fencing.",
                 ) / 100.0
                 fuel_system_pct = st.number_input(
                     "Fuel System (%)", 0.0, 30.0,
-                    value=float(INPUT_DEFAULTS.get('fuel_system_pct', 0.06)) * 100, step=0.5,
+                    value=float(st.session_state.pop("_restore_fuel_system_pct", INPUT_DEFAULTS.get('fuel_system_pct', 0.06))) * 100, step=0.5,
                     help="Gas piping, regulators, metering.",
                 ) / 100.0
             with col2:
                 epc_pct = st.number_input(
                     "EPC Management (%)", 0.0, 30.0,
-                    value=float(INPUT_DEFAULTS.get('epc_pct', 0.12)) * 100, step=1.0,
+                    value=float(st.session_state.pop("_restore_epc_pct", INPUT_DEFAULTS.get('epc_pct', 0.12))) * 100, step=1.0,
                     help="Engineering, procurement, construction management.",
                 ) / 100.0
                 contingency_pct = st.number_input(
                     "Contingency (%)", 0.0, 30.0,
-                    value=float(INPUT_DEFAULTS.get('contingency_pct', 0.10)) * 100, step=1.0,
+                    value=float(st.session_state.pop("_restore_contingency_pct", INPUT_DEFAULTS.get('contingency_pct', 0.10))) * 100, step=1.0,
                     help="Project contingency allowance.",
                 ) / 100.0
 
@@ -691,20 +700,20 @@ def render_sidebar():
             with col3:
                 pipeline_cost_usd = st.number_input(
                     "Gas Pipeline ($)", min_value=0.0,
-                    value=float(INPUT_DEFAULTS.get('pipeline_cost_usd', 500000.0)),
+                    value=float(st.session_state.pop("_restore_pipeline_cost_usd", INPUT_DEFAULTS.get('pipeline_cost_usd', 500000.0))),
                     step=50000.0, format="%.0f",
                     help="Gas supply pipeline to site. Default: $500k (typical short run).",
                 )
             with col4:
                 permitting_cost_usd = st.number_input(
                     "Permitting ($)", min_value=0.0,
-                    value=float(INPUT_DEFAULTS.get('permitting_cost_usd', 250000.0)),
+                    value=float(st.session_state.pop("_restore_permitting_cost_usd", INPUT_DEFAULTS.get('permitting_cost_usd', 250000.0))),
                     step=25000.0, format="%.0f",
                     help="Environmental, electrical, and construction permits.",
                 )
             commissioning_cost_usd = st.number_input(
                 "Commissioning ($)", min_value=0.0,
-                value=float(INPUT_DEFAULTS.get('commissioning_cost_usd', 0.0)),
+                value=float(st.session_state.pop("_restore_commissioning_cost_usd", INPUT_DEFAULTS.get('commissioning_cost_usd', 0.0))),
                 step=50000.0, format="%.0f",
                 help="Startup and commissioning. If 0, calculated automatically from "
                      "CAPEX adder (2.5% of gen+install).",
@@ -713,7 +722,7 @@ def render_sidebar():
             st.markdown("**Gas Supply Parameters**")
             gas_supply_pressure_psia = st.number_input(
                 "Supply Pressure (psia)", min_value=10.0, max_value=1500.0,
-                value=float(INPUT_DEFAULTS.get('gas_supply_pressure_psia', 100.0)),
+                value=float(st.session_state.pop("_restore_gas_supply_pressure_psia", INPUT_DEFAULTS.get('gas_supply_pressure_psia', 100.0))),
                 step=10.0, format="%.0f",
                 help=(
                     "Gas utility supply pressure at site boundary. "
@@ -724,7 +733,7 @@ def render_sidebar():
             )
             gas_pipeline_length_miles = st.number_input(
                 "Pipeline Distance (miles)", min_value=0.1, max_value=50.0,
-                value=float(INPUT_DEFAULTS.get('gas_pipeline_length_miles', 1.0)),
+                value=float(st.session_state.pop("_restore_gas_pipeline_length_miles", INPUT_DEFAULTS.get('gas_pipeline_length_miles', 1.0))),
                 step=0.5, format="%.1f",
                 help="Distance from utility tap to site boundary (Weymouth equation).",
             )
@@ -734,16 +743,19 @@ def render_sidebar():
 
         # -- Voltage & Electrical --
         st.markdown("**Voltage & Electrical**")
+        _volt_opts = ["Auto-Recommend", "Manual"]
+        _volt_restored = st.session_state.pop("_restore_volt_mode", "Auto-Recommend")
         volt_mode = st.radio(
-            "Voltage Mode", ["Auto-Recommend", "Manual"],
-            index=0, horizontal=True,
+            "Voltage Mode", _volt_opts,
+            index=_volt_opts.index(_volt_restored) if _volt_restored in _volt_opts else 0,
+            horizontal=True,
             help=HELP_TEXTS.get("volt_mode", ""),
         )
         manual_voltage_kv = 13.8
         if volt_mode == "Manual":
             manual_voltage_kv = st.number_input(
                 "Manual Voltage (kV)", min_value=0.48, max_value=69.0,
-                value=float(INPUT_DEFAULTS["manual_voltage_kv"]), step=0.1,
+                value=float(st.session_state.pop("_restore_manual_voltage_kv", INPUT_DEFAULTS["manual_voltage_kv"])), step=0.1,
                 format="%.1f",
             )
         # ── HV Switchgear Topology (P18) ────────────────────────────────
@@ -767,22 +779,22 @@ def render_sidebar():
         )
         dist_loss_pct = st.number_input(
             "Distribution Losses (%)", min_value=0.0, max_value=10.0,
-            value=float(INPUT_DEFAULTS["dist_loss_pct"]), step=0.5,
+            value=float(st.session_state.pop("_restore_dist_loss_pct", INPUT_DEFAULTS["dist_loss_pct"])), step=0.5,
             help=HELP_TEXTS.get("dist_loss_pct", ""),
         )
         _cooling_opts = ["Air-Cooled", "Water-Cooled"]
-        _cooling_default = INPUT_DEFAULTS.get("cooling_method", "Air-Cooled")
+        _cooling_restored = st.session_state.pop("_restore_cooling_method", INPUT_DEFAULTS.get("cooling_method", "Air-Cooled"))
         cooling_method = st.radio(
             "Cooling Method", _cooling_opts,
-            index=_cooling_opts.index(_cooling_default) if _cooling_default in _cooling_opts else 0,
+            index=_cooling_opts.index(_cooling_restored) if _cooling_restored in _cooling_opts else 0,
             horizontal=True,
             help=HELP_TEXTS.get("cooling_method", ""),
         )
         _bt_opts = ["closed", "open"]
-        _bt_default = INPUT_DEFAULTS["bus_tie_mode"]
+        _bt_restored = st.session_state.pop("_restore_bus_tie_mode", INPUT_DEFAULTS["bus_tie_mode"])
         bus_tie_mode = st.radio(
             "Bus-Tie Mode", _bt_opts,
-            index=_bt_opts.index(_bt_default) if _bt_default in _bt_opts else 0,
+            index=_bt_opts.index(_bt_restored) if _bt_restored in _bt_opts else 0,
             horizontal=True,
             help=HELP_TEXTS.get("bus_tie_mode", ""),
             format_func=lambda x: "Closed (Ring Bus)" if x == "closed" else "Open (Independent)",
@@ -793,21 +805,21 @@ def render_sidebar():
             st.session_state["_elec_path_avail"] = _get_epf(bus_tie_mode)
         voltage_sag_limit_pct = st.number_input(
             "Max Voltage Sag (%)", min_value=5.0, max_value=35.0,
-            value=float(INPUT_DEFAULTS.get('voltage_sag_limit_pct', 15.0)), step=1.0,
+            value=float(st.session_state.pop("_restore_voltage_sag_limit_pct", INPUT_DEFAULTS.get('voltage_sag_limit_pct', 15.0))), step=1.0,
             help="Maximum acceptable voltage sag at generator bus during a load step event. "
                  "Typical data center requirement: 10-20%.",
         )
         _freq_default = float(INPUT_DEFAULTS.get("freq_hz", 60))
         freq_nadir_limit_hz = st.number_input(
             "Min Frequency Nadir (Hz)", min_value=55.0, max_value=_freq_default - 0.1,
-            value=float(INPUT_DEFAULTS.get('freq_nadir_limit_hz', _freq_default - 0.5)),
+            value=float(st.session_state.pop("_restore_freq_nadir_limit_hz", INPUT_DEFAULTS.get('freq_nadir_limit_hz', _freq_default - 0.5))),
             step=0.1, format="%.1f",
             help="Minimum acceptable frequency during a contingency event. "
                  "IEEE 1547 / NERC: 59.5 Hz for 60 Hz systems.",
         )
         freq_rocof_limit_hz_s = st.number_input(
             "Max RoCoF (Hz/s)", min_value=0.1, max_value=10.0,
-            value=float(INPUT_DEFAULTS.get('freq_rocof_limit_hz_s', 2.0)),
+            value=float(st.session_state.pop("_restore_freq_rocof_limit_hz_s", INPUT_DEFAULTS.get('freq_rocof_limit_hz_s', 2.0))),
             step=0.1, format="%.1f",
             help="Maximum rate of change of frequency. IEEE 1547: 2.0 Hz/s.",
         )
@@ -816,10 +828,10 @@ def render_sidebar():
 
         # -- Fuel & LNG --
         st.markdown("**Fuel & LNG**")
-        _fuel_default = INPUT_DEFAULTS["fuel_mode"]
+        _fuel_restored = st.session_state.pop("_restore_fuel_mode", INPUT_DEFAULTS["fuel_mode"])
         fuel_mode = st.radio(
             "Fuel Supply", FUEL_MODES,
-            index=FUEL_MODES.index(_fuel_default) if _fuel_default in FUEL_MODES else 0,
+            index=FUEL_MODES.index(_fuel_restored) if _fuel_restored in FUEL_MODES else 0,
             horizontal=True,
             help=HELP_TEXTS.get("fuel_mode", ""),
         )
@@ -829,18 +841,18 @@ def render_sidebar():
         if fuel_mode in ("LNG", "Dual-Fuel"):
             lng_days = st.number_input(
                 "LNG Storage (days)", min_value=1, max_value=30,
-                value=int(INPUT_DEFAULTS["lng_days"]), step=1,
+                value=int(st.session_state.pop("_restore_lng_days", INPUT_DEFAULTS["lng_days"])), step=1,
                 help=HELP_TEXTS.get("lng_days", ""),
             )
             gas_price_lng = st.number_input(
                 "LNG Price ($/MMBtu)", min_value=0.0, max_value=50.0,
-                value=float(INPUT_DEFAULTS.get("gas_price_lng", 8.0)), step=0.5,
+                value=float(st.session_state.pop("_restore_gas_price_lng", INPUT_DEFAULTS.get("gas_price_lng", 8.0))), step=0.5,
                 help=HELP_TEXTS.get("gas_price_lng", "LNG delivered price in $/MMBtu."),
             )
             if fuel_mode == "Dual-Fuel":
                 lng_backup_pct = st.number_input(
                     "LNG Backup (%)", min_value=0.0, max_value=100.0,
-                    value=30.0, step=5.0,
+                    value=float(st.session_state.pop("_restore_lng_backup_pct", 30.0)), step=5.0,
                     help="Percentage of load backed by LNG in dual-fuel mode.",
                 )
 
@@ -851,52 +863,52 @@ def render_sidebar():
         gen_data_params = GENERATOR_LIBRARY.get(generator_model, {})
         override_iso = st.number_input(
             "ISO Rating (MW)",
-            value=float(gen_data_params.get('iso_rating_mw', 2.5)),
+            value=float(st.session_state.pop("_restore_override_iso", gen_data_params.get('iso_rating_mw', 2.5))),
             step=0.1, format="%.2f",
         )
         override_voltage = st.number_input(
             "Voltage (kV)",
-            value=float(gen_data_params.get('voltage_kv', 13.8)),
+            value=float(st.session_state.pop("_restore_override_voltage", gen_data_params.get('voltage_kv', 13.8))),
             step=0.1, format="%.1f",
         )
         override_aux = st.number_input(
             "Aux Load (%)",
-            value=float(gen_data_params.get('aux_load_pct', 4.0)),
+            value=float(st.session_state.pop("_restore_override_aux", gen_data_params.get('aux_load_pct', 4.0))),
             step=0.5, format="%.1f",
         )
         override_avail = st.number_input(
             "Availability (%)", min_value=80.0, max_value=100.0,
-            value=float(gen_data_params.get('unit_availability', 0.965) * 100),
+            value=float(st.session_state.pop("_restore_override_avail", gen_data_params.get('unit_availability', 0.965) * 100)),
             step=0.5, format="%.1f",
         )
         override_eff = st.number_input(
             "Efficiency (%)",
-            value=float(gen_data_params.get('electrical_efficiency', 0.40) * 100),
+            value=float(st.session_state.pop("_restore_override_eff", gen_data_params.get('electrical_efficiency', 0.40) * 100)),
             step=0.5, format="%.1f",
         )
         override_step = st.number_input(
             "Step Load (%)",
-            value=float(gen_data_params.get('step_load_pct', 25)),
+            value=float(st.session_state.pop("_restore_override_step", gen_data_params.get('step_load_pct', 25))),
             step=5.0, format="%.0f",
         )
         override_ramp = st.number_input(
             "Ramp Rate (MW/s)",
-            value=float(gen_data_params.get('ramp_rate_mw_s', 0.5)),
+            value=float(st.session_state.pop("_restore_override_ramp", gen_data_params.get('ramp_rate_mw_s', 0.5))),
             step=0.1, format="%.2f",
         )
         override_cost = st.number_input(
             "Equipment Cost ($/kW)",
-            value=float(gen_data_params.get('est_cost_kw', 600)),
+            value=float(st.session_state.pop("_restore_override_cost", gen_data_params.get('est_cost_kw', 600))),
             step=25.0, format="%.0f",
         )
         override_install = st.number_input(
             "Install Cost ($/kW)",
-            value=float(gen_data_params.get('est_install_kw', 600)),
+            value=float(st.session_state.pop("_restore_override_install", gen_data_params.get('est_install_kw', 600))),
             step=25.0, format="%.0f",
         )
         override_inertia = st.number_input(
             "Inertia Constant H (s)", min_value=0.1, max_value=10.0,
-            value=float(gen_data_params.get('inertia_h', 1.0)),
+            value=float(st.session_state.pop("_restore_override_inertia", gen_data_params.get('inertia_h', 1.0))),
             step=0.1, format="%.1f",
             help="Generator rotating mass inertia constant (H). "
                  "Reciprocating gas engines: 0.5–1.5 s. "
@@ -951,17 +963,17 @@ def render_sidebar():
         st.markdown("**BESS Costs**")
         bess_cost_kw = st.number_input(
             "BESS Power Cost ($/kW)", min_value=0.0,
-            value=float(INPUT_DEFAULTS["bess_cost_kw"]), step=25.0,
+            value=float(st.session_state.pop("_restore_bess_cost_kw", INPUT_DEFAULTS["bess_cost_kw"])), step=25.0,
             help=HELP_TEXTS.get("bess_cost_kw", ""),
         )
         bess_cost_kwh = st.number_input(
             "BESS Energy Cost ($/kWh)", min_value=0.0,
-            value=float(INPUT_DEFAULTS["bess_cost_kwh"]), step=25.0,
+            value=float(st.session_state.pop("_restore_bess_cost_kwh", INPUT_DEFAULTS["bess_cost_kwh"])), step=25.0,
             help=HELP_TEXTS.get("bess_cost_kwh", ""),
         )
         bess_om_kw_yr = st.number_input(
             "BESS O&M ($/kW-yr)", min_value=0.0,
-            value=float(INPUT_DEFAULTS["bess_om_kw_yr"]), step=1.0,
+            value=float(st.session_state.pop("_restore_bess_om_kw_yr", INPUT_DEFAULTS["bess_om_kw_yr"])), step=1.0,
             help=HELP_TEXTS.get("bess_om_kw_yr", ""),
         )
 
@@ -971,21 +983,22 @@ def render_sidebar():
         st.markdown("**Emissions & Noise**")
         include_scr = st.checkbox(
             "Include SCR (NOx Reduction)",
-            value=False,
+            value=bool(st.session_state.pop("_restore_include_scr", False)),
             help="Selective Catalytic Reduction for NOx control.",
         )
         include_oxicat = st.checkbox(
             "Include Oxidation Catalyst (CO Reduction)",
-            value=False,
+            value=bool(st.session_state.pop("_restore_include_oxicat", False)),
             help="Oxidation catalyst for CO and VOC control.",
         )
         noise_limit_db = st.number_input(
             "Noise Limit at Property Line (dBA)",
             min_value=30.0, max_value=100.0,
-            value=65.0, step=1.0,
+            value=float(st.session_state.pop("_restore_noise_limit_db", 65.0)), step=1.0,
             help="Maximum allowable noise level at the property boundary.",
         )
-        dist_prop_default = 100.0
+        _restore_dist_prop_m = st.session_state.pop("_restore_distance_to_property_m", None)
+        dist_prop_default = float(_restore_dist_prop_m) if _restore_dist_prop_m is not None else 100.0
         dist_prop_display = _to_display_dist(dist_prop_default)
         distance_to_property_display = st.number_input(
             f"Distance to Property Line ({_dist_label()})",
@@ -994,7 +1007,8 @@ def render_sidebar():
             help="Distance from power plant center to nearest property boundary.",
         )
         distance_to_property_m = _from_display_dist(distance_to_property_display)
-        dist_res_default = 300.0
+        _restore_dist_res_m = st.session_state.pop("_restore_distance_to_residence_m", None)
+        dist_res_default = float(_restore_dist_res_m) if _restore_dist_res_m is not None else 300.0
         dist_res_display = _to_display_dist(dist_res_default)
         distance_to_residence_display = st.number_input(
             f"Distance to Nearest Residence ({_dist_label()})",
@@ -1003,10 +1017,11 @@ def render_sidebar():
             help="Distance from power plant center to nearest residence.",
         )
         distance_to_residence_m = _from_display_dist(distance_to_residence_display)
+        _acoustic_restored = st.session_state.pop("_restore_acoustic_treatment", ACOUSTIC_TREATMENTS[0])
         acoustic_treatment = st.selectbox(
             "Acoustic Treatment Level",
             ACOUSTIC_TREATMENTS,
-            index=0,
+            index=ACOUSTIC_TREATMENTS.index(_acoustic_restored) if _acoustic_restored in ACOUSTIC_TREATMENTS else 0,
             help="Standard: basic enclosure. Enhanced: additional barriers. "
                  "Critical: hospital-grade. Building: fully enclosed.",
         )
@@ -1021,17 +1036,17 @@ def render_sidebar():
         if include_chp:
             chp_recovery_eff = st.number_input(
                 "Heat Recovery Efficiency", min_value=0.0, max_value=0.90,
-                value=0.50, step=0.05, format="%.2f",
+                value=float(st.session_state.pop("_restore_chp_recovery_eff", 0.50)), step=0.05, format="%.2f",
                 help="Fraction of waste heat recovered for useful work.",
             )
             absorption_cop = st.number_input(
                 "Absorption Chiller COP", min_value=0.0, max_value=1.5,
-                value=0.70, step=0.05, format="%.2f",
+                value=float(st.session_state.pop("_restore_absorption_cop", 0.70)), step=0.05, format="%.2f",
                 help="Coefficient of Performance of the absorption chiller.",
             )
             cooling_load_mw = st.number_input(
                 "Cooling Load (MW thermal)", min_value=0.0,
-                value=0.0, step=1.0,
+                value=float(st.session_state.pop("_restore_cooling_load_mw", 0.0)), step=1.0,
                 help="Site cooling demand in MW thermal.",
             )
         else:
@@ -1043,7 +1058,7 @@ def render_sidebar():
         st.markdown("**Phasing**")
         enable_phasing = st.checkbox(
             "Enable Phased Deployment",
-            value=False,
+            value=bool(st.session_state.pop("_restore_enable_phasing", False)),
             help="Deploy generators in multiple phases to match load growth.",
         )
         n_phases = 3
@@ -1051,11 +1066,11 @@ def render_sidebar():
         if enable_phasing:
             n_phases = st.number_input(
                 "Number of Phases", min_value=1, max_value=5,
-                value=3, step=1,
+                value=int(st.session_state.pop("_restore_n_phases", 3)), step=1,
             )
             months_between_phases = st.number_input(
                 "Months Between Phases", min_value=1, max_value=24,
-                value=6, step=1,
+                value=int(st.session_state.pop("_restore_months_between_phases", 6)), step=1,
             )
 
         st.markdown("---")
@@ -1064,12 +1079,12 @@ def render_sidebar():
         st.markdown("**Infrastructure**")
         pipeline_distance_km = st.number_input(
             "Pipeline Distance (km)", min_value=0.0,
-            value=0.0, step=0.5,
+            value=float(st.session_state.pop("_restore_pipeline_distance_km", 0.0)), step=0.5,
             help="Distance from gas main to site. 0 = skip auto-calculation.",
         )
         pipeline_diameter_inch = st.number_input(
             "Pipeline Diameter (inch)", min_value=2.0, max_value=48.0,
-            value=6.0, step=1.0,
+            value=float(st.session_state.pop("_restore_pipeline_diameter_inch", 6.0)), step=1.0,
             help="Nominal pipeline diameter in inches.",
         )
 
@@ -1078,12 +1093,13 @@ def render_sidebar():
         # -- Footprint --
         st.markdown("**Footprint**")
         enable_footprint_limit = st.checkbox(
-            "Limit Site Area", value=INPUT_DEFAULTS["enable_footprint_limit"],
+            "Limit Site Area", value=bool(st.session_state.pop("_restore_enable_footprint_limit", INPUT_DEFAULTS["enable_footprint_limit"])),
             help=HELP_TEXTS.get("enable_footprint_limit", ""),
         )
-        max_area_m2 = float(INPUT_DEFAULTS["max_area_m2"])
+        _restore_area_m2 = st.session_state.pop("_restore_max_area_m2", None)
+        max_area_m2 = float(_restore_area_m2) if _restore_area_m2 is not None else float(INPUT_DEFAULTS["max_area_m2"])
         if enable_footprint_limit:
-            area_display_default = _to_display_area(float(INPUT_DEFAULTS["max_area_m2"]))
+            area_display_default = _to_display_area(max_area_m2)
             max_area_display = st.number_input(
                 f"Max Area ({_area_label()})", min_value=_to_display_area(100.0),
                 value=area_display_default, step=500.0,
@@ -1118,10 +1134,111 @@ def render_sidebar():
         if st.button(":floppy_disk: Save", use_container_width=True):
             proj = new_project()
             proj["inputs"] = {
-                "p_it": p_it, "pue": pue, "dc_type": dc_type,
-                "capacity_factor": capacity_factor, "peak_avg_ratio": peak_avg_ratio,
-                "generator_model": generator_model, "site_temp_c": site_temp_c,
+                # Quick Sizing
+                "unit_sys": unit_sys,
+                "dc_type": dc_type,
+                "p_it": p_it,
+                "gen_filter": gen_filter,
+                "generator_model": generator_model,
+                "region": region,
+                # Load Profile
+                "pue": pue,
+                "capacity_factor": capacity_factor,
+                "peak_avg_ratio": peak_avg_ratio,
+                "load_step_pct": load_step_pct,
+                "avail_req": avail_req,
+                "load_ramp_req": load_ramp_req,
+                "spinning_res_pct": spinning_res_pct,
+                # Generator & BESS
+                "use_bess": use_bess,
+                "bess_autonomy_min": bess_autonomy_min,
+                "bess_dod": bess_dod,
+                "enable_black_start": enable_black_start,
+                "include_chp": include_chp,
+                # Site Conditions
+                "site_temp_c": site_temp_c,
                 "site_alt_m": site_alt_m,
+                "methane_number": methane_number,
+                "derate_mode": derate_mode,
+                "derate_factor_manual": derate_factor_manual,
+                # Economics
+                "gas_price": gas_price,
+                "wacc": wacc,
+                "project_years": int(project_years),
+                "benchmark_price": benchmark_price,
+                "carbon_price_per_ton": carbon_price_per_ton,
+                "enable_depreciation": enable_depreciation,
+                "bos_pct": bos_pct,
+                "civil_pct": civil_pct,
+                "fuel_system_pct": fuel_system_pct,
+                "epc_pct": epc_pct,
+                "contingency_pct": contingency_pct,
+                "pipeline_cost_usd": pipeline_cost_usd,
+                "permitting_cost_usd": permitting_cost_usd,
+                "commissioning_cost_usd": commissioning_cost_usd,
+                "gas_supply_pressure_psia": gas_supply_pressure_psia,
+                "gas_pipeline_length_miles": gas_pipeline_length_miles,
+                # Advanced — Electrical
+                "volt_mode": volt_mode,
+                "manual_voltage_kv": manual_voltage_kv,
+                "swg_topology": swg_topology,
+                "dist_loss_pct": dist_loss_pct,
+                "cooling_method": cooling_method,
+                "bus_tie_mode": bus_tie_mode,
+                "voltage_sag_limit_pct": voltage_sag_limit_pct,
+                "freq_nadir_limit_hz": freq_nadir_limit_hz,
+                "freq_rocof_limit_hz_s": freq_rocof_limit_hz_s,
+                # Advanced — Fuel
+                "fuel_mode": fuel_mode,
+                "lng_days": int(lng_days),
+                "gas_price_lng": gas_price_lng,
+                "lng_backup_pct": lng_backup_pct,
+                # Advanced — Generator Overrides (raw display values)
+                "override_iso": override_iso,
+                "override_voltage": override_voltage,
+                "override_aux": override_aux,
+                "override_avail": override_avail,
+                "override_eff": override_eff,
+                "override_step": override_step,
+                "override_ramp": override_ramp,
+                "override_cost": override_cost,
+                "override_install": override_install,
+                "override_inertia": override_inertia,
+                # Advanced — BESS Costs
+                "bess_cost_kw": bess_cost_kw,
+                "bess_cost_kwh": bess_cost_kwh,
+                "bess_om_kw_yr": bess_om_kw_yr,
+                # Advanced — Emissions & Noise
+                "include_scr": include_scr,
+                "include_oxicat": include_oxicat,
+                "noise_limit_db": noise_limit_db,
+                "distance_to_property_m": distance_to_property_m,
+                "distance_to_residence_m": distance_to_residence_m,
+                "acoustic_treatment": acoustic_treatment,
+                # Advanced — CHP
+                "chp_recovery_eff": chp_recovery_eff,
+                "absorption_cop": absorption_cop,
+                "cooling_load_mw": cooling_load_mw,
+                # Advanced — Phasing
+                "enable_phasing": enable_phasing,
+                "n_phases": int(n_phases),
+                "months_between_phases": int(months_between_phases),
+                # Advanced — Infrastructure
+                "pipeline_distance_km": pipeline_distance_km,
+                "pipeline_diameter_inch": pipeline_diameter_inch,
+                # Advanced — Footprint
+                "enable_footprint_limit": enable_footprint_limit,
+                "max_area_m2": max_area_m2,
+                # Project Info
+                "_project_name": st.session_state.get("_project_name", ""),
+                "_client_name": st.session_state.get("_client_name", ""),
+                "_contact_name": st.session_state.get("_contact_name", ""),
+                "_contact_email": st.session_state.get("_contact_email", ""),
+                "_contact_phone": st.session_state.get("_contact_phone", ""),
+                "_country": st.session_state.get("_country", ""),
+                "_state_province": st.session_state.get("_state_province", ""),
+                "_county_district": st.session_state.get("_county_district", ""),
+                "_freq_hz_proposal": st.session_state.get("_freq_hz_proposal", 60),
             }
             st.session_state["_project_json"] = project_to_json(proj)
 
@@ -1138,7 +1255,56 @@ def render_sidebar():
         if proj_file:
             try:
                 proj = project_from_json(proj_file.read().decode("utf-8"))
-                st.sidebar.success("Project loaded")
+                inp = proj.get("inputs", {})
+                # --- Direct write for keyed widgets ---
+                if "unit_sys" in inp:
+                    st.session_state["_unit_sys"] = inp["unit_sys"]
+                if "dc_type" in inp:
+                    st.session_state["_dc_type_select"] = inp["dc_type"]
+                for _lp_f in ("pue", "capacity_factor", "peak_avg_ratio", "load_step_pct",
+                               "avail_req", "load_ramp_req", "spinning_res_pct"):
+                    if _lp_f in inp:
+                        st.session_state[_lp_f] = inp[_lp_f]
+                if "bess_autonomy_min" in inp:
+                    st.session_state["_bess_autonomy_min"] = inp["bess_autonomy_min"]
+                if "swg_topology" in inp:
+                    st.session_state["_swg_topology"] = inp["swg_topology"]
+                for _pi_k in ("_project_name", "_client_name", "_contact_name", "_contact_email",
+                               "_contact_phone", "_country", "_state_province", "_county_district",
+                               "_freq_hz_proposal"):
+                    if _pi_k in inp:
+                        st.session_state[_pi_k] = inp[_pi_k]
+                # --- _restore_* for non-keyed widgets (popped on next render) ---
+                _restore_keys = (
+                    "p_it", "gen_filter", "generator_model", "region",
+                    "use_bess", "bess_dod", "enable_black_start", "include_chp",
+                    "site_temp_c", "site_alt_m", "methane_number",
+                    "derate_mode", "derate_factor_manual",
+                    "gas_price", "wacc", "project_years", "benchmark_price",
+                    "carbon_price_per_ton", "enable_depreciation",
+                    "bos_pct", "civil_pct", "fuel_system_pct", "epc_pct", "contingency_pct",
+                    "pipeline_cost_usd", "permitting_cost_usd", "commissioning_cost_usd",
+                    "gas_supply_pressure_psia", "gas_pipeline_length_miles",
+                    "volt_mode", "manual_voltage_kv", "dist_loss_pct",
+                    "cooling_method", "bus_tie_mode",
+                    "voltage_sag_limit_pct", "freq_nadir_limit_hz", "freq_rocof_limit_hz_s",
+                    "fuel_mode", "lng_days", "gas_price_lng", "lng_backup_pct",
+                    "override_iso", "override_voltage", "override_aux", "override_avail",
+                    "override_eff", "override_step", "override_ramp", "override_cost",
+                    "override_install", "override_inertia",
+                    "bess_cost_kw", "bess_cost_kwh", "bess_om_kw_yr",
+                    "include_scr", "include_oxicat", "noise_limit_db",
+                    "distance_to_property_m", "distance_to_residence_m", "acoustic_treatment",
+                    "chp_recovery_eff", "absorption_cop", "cooling_load_mw",
+                    "enable_phasing", "n_phases", "months_between_phases",
+                    "pipeline_distance_km", "pipeline_diameter_inch",
+                    "enable_footprint_limit", "max_area_m2",
+                )
+                for _rk in _restore_keys:
+                    if _rk in inp:
+                        st.session_state[f"_restore_{_rk}"] = inp[_rk]
+                st.sidebar.success("✅ Project loaded")
+                st.rerun()
             except Exception as e:
                 st.sidebar.error(f"Load error: {e}")
 

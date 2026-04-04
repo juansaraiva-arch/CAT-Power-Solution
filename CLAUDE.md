@@ -111,7 +111,7 @@ for field, default in _LP_FIELD_DEFAULTS.items():
 
 #### LEVEL 2 — Standard (expanders)
 - 📋 **Project Info** (collapsed) — project name, client, contacts, country, state/province, county, grid frequency. Stored via `key=` to `_project_name`, `_client_name`, etc.
-- 📊 **Load Profile** (expanded) — pue, capacity_factor, peak_avg_ratio, load_step_pct, avail_req, load_ramp_req, spinning_res_pct (all using `_dcdefault_*` auto-fill); + load preview metrics (Total DC / Average / Peak)
+- 📊 **Load Profile** (expanded) — pue, capacity_factor, peak_avg_ratio, load_step_pct, avail_req, load_ramp_req, spinning_res_pct (all using `key=field`, seeded by pre-render block; auto-updated via `_dcdefault_*` on DC Type change); + load preview metrics (Total DC / Average / Peak)
 - ⚡ **Generator & BESS** (expanded) — use_bess, bess_autonomy_min, bess_dod, enable_black_start, include_chp (gen_filter/model moved to Quick)
 - 🌡️ **Site Conditions** (collapsed) — site_temp (unit-aware), site_alt (unit-aware), methane_number, derate_mode; Auto mode shows live derate factor preview
 - 💰 **Economics** (collapsed) — gas_price_pipeline, wacc, project_years, benchmark_price, carbon_price_per_ton, enable_depreciation; + nested **"Advanced CAPEX Adders"** sub-expander (bos_pct, civil_pct, fuel_system_pct, epc_pct, contingency_pct, electrical_pct, commissioning_pct). Region removed (moved to Quick).
@@ -360,16 +360,29 @@ All sidebar widgets use `value=INPUT_DEFAULTS[...]` directly — no `_stored_*` 
   Step-up transformers captured in binomial fleet model, NOT in this factor.
 - **Tests:** 48/48 pass.
 
-### P48 — Fix DC Type auto-fill: spinning reserve (and all 7 fields) not updating (2026-04-04)
-- **Bug:** Switching DC Type did not update spinning_res_pct (showed 20% for Colocation, expected 10%). All 7 Load Profile fields were affected.
-- **Root cause:** Two distinct Streamlit bugs triggered by the P47 `_dcdefault_*` pattern:
-  1. Widgets WITHOUT `key=` — Streamlit ignores `value=` after first render (uses internal positional state)
-  2. `spinning_res_pct` WITH `key=` AND `value=` — Streamlit uses `st.session_state["spinning_res_pct"]` (old value) and ignores the `value=` expression
-- **Fix:** Two-step pattern replacing `value=st.session_state.get("_dcdefault_*", ...)`:
-  1. `_on_dc_type_change()` callback unchanged — still writes to `_dcdefault_*` keys
-  2. New **pre-render transfer block** (before Load Profile expander): transfers `_dcdefault_*` → `st.session_state[field]` via `pop()`; seeds from INPUT_DEFAULTS on first run
-  3. All 7 Load Profile widgets changed to `key=field` only (no `value=` parameter)
-- **Verified:** Simulation confirms all 7 Colocation values match `DC_TYPE_DEFAULTS["Colocation"]` exactly
+### P48 — Fix DC Type auto-fill: all 7 Load Profile fields force-updated on DC Type change (2026-04-04)
+- **Bug:** Switching DC Type did not update Load Profile fields (e.g. spinning_res_pct showed 20% for Colocation, expected 10%). All 7 fields affected.
+- **Root cause:** Two distinct Streamlit pitfalls triggered by the P47 `_dcdefault_*` pattern:
+  1. Widgets WITHOUT `key=` (pue, capacity_factor, peak_avg_ratio, load_step_pct, avail_req, load_ramp_req) — Streamlit ignores `value=` on reruns after the widget's internal state is set
+  2. `spinning_res_pct` WITH `key="spinning_res_pct"` AND `value=st.session_state.get(...)` — Streamlit uses the stored `st.session_state["spinning_res_pct"]` and ignores the `value=` expression entirely
+- **Fix — complete two-step pattern for all 7 fields:**
+  1. `_on_dc_type_change()` callback: unchanged — writes `st.session_state["_dcdefault_<field>"]` for all 7 fields
+  2. **Pre-render transfer block** (lines 421–442, before Load Profile expander on every render):
+     ```python
+     _LP_FIELD_DEFAULTS = {  # all 7 fields with INPUT_DEFAULTS as fallback
+         "pue", "capacity_factor", "peak_avg_ratio", "load_step_pct",
+         "avail_req", "load_ramp_req", "spinning_res_pct"
+     }
+     for field, default in _LP_FIELD_DEFAULTS.items():
+         dckey = f"_dcdefault_{field}"
+         if dckey in st.session_state:
+             st.session_state[field] = st.session_state.pop(dckey)  # force DC default
+         elif field not in st.session_state:
+             st.session_state[field] = default  # seed on first run
+     ```
+  3. All 7 Load Profile widgets use `key=field` only — NO `value=` parameter
+- **Verified (simulation):** All 3 DC type switches (Colocation, HPC/Research, Edge Computing) produce exact matches. DC type switch also correctly overrides any prior manual user edit.
+- **No code changes in P48-fix2** — the complete fix was already in P48. Confirmation commit only.
 - py_compile OK
 
 ### P47 — Sidebar progressive disclosure: Quick / Standard / Advanced (2026-04-04)

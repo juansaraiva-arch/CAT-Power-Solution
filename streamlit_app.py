@@ -32,6 +32,7 @@ from core.project_manager import (
     HELP_TEXTS,
     HEADER_DEFAULTS,
     COUNTRIES,
+    DC_TYPE_DEFAULTS,
     new_project,
     apply_template,
     project_to_json,
@@ -63,78 +64,6 @@ DC_TYPES = [
     "Colocation",
     "Edge Computing",
 ]
-
-# Per-DC-type suggested defaults for load dynamics parameters.
-# These are industry-typical values for preliminary sizing — the user
-# can always override them after the auto-fill.
-# Sources: Uptime Institute, ASHRAE TC9.9, Lawrence Berkeley National Lab
-DC_TYPE_DEFAULTS = {
-    "AI Factory (Training)": {
-        "pue":               1.12,   # liquid cooling, very efficient
-        "capacity_factor":   0.90,   # training runs at near-constant load
-        "peak_avg_ratio":    1.10,   # very flat load profile
-        "load_step_pct":     30.0,   # large GPU job starts/stops
-        "spinning_res_pct":  15.0,   # high SR — GPU loads are unforgiving
-        "load_ramp_req":     5.0,    # MW/min
-        "avail_req":         99.99,
-    },
-    "AI Inference": {
-        "pue":               1.15,
-        "capacity_factor":   0.75,   # variable inference traffic
-        "peak_avg_ratio":    1.25,
-        "load_step_pct":     25.0,
-        "spinning_res_pct":  15.0,
-        "load_ramp_req":     5.0,
-        "avail_req":         99.99,
-    },
-    "Hyperscale Standard": {
-        "pue":               1.25,
-        "capacity_factor":   0.80,
-        "peak_avg_ratio":    1.20,
-        "load_step_pct":     20.0,
-        "spinning_res_pct":  10.0,
-        "load_ramp_req":     3.0,
-        "avail_req":         99.99,
-    },
-    "Colocation": {
-        "pue":               1.35,
-        "capacity_factor":   0.70,
-        "peak_avg_ratio":    1.35,
-        "load_step_pct":     15.0,
-        "spinning_res_pct":  10.0,
-        "load_ramp_req":     2.0,
-        "avail_req":         99.982,  # Tier III
-    },
-    "Enterprise Mixed": {
-        "pue":               1.45,
-        "capacity_factor":   0.65,
-        "peak_avg_ratio":    1.40,
-        "load_step_pct":     10.0,
-        "spinning_res_pct":  10.0,
-        "load_ramp_req":     1.5,
-        "avail_req":         99.741,  # Tier II
-    },
-    "HPC / Research": {
-        "pue":               1.20,
-        "capacity_factor":   0.85,
-        "peak_avg_ratio":    1.15,
-        "load_step_pct":     35.0,   # batch job starts
-        "spinning_res_pct":  15.0,
-        "load_ramp_req":     5.0,
-        "avail_req":         99.99,
-    },
-    "Edge Computing": {
-        "pue":               1.30,
-        "capacity_factor":   0.60,
-        "peak_avg_ratio":    1.50,   # very peaky
-        "load_step_pct":     25.0,
-        "spinning_res_pct":  15.0,
-        "load_ramp_req":     3.0,
-        "avail_req":         99.671,  # Tier I
-    },
-}
-
-# DC_TYPE_DEFAULTS is kept as reference data (P35: wizard removed, sidebar uses INPUT_DEFAULTS directly)
 
 
 REGIONS = [
@@ -368,6 +297,14 @@ def _fmt_downtime(hours):
 # =============================================================================
 # SIDEBAR -- INPUT SECTIONS
 # =============================================================================
+def _on_dc_type_change():
+    """Callback: when DC Type selectbox changes, write DC_TYPE_DEFAULTS values to _dcdefault_ keys."""
+    dc_type = st.session_state.get("_dc_type_select", INPUT_DEFAULTS["dc_type"])
+    defaults = DC_TYPE_DEFAULTS.get(dc_type, {})
+    for key, val in defaults.items():
+        st.session_state[f"_dcdefault_{key}"] = val
+
+
 def render_sidebar():
     """Render all sidebar input sections. Returns (inputs_dict, benchmark_price)."""
 
@@ -412,6 +349,51 @@ def render_sidebar():
 
     st.sidebar.divider()
 
+    # ---- QUICK SIZING (always visible, no expander) ----
+    st.sidebar.subheader("\u26a1 Quick Sizing")
+
+    dc_type = st.sidebar.selectbox(
+        "Data Center Type", DC_TYPES,
+        key="_dc_type_select",
+        on_change=_on_dc_type_change,
+        index=DC_TYPES.index(INPUT_DEFAULTS["dc_type"]) if INPUT_DEFAULTS["dc_type"] in DC_TYPES else 0,
+        help=HELP_TEXTS.get("dc_type", ""),
+    )
+
+    p_it = st.sidebar.number_input(
+        "IT Load (MW)", min_value=0.1, max_value=2000.0,
+        value=float(INPUT_DEFAULTS["p_it"]), step=1.0,
+        help=HELP_TEXTS.get("p_it", ""),
+    )
+
+    gen_filter = st.sidebar.multiselect(
+        "Generator Types", GEN_TYPE_OPTIONS,
+        default=INPUT_DEFAULTS["gen_filter"],
+        help=HELP_TEXTS.get("gen_filter", ""),
+    )
+    available_models = _get_filtered_models(gen_filter)
+    default_gen = INPUT_DEFAULTS["selected_gen_name"]
+    gen_idx = available_models.index(default_gen) if default_gen in available_models else 0
+    generator_model = st.sidebar.selectbox(
+        "Generator Model", available_models, index=gen_idx,
+        help=HELP_TEXTS.get("selected_gen_name", ""),
+    )
+    gen_data = GENERATOR_LIBRARY.get(generator_model, {})
+    if gen_data:
+        st.sidebar.caption(gen_data.get("description", ""))
+        col_a, col_b = st.sidebar.columns(2)
+        col_a.metric("ISO Rating", f"{gen_data['iso_rating_mw']} MW")
+        col_b.metric("Efficiency", f"{gen_data['electrical_efficiency']*100:.1f}%")
+
+    _region_default = INPUT_DEFAULTS["region"]
+    region = st.sidebar.selectbox(
+        "Region", REGIONS,
+        index=REGIONS.index(_region_default) if _region_default in REGIONS else 0,
+        help=HELP_TEXTS.get("region", ""),
+    )
+
+    st.sidebar.divider()
+
     # ---- 3. Project Info ----
     with st.sidebar.expander("\U0001f4cb Project Info", expanded=False):
         st.caption("Fill these fields when generating the proposal document.")
@@ -438,51 +420,54 @@ def render_sidebar():
 
     # ---- 4. Load Profile (Basic — expanded) ----
     with st.sidebar.expander("\U0001f4ca Load Profile", expanded=True):
-        _dc_default = INPUT_DEFAULTS["dc_type"]
-        dc_type = st.selectbox(
-            "Data Center Type", DC_TYPES,
-            index=DC_TYPES.index(_dc_default) if _dc_default in DC_TYPES else 0,
-            help=HELP_TEXTS.get("dc_type", ""),
-        )
-        p_it = st.number_input(
-            "IT Load (MW)", min_value=0.1, max_value=2000.0,
-            value=float(INPUT_DEFAULTS["p_it"]), step=1.0,
-            help=HELP_TEXTS.get("p_it", ""),
-        )
         pue = st.number_input(
             "PUE", min_value=1.0, max_value=3.0,
-            value=float(INPUT_DEFAULTS["pue"]), step=0.05,
-            format="%.2f", help=HELP_TEXTS.get("pue", ""),
+            value=st.session_state.get("_dcdefault_pue", float(INPUT_DEFAULTS["pue"])),
+            step=0.05, format="%.2f", help=HELP_TEXTS.get("pue", ""),
         )
         capacity_factor = st.slider(
             "Capacity Factor", min_value=0.50, max_value=1.0,
-            value=float(INPUT_DEFAULTS["capacity_factor"]), step=0.01,
-            help=HELP_TEXTS.get("capacity_factor", ""),
+            value=st.session_state.get("_dcdefault_capacity_factor", float(INPUT_DEFAULTS["capacity_factor"])),
+            step=0.01, help=HELP_TEXTS.get("capacity_factor", ""),
         )
+        peak_avg_ratio = st.number_input(
+            "Peak / Average Ratio", min_value=1.0, max_value=2.0,
+            value=st.session_state.get("_dcdefault_peak_avg_ratio", float(INPUT_DEFAULTS["peak_avg_ratio"])),
+            step=0.05, format="%.2f", help=HELP_TEXTS.get("peak_avg_ratio", ""),
+        )
+        load_step_pct = st.number_input(
+            "Max Step Load (%)", min_value=1.0, max_value=100.0,
+            value=st.session_state.get("_dcdefault_load_step_pct", float(INPUT_DEFAULTS["load_step_pct"])),
+            step=1.0, help=HELP_TEXTS.get("load_step_pct", ""),
+        )
+        avail_req = st.number_input(
+            "Availability Req (%)", min_value=99.0, max_value=100.0,
+            value=st.session_state.get("_dcdefault_avail_req", float(INPUT_DEFAULTS["avail_req"])),
+            step=0.01, format="%.4f", help=HELP_TEXTS.get("avail_req", ""),
+        )
+        load_ramp_req = st.number_input(
+            "Load Ramp Rate (MW/min)", min_value=0.1, max_value=20.0,
+            value=st.session_state.get("_dcdefault_load_ramp_req", float(INPUT_DEFAULTS["load_ramp_req"])),
+            step=0.5, help=HELP_TEXTS.get("load_ramp_req", ""),
+        )
+        spinning_res_pct = st.number_input(
+            "Spinning Reserve (%)", min_value=0.0, max_value=50.0,
+            value=st.session_state.get("_dcdefault_spinning_res_pct", float(INPUT_DEFAULTS["spinning_res_pct"])),
+            step=1.0, help=HELP_TEXTS.get("spinning_res_pct", ""),
+            key="spinning_res_pct",
+        )
+        # Load preview
+        _p_total_dc_preview = p_it * pue
+        _p_avg_preview = _p_total_dc_preview * capacity_factor
+        _p_peak_preview = _p_avg_preview * peak_avg_ratio
+        st.caption("**Load Preview**")
+        _lp_c1, _lp_c2, _lp_c3 = st.columns(3)
+        _lp_c1.metric("Total DC Load", f"{_p_total_dc_preview:.1f} MW")
+        _lp_c2.metric("Average Load", f"{_p_avg_preview:.1f} MW")
+        _lp_c3.metric("Peak Load", f"{_p_peak_preview:.1f} MW")
 
     # ---- 5. Generator & BESS (Basic — expanded) ----
     with st.sidebar.expander("\u26a1 Generator & BESS", expanded=True):
-        gen_filter = st.multiselect(
-            "Generator Types", GEN_TYPE_OPTIONS,
-            default=INPUT_DEFAULTS["gen_filter"],
-            help=HELP_TEXTS.get("gen_filter", ""),
-        )
-        available_models = _get_filtered_models(gen_filter)
-        default_gen = INPUT_DEFAULTS["selected_gen_name"]
-        gen_idx = available_models.index(default_gen) if default_gen in available_models else 0
-        generator_model = st.selectbox(
-            "Generator Model", available_models, index=gen_idx,
-            help=HELP_TEXTS.get("selected_gen_name", ""),
-        )
-
-        # Show selected gen specs
-        gen_data = GENERATOR_LIBRARY.get(generator_model, {})
-        if gen_data:
-            st.caption(gen_data.get("description", ""))
-            col_a, col_b = st.columns(2)
-            col_a.metric("ISO Rating", f"{gen_data['iso_rating_mw']} MW")
-            col_b.metric("Efficiency", f"{gen_data['electrical_efficiency']*100:.1f}%")
-
         use_bess = st.checkbox(
             "Include BESS", value=INPUT_DEFAULTS["use_bess"],
             help=HELP_TEXTS.get("use_bess", ""),
@@ -601,12 +586,6 @@ def render_sidebar():
 
     # ---- 7. Economics (collapsed) ----
     with st.sidebar.expander("\U0001f4b0 Economics"):
-        _region_default = INPUT_DEFAULTS["region"]
-        region = st.selectbox(
-            "Region", REGIONS,
-            index=REGIONS.index(_region_default) if _region_default in REGIONS else 0,
-            help=HELP_TEXTS.get("region", ""),
-        )
         gas_price = st.number_input(
             "Pipeline Gas Price ($/MMBtu)", min_value=0.0, max_value=50.0,
             value=float(INPUT_DEFAULTS["gas_price_pipeline"]), step=0.5,
@@ -718,37 +697,6 @@ def render_sidebar():
 
     # ---- 8. Advanced (collapsed — single expander, no nesting) ----
     with st.sidebar.expander("\u2699\ufe0f Advanced", expanded=False):
-
-        # -- Load Dynamics --
-        st.markdown("**Load Dynamics**")
-        peak_avg_ratio = st.number_input(
-            "Peak / Average Ratio", min_value=1.0, max_value=2.0,
-            value=float(INPUT_DEFAULTS["peak_avg_ratio"]), step=0.05,
-            format="%.2f", help=HELP_TEXTS.get("peak_avg_ratio", ""),
-        )
-        load_step_pct = st.number_input(
-            "Max Step Load (%)", min_value=0.0, max_value=100.0,
-            value=float(INPUT_DEFAULTS["load_step_pct"]), step=5.0,
-            help=HELP_TEXTS.get("load_step_pct", ""),
-        )
-        avail_req = st.number_input(
-            "Availability Requirement (%)", min_value=90.0, max_value=100.0,
-            value=float(INPUT_DEFAULTS["avail_req"]), step=0.01,
-            format="%.2f", help=HELP_TEXTS.get("avail_req", ""),
-        )
-        load_ramp_req = st.number_input(
-            "Load Ramp Rate (MW/min)", min_value=0.1, max_value=100.0,
-            value=float(INPUT_DEFAULTS["load_ramp_req"]), step=0.5,
-            help=HELP_TEXTS.get("load_ramp_req", ""),
-        )
-        spinning_res_pct = st.number_input(
-            "Spinning Reserve (%)", min_value=0.0, max_value=100.0,
-            value=float(INPUT_DEFAULTS["spinning_res_pct"]), step=5.0,
-            help=HELP_TEXTS.get("spinning_res_pct", ""),
-            key="spinning_res_pct_input",
-        )
-
-        st.markdown("---")
 
         # -- Voltage & Electrical --
         st.markdown("**Voltage & Electrical**")

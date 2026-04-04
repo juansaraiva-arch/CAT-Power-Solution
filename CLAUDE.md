@@ -70,20 +70,39 @@ frontend/              ← React source (Vite + TypeScript + shadcn/ui)
 - **Dependencies:** `requirements.txt` — only Streamlit-specific deps (no FastAPI, asyncpg, etc.)
 - **API deps separate:** `requirements-api.txt` — for FastAPI server
 
-### Sidebar-Only Architecture (P35)
+### Sidebar-Only Architecture (P35 / P47)
 Sidebar-only architecture. **No wizard exists** — all wizard code was deleted in P35. Sizing runs reactively on every input change. No `_wiz_*` or `_stored_*` keys (only survivor: `_stored_bess_autonomy_min`).
 
-**Always-visible (not in expander):**
-- Unit System radio (Metric / Imperial) — stored to `_unit_sys` session state
-- Project Template selectbox — applies `TEMPLATES[name]` values to session state when not Custom
+**3-level progressive disclosure (render_sidebar(), lines 308–1194):**
 
-**Sidebar expanders (render_sidebar(), lines 371–1251):**
-- 📋 **Project Info** (collapsed) — project name, client, contacts, country, state/province, county, grid frequency. Stored directly via `key=` to `_project_name`, `_client_name`, etc.
-- 📊 **Load Profile** (expanded) — dc_type, p_it (MW), pue, capacity_factor
-- ⚡ **Generator & BESS** (expanded) — gen_filter multiselect, generator_model selectbox + specs metrics, use_bess checkbox, bess_autonomy_min, bess_dod, enable_black_start, include_chp
-- 🌡️ **Site Conditions** (collapsed) — site_temp (unit-aware), site_alt (unit-aware), methane_number, derate_mode radio; Auto mode shows live derate factor preview
-- 💰 **Economics** (collapsed) — region, gas_price_pipeline, wacc, project_years, benchmark_price, carbon_price_per_ton, enable_depreciation; + nested sub-expander **"Advanced CAPEX Adders"** (bos_pct, civil_pct, fuel_system_pct, epc_pct, contingency_pct, electrical_pct, commissioning_pct)
-- ⚙️ **Advanced** (collapsed) → flat sub-sections (no nested expanders): Load Dynamics, Voltage & Electrical, Fuel & LNG, Generator Overrides, BESS Costs, Emissions & Noise, CHP/Tri-Gen, Phasing, Infrastructure, Footprint, GERP PDF Import
+#### LEVEL 1 — Quick Sizing (always visible, no expander)
+After the Unit System and Template dividers, these fields are always visible at the top:
+- Unit System radio (Metric / Imperial) — stored to `_unit_sys` session state
+- Project Template selectbox — applies `TEMPLATES[name]` values to session state
+- **⚡ Quick Sizing subheader**
+  - **Data Center Type** selectbox — `key="_dc_type_select"`, `on_change=_on_dc_type_change`; auto-fills Load Profile fields via `_dcdefault_*` session state keys
+  - **IT Load (MW)** number_input
+  - **Generator Types** multiselect + **Generator Model** selectbox + ISO Rating / Efficiency metrics
+  - **Region** selectbox
+
+#### DC_TYPE_DEFAULTS auto-fill mechanism
+`_on_dc_type_change()` callback (defined before render_sidebar):
+- Reads `st.session_state["_dc_type_select"]`
+- Writes `DC_TYPE_DEFAULTS[dc_type][key]` → `st.session_state[f"_dcdefault_{key}"]` for 7 fields
+- Load Profile widgets initialize with `st.session_state.get("_dcdefault_<key>", INPUT_DEFAULTS["<key>"])`
+- Affected fields: `pue`, `capacity_factor`, `peak_avg_ratio`, `load_step_pct`, `avail_req`, `spinning_res_pct`, `load_ramp_req`
+- `DC_TYPE_DEFAULTS` imported from `core.project_manager` (no local copy)
+
+#### LEVEL 2 — Standard (expanders)
+- 📋 **Project Info** (collapsed) — project name, client, contacts, country, state/province, county, grid frequency. Stored via `key=` to `_project_name`, `_client_name`, etc.
+- 📊 **Load Profile** (expanded) — pue, capacity_factor, peak_avg_ratio, load_step_pct, avail_req, load_ramp_req, spinning_res_pct (all using `_dcdefault_*` auto-fill); + load preview metrics (Total DC / Average / Peak)
+- ⚡ **Generator & BESS** (expanded) — use_bess, bess_autonomy_min, bess_dod, enable_black_start, include_chp (gen_filter/model moved to Quick)
+- 🌡️ **Site Conditions** (collapsed) — site_temp (unit-aware), site_alt (unit-aware), methane_number, derate_mode; Auto mode shows live derate factor preview
+- 💰 **Economics** (collapsed) — gas_price_pipeline, wacc, project_years, benchmark_price, carbon_price_per_ton, enable_depreciation; + nested **"Advanced CAPEX Adders"** sub-expander (bos_pct, civil_pct, fuel_system_pct, epc_pct, contingency_pct, electrical_pct, commissioning_pct). Region removed (moved to Quick).
+
+#### LEVEL 3 — Advanced (collapsed expander)
+Flat sub-sections (no nested expanders): Voltage & Electrical, Fuel & LNG, Generator Overrides, BESS Costs, Emissions & Noise, CHP/Tri-Gen, Phasing, Infrastructure, Footprint, GERP PDF Import.
+**Load Dynamics sub-section removed** (P47) — those 5 fields moved to Load Profile expander.
 
 ### main() Flow (lines 3847–4014)
 1. `check_auth()` — auth gate
@@ -324,6 +343,17 @@ All sidebar widgets use `value=INPUT_DEFAULTS[...]` directly — no `_stored_*` 
   power transformers, protective relays. Topology: SWGR-A + SWGR-B + 52T5 bus-tie.
   Step-up transformers captured in binomial fleet model, NOT in this factor.
 - **Tests:** 48/48 pass.
+
+### P47 — Sidebar progressive disclosure: Quick / Standard / Advanced (2026-04-04)
+- **LEVEL 1 (Quick Sizing, always visible):** Data Center Type, IT Load, Generator Types + Model, Region — the 4 most-used fields exposed without opening any expander
+- **DC_TYPE_DEFAULTS auto-fill:** `_on_dc_type_change()` callback writes `_dcdefault_<key>` session state entries when DC Type changes; Load Profile widgets read them as initial values → PUE, CF, PAR, load step, availability, SR%, ramp rate auto-fill on DC type selection
+- **Load Profile expander** gains 5 load-dynamics fields (peak_avg_ratio, load_step_pct, avail_req, load_ramp_req, spinning_res_pct) moved from Advanced; loses dc_type + p_it (moved to Quick)
+- **Generator & BESS expander** loses gen_filter + generator_model + specs (moved to Quick)
+- **Economics expander** loses region (moved to Quick)
+- **Advanced expander** loses entire Load Dynamics sub-section (moved to Load Profile)
+- **Change 1:** `DC_TYPE_DEFAULTS` removed from streamlit_app.py local scope (−69 lines); now imported from `core.project_manager`
+- Net: `streamlit_app.py` 3,962 lines (was 4,014 before P47 + DC_TYPE_DEFAULTS removal)
+- All inputs_dict keys preserved. py_compile OK.
 
 ### P46 — Add DC_TYPE_DEFAULTS to core/project_manager.py (2026-04-04)
 - Added `DC_TYPE_DEFAULTS` dict to `core/project_manager.py` immediately after `INPUT_DEFAULTS`

@@ -44,6 +44,7 @@ from .project_manager import (
     TEMPLATES,
     HELP_TEXTS,
     COUNTRIES,
+    DC_TYPE_DEFAULTS,
     new_project,
     apply_template,
     project_to_json,

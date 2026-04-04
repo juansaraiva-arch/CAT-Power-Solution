@@ -17,7 +17,7 @@ core/                  ← Calculation engine — DO NOT TOUCH without authoriza
   engine.py            ← Derating, LCOE, availability, emissions, pod fleet optimizer, SR calculation
   generator_library.py ← 10 CAT generator models with full specs (incl. prime_power_kw, mtbf, mttr)
   pdf_report.py        ← ReportLab PDF generation (executive + comprehensive)
-  project_manager.py   ← INPUT_DEFAULTS (83+ inputs incl. CAPEX BOS adders), TEMPLATES, COUNTRIES, HELP_TEXTS
+  project_manager.py   ← INPUT_DEFAULTS (105 keys incl. CAPEX BOS adders), TEMPLATES, COUNTRIES, HELP_TEXTS, project_to_json(), project_from_json()
   proposal_defaults.py ← Default values, dropdown options for proposal form (PROPOSAL_DEFAULTS, INCOTERM_OPTIONS, etc.)
   proposal_generator.py← DOCX proposal generation with Caterpillar branding, uses python-docx
 
@@ -71,15 +71,49 @@ frontend/              ← React source (Vite + TypeScript + shadcn/ui)
 - **API deps separate:** `requirements-api.txt` — for FastAPI server
 
 ### Sidebar-Only Architecture (P35)
-Sidebar-only architecture. All inputs in sidebar with Basic (expanded) and Advanced (collapsed) sections. Sizing runs reactively on every input change. No wizard, no `_wiz_*` keys, no `_stored_*` keys.
+Sidebar-only architecture. **No wizard exists** — all wizard code was deleted in P35. Sizing runs reactively on every input change. No `_wiz_*` or `_stored_*` keys (only survivor: `_stored_bess_autonomy_min`).
 
-**Sidebar sections:**
-- 📋 **Project Info** (collapsed) — project name, client, contacts, country, state/province, county, grid frequency. Stored to `_project_name`, `_client_name`, etc. session state keys for proposal generator.
-- 📊 **Load Profile** (expanded) — DC type, IT load, PUE, capacity factor
-- ⚡ **Generator & BESS** (expanded) — generator filter/model, BESS include/autonomy, black start, CHP checkbox
-- 🌡️ **Site Conditions** (collapsed) — derate mode, temperature, altitude, methane number
-- 💰 **Economics** (collapsed) — gas price, benchmark, WACC, project life, region, carbon price, MACRS, CAPEX BOS Adders
-- ⚙️ **Advanced** (collapsed) → flat sections with markdown dividers: Load Dynamics, Voltage & Electrical, Fuel & LNG, Generator Overrides, BESS Costs, Emissions & Noise, CHP/Tri-Gen, Phasing, Infrastructure, Footprint, GERP PDF Import
+**Always-visible (not in expander):**
+- Unit System radio (Metric / Imperial) — stored to `_unit_sys` session state
+- Project Template selectbox — applies `TEMPLATES[name]` values to session state when not Custom
+
+**Sidebar expanders (render_sidebar(), lines 371–1251):**
+- 📋 **Project Info** (collapsed) — project name, client, contacts, country, state/province, county, grid frequency. Stored directly via `key=` to `_project_name`, `_client_name`, etc.
+- 📊 **Load Profile** (expanded) — dc_type, p_it (MW), pue, capacity_factor
+- ⚡ **Generator & BESS** (expanded) — gen_filter multiselect, generator_model selectbox + specs metrics, use_bess checkbox, bess_autonomy_min, bess_dod, enable_black_start, include_chp
+- 🌡️ **Site Conditions** (collapsed) — site_temp (unit-aware), site_alt (unit-aware), methane_number, derate_mode radio; Auto mode shows live derate factor preview
+- 💰 **Economics** (collapsed) — region, gas_price_pipeline, wacc, project_years, benchmark_price, carbon_price_per_ton, enable_depreciation; + nested sub-expander **"Advanced CAPEX Adders"** (bos_pct, civil_pct, fuel_system_pct, epc_pct, contingency_pct, electrical_pct, commissioning_pct)
+- ⚙️ **Advanced** (collapsed) → flat sub-sections (no nested expanders): Load Dynamics, Voltage & Electrical, Fuel & LNG, Generator Overrides, BESS Costs, Emissions & Noise, CHP/Tri-Gen, Phasing, Infrastructure, Footprint, GERP PDF Import
+
+### main() Flow (lines 3847–4014)
+1. `check_auth()` — auth gate
+2. Initialize `st.session_state.result = None` if absent
+3. `render_sidebar()` → `inputs_dict, benchmark_price` (ALL inputs collected here)
+4. Store 8 cross-tab keys: `_benchmark_price`, `_site_temp`, `_site_alt`, `_mn`, `_fuel_mode`, `_dist_loss_pct`, `_include_chp`, `_enable_phasing`
+5. `SizingInput(**inputs_dict)` → `run_full_sizing()` → `st.session_state.result` (on error: show traceback, return)
+6. Apply IEEE 493 electrical path factor: `r.system_availability *= get_electrical_path_factor(bus_tie_mode)` (or `_elec_path_avail` if Reliability tab has overridden it)
+7. `render_executive_summary(r, benchmark_price)` — headline KPIs above tabs
+8. Build `tab_labels` list with conditionals (see Tab Order below)
+9. `st.tabs(tab_labels)` + dispatch each tab via `tab_idx` counter
+
+### Tab Order (current — post P45)
+| # | Tab | Condition |
+|---|---|---|
+| 1 | 📋 Summary | always |
+| 2 | 📈 Reliability | always |
+| 3 | 🔋 BESS | always |
+| 4 | ⚡ Electrical | always |
+| 5 | 📊 Load Profile | always |
+| 6 | 🌿 Environmental | always |
+| 7 | 💰 Financial | always |
+| 8 | ⛽ Gas Consumption | if `fuel_consumption_curve` key in gen_data |
+| 9 | 🔥 CHP / Tri-Gen | if `include_chp` |
+| 10 | 🗺️ Footprint | always |
+| 11 | 📅 Phasing | if `enable_phasing` |
+| 12 | 📜 Emissions Compliance | always |
+| 13 | 🔊 Noise | always |
+| 14 | ⛽ LNG Logistics | if `fuel_mode in ("LNG","Dual-Fuel")` |
+| 15 | 📄 Proposal | always (last) |
 
 ### Proposal Generation (Tab 📄 Proposal)
 After sizing completes, users can generate a professional DOCX proposal:
@@ -91,12 +125,18 @@ After sizing completes, users can generate a professional DOCX proposal:
 - **Output:** Branded .docx with Caterpillar logo, cover page, sections 1–6 + dynamic exhibits
 - **Logo:** `assets/logo_caterpillar.png` (official Caterpillar wordmark)
 
-### Session State Keys (post-P35)
+### Session State Keys (post-P35/P45)
 - `result` — the current `SizingResult` object
-- `_benchmark_price`, `_site_temp`, `_site_alt`, `_mn`, `_fuel_mode`, `_dist_loss_pct`, `_include_chp`, `_enable_phasing` — cross-tab values set by `main()` after each sizing run
-- `_project_name`, `_client_name`, `_contact_name`, `_contact_email`, `_contact_phone`, `_country`, `_state_province`, `_county_district` — proposal metadata from Project Info sidebar expander
-- `_stored_bess_autonomy_min` — BESS tab autonomy override (written by render_bess_tab re-run button, read by sidebar BESS autonomy widget)
+- `_benchmark_price`, `_site_temp`, `_site_alt`, `_mn`, `_fuel_mode`, `_dist_loss_pct`, `_include_chp`, `_enable_phasing` — cross-tab values written by `main()` after each sizing run
+- `_project_name`, `_client_name`, `_contact_name`, `_contact_email`, `_contact_phone`, `_country`, `_state_province`, `_county_district`, `_freq_hz_proposal` — proposal metadata, written by Project Info expander widgets via `key=`
+- `_unit_sys` — unit system ("Metric"/"Imperial"), written by Unit System radio
+- `_stored_bess_autonomy_min` — only surviving `_stored_*` key; written by BESS tab override button, read by sidebar BESS autonomy widget
+- `_elec_path_avail` — set by Reliability tab topology selector; overrides `get_electrical_path_factor()` default in `main()`
+- `_swg_topology` — HV switchgear topology selection (Electrical tab)
 - `spinning_res_pct` removed from UI (P04) — SR now derived from physical contingencies
+
+### INPUT_DEFAULTS Stale Keys (known — harmless)
+`max_maintenance_units` and `selected_fleet_config_maint` remain in `INPUT_DEFAULTS` (core/project_manager.py) after P32 removed them from SizingInput/SizingResult. Pipeline ignores them. `bess_strategy` key also remains (P34 hardcoded it to "Hybrid" internally).
 
 ## Running the Project
 

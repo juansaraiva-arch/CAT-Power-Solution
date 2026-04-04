@@ -418,6 +418,18 @@ def render_sidebar():
         freq_hz = st.radio("Grid Frequency (Hz)", [60, 50], index=0, horizontal=True,
                            key="_freq_hz_proposal", help=HELP_TEXTS.get("freq_hz", ""))
 
+    # ---- DC Type defaults on first load (P49) ----
+    # On first render, the _on_dc_type_change callback never fires, so Load Profile
+    # widgets would seed from INPUT_DEFAULTS instead of the initial DC Type values.
+    # This block runs once per session to apply DC_TYPE_DEFAULTS for the initial DC type.
+    if "_dc_type_initialized" not in st.session_state:
+        _initial_dc = INPUT_DEFAULTS.get("dc_type", "AI Factory (Training)")
+        _dc_init_defaults = DC_TYPE_DEFAULTS.get(_initial_dc, {})
+        for _key, _val in _dc_init_defaults.items():
+            if _key not in st.session_state:
+                st.session_state[_key] = float(_val)
+        st.session_state["_dc_type_initialized"] = True
+
     # ---- Pre-render: transfer _dcdefault_* → widget keys (P48) ----
     # The _on_dc_type_change callback writes _dcdefault_<field> when DC Type changes.
     # We transfer those values here — BEFORE widgets render — so widgets can use

@@ -2,7 +2,7 @@
 CAT Size Solution — Project Manager
 =====================================
 Single source of truth for:
-  - All input defaults (105 keys)
+  - All input defaults (104 keys)
   - DC_TYPE_DEFAULTS — per-type intelligent defaults for progressive disclosure
   - Project header (name, client, contact, location)
   - Save / Load to JSON
@@ -197,7 +197,6 @@ INPUT_DEFAULTS = {
 
     # Fleet Maintenance (P12)
     "max_maintenance_units":       1,    # gens in simultaneous scheduled maintenance (0=strict, 1=realistic)
-    "selected_fleet_config_maint": "B",  # A/B/C — which maintenance config drives CAPEX
 
     # BESS Autonomy (P13)
     # Formula: bess_energy_mwh = bess_power_mw × (autonomy_min / 60) / bess_dod

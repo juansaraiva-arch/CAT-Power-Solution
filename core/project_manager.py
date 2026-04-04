@@ -2,7 +2,8 @@
 CAT Size Solution — Project Manager
 =====================================
 Single source of truth for:
-  - All input defaults (76 inputs)
+  - All input defaults (105 keys)
+  - DC_TYPE_DEFAULTS — per-type intelligent defaults for progressive disclosure
   - Project header (name, client, contact, location)
   - Save / Load to JSON
   - Template presets
@@ -208,6 +209,79 @@ INPUT_DEFAULTS = {
 
     # Aux Load
     "aux_load_pct": 4.0,
+}
+
+# ==============================================================================
+# DC_TYPE_DEFAULTS — per-type intelligent defaults for progressive disclosure
+# Applied automatically when the user selects a DC type in Quick Sizing (P47+).
+# Keys match DC_TYPES list exactly. Values are industry-typical for preliminary
+# sizing — user can override after auto-fill.
+# Sources: Uptime Institute, ASHRAE TC9.9, Lawrence Berkeley National Lab
+# ==============================================================================
+DC_TYPE_DEFAULTS = {
+    "AI Factory (Training)": {
+        "pue": 1.20,
+        "capacity_factor": 0.95,
+        "peak_avg_ratio": 1.10,
+        "load_step_pct": 40.0,
+        "avail_req": 99.99,
+        "spinning_res_pct": 20.0,
+        "load_ramp_req": 3.0,
+    },
+    "AI Inference": {
+        "pue": 1.25,
+        "capacity_factor": 0.85,
+        "peak_avg_ratio": 1.15,
+        "load_step_pct": 35.0,
+        "avail_req": 99.99,
+        "spinning_res_pct": 20.0,
+        "load_ramp_req": 2.5,
+    },
+    "Enterprise Mixed": {
+        "pue": 1.40,
+        "capacity_factor": 0.70,
+        "peak_avg_ratio": 1.25,
+        "load_step_pct": 30.0,
+        "avail_req": 99.95,
+        "spinning_res_pct": 15.0,
+        "load_ramp_req": 1.5,
+    },
+    "HPC / Research": {
+        "pue": 1.15,
+        "capacity_factor": 0.90,
+        "peak_avg_ratio": 1.10,
+        "load_step_pct": 40.0,
+        "avail_req": 99.99,
+        "spinning_res_pct": 20.0,
+        "load_ramp_req": 3.0,
+    },
+    "Hyperscale Standard": {
+        "pue": 1.20,
+        "capacity_factor": 0.80,
+        "peak_avg_ratio": 1.20,
+        "load_step_pct": 30.0,
+        "avail_req": 99.99,
+        "spinning_res_pct": 15.0,
+        "load_ramp_req": 2.0,
+    },
+    "Colocation": {
+        "pue": 1.50,
+        "capacity_factor": 0.65,
+        "peak_avg_ratio": 1.30,
+        "load_step_pct": 25.0,
+        "avail_req": 99.95,
+        "spinning_res_pct": 10.0,
+        "load_ramp_req": 1.5,
+    },
+    "Edge Computing": {
+        "pue": 1.30,
+        "capacity_factor": 0.75,
+        "peak_avg_ratio": 1.20,
+        "load_step_pct": 20.0,
+        "avail_req": 99.90,
+        "spinning_res_pct": 10.0,
+        "load_ramp_req": 1.0,
+    },
 }
 
 # ==============================================================================

@@ -284,6 +284,17 @@ All sidebar widgets use `value=INPUT_DEFAULTS[...]` directly — no `_stored_*` 
   Step-up transformers captured in binomial fleet model, NOT in this factor.
 - **Tests:** 48/48 pass.
 
+### P41B — Word proposal generator implemented (2026-04-03)
+- New `generate_proposal_docx(sizing_result, gen_data, project_info, selected_exhibits, sizing_pdf_bytes=None)` in `core/proposal_generator.py`
+- Generates .docx with cover page, TOC, sections 1–6 (filled from sizing results + project info), and dynamic appendices
+- Mandatory exhibits always included: A=Definitions, B=ESC (Extended Service Coverage), C=CVA (Service Agreement)
+- Optional exhibits from checkboxes with auto-lettering D/E/F...: Datasheets, Warranty Statement, Conceptual Layout, Scope of Supply Matrix, Sizing Report (with summary table of key results), Additional Technical Documents
+- Backward-compat routing: positional legacy call `(sizing_result, header_info, proposal_info)` detected by "project_name" key presence and routes to `_generate_proposal_docx_legacy`
+- `render_proposal_tab()` col_docx block replaced with actual `st.download_button` for .docx
+- Project info from session state: `_project_name`, `_client_name`, `_country`, `_state_province`, etc.
+- Sizing Report exhibit: pulls n_total, n_running, n_reserve, installed_cap, bess, availability, CAPEX, LCOE, pod architecture from sizing_result dict
+- `requirements.txt` already had `python-docx>=1.1` — no new deps
+
 ### P41A — Proposal tab with exhibit selection checkboxes (2026-04-03)
 - PDF Report tab renamed to **Proposal** tab (`render_pdf_tab` → `render_proposal_tab`)
 - Old DOCX proposal function renamed to `render_docx_proposal_tab` (still behind `ENABLE_PROPOSAL_GEN`)

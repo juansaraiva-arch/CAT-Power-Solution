@@ -1127,62 +1127,31 @@ def generate_proposal_docx(
     project_info=None,
     selected_exhibits=None,
     sizing_pdf_bytes=None,
-    header_info=None,
-    proposal_info=None,
-    output_path=None,
 ) -> bytes:
     """
-    Generate a customer proposal Word document.
+    Generate a customer proposal Word document (P41B).
 
-    Supports two call signatures:
+    Used by render_proposal_tab in streamlit_app.py.
+    For the legacy ENABLE_PROPOSAL_GEN tab, call _generate_proposal_docx_legacy directly.
 
-    **P41B (new)** — used by render_proposal_tab:
-        generate_proposal_docx(
-            sizing_result=r.model_dump(),   # dict
-            gen_data=GENERATOR_LIBRARY[model],
-            project_info={"project_name": ..., "client_name": ..., ...},
-            selected_exhibits=[{"letter": "D", "name": "Datasheets"}, ...],
-            sizing_pdf_bytes=pdf_bytes_or_None,
-        )
-
-    **Legacy** — used by render_docx_proposal_tab (ENABLE_PROPOSAL_GEN):
-        generate_proposal_docx(
-            sizing_result=r,                # SizingResult object
-            header_info=header_info,
-            proposal_info=proposal_info,
-        )
+    Parameters
+    ----------
+    sizing_result : dict
+        r.model_dump() — sizing results as a plain dict.
+    gen_data : dict
+        Generator specs from GENERATOR_LIBRARY (iso_rating_mw, voltage_kv, ...).
+    project_info : dict
+        project_name, client_name, country, state_province, etc.
+    selected_exhibits : list[dict]
+        Optional exhibits: [{"letter": "D", "name": "Datasheets"}, ...].
+    sizing_pdf_bytes : bytes, optional
+        PDF bytes to reference when Sizing Report exhibit is selected.
 
     Returns
     -------
     bytes
         The .docx file content.
     """
-    # --- Detect legacy vs P41B call signature --------------------------------
-    # Legacy: generate_proposal_docx(sizing_result, header_info, proposal_info)
-    #   - 2nd arg (gen_data slot) is a dict with "project_name" key (it's header_info)
-    # P41B: generate_proposal_docx(sizing_result, gen_data={...}, project_info={...}, ...)
-    #   - gen_data has generator-spec keys like "iso_rating_mw"
-
-    _legacy_header = header_info  # explicit keyword takes precedence
-    _legacy_proposal = proposal_info
-
-    if _legacy_header is None and isinstance(gen_data, dict) and "project_name" in gen_data:
-        # Positional legacy call: 2nd arg is actually header_info
-        _legacy_header = gen_data
-        gen_data = {}
-        # 3rd positional arg (project_info) is actually proposal_info
-        if _legacy_proposal is None and project_info is not None:
-            _legacy_proposal = project_info
-            project_info = {}
-
-    if _legacy_header is not None:
-        return _generate_proposal_docx_legacy(
-            sizing_result,
-            _legacy_header,
-            _legacy_proposal or {},
-            output_path,
-        )
-
     # -------------------------------------------------------------------------
     # P41B implementation — sizing_result is a dict (r.model_dump())
     # -------------------------------------------------------------------------

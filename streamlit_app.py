@@ -24,7 +24,7 @@ from core.proposal_defaults import (
     INCOTERM_OPTIONS,
     DELIVERY_DESTINATION_OPTIONS,
 )
-from core.proposal_generator import generate_proposal_docx
+from core.proposal_generator import generate_proposal_docx, _generate_proposal_docx_legacy
 from core.project_manager import (
     APP_VERSION,
     INPUT_DEFAULTS,
@@ -4039,7 +4039,7 @@ def render_docx_proposal_tab(r):
         }
         try:
             with st.spinner("Generating proposal document..."):
-                docx_bytes = generate_proposal_docx(
+                docx_bytes = _generate_proposal_docx_legacy(
                     sizing_result=r,
                     header_info=header_info,
                     proposal_info=proposal_info,

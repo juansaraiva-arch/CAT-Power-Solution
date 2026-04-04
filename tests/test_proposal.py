@@ -20,7 +20,7 @@ from core.proposal_defaults import (
     INCOTERM_OPTIONS,
     DELIVERY_DESTINATION_OPTIONS,
 )
-from core.proposal_generator import generate_proposal_docx
+from core.proposal_generator import _generate_proposal_docx_legacy as generate_proposal_docx
 
 
 # =============================================================================

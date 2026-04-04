@@ -85,13 +85,29 @@ After the Unit System and Template dividers, these fields are always visible at 
   - **Generator Types** multiselect + **Generator Model** selectbox + ISO Rating / Efficiency metrics
   - **Region** selectbox
 
-#### DC_TYPE_DEFAULTS auto-fill mechanism
-`_on_dc_type_change()` callback (defined before render_sidebar):
+#### DC_TYPE_DEFAULTS auto-fill mechanism (P47 / P48)
+Two-step pattern that avoids Streamlit's "value= ignored after first render" and "key+value conflict" bugs:
+
+**Step 1 — Callback** (`_on_dc_type_change`, fires before next render):
 - Reads `st.session_state["_dc_type_select"]`
-- Writes `DC_TYPE_DEFAULTS[dc_type][key]` → `st.session_state[f"_dcdefault_{key}"]` for 7 fields
-- Load Profile widgets initialize with `st.session_state.get("_dcdefault_<key>", INPUT_DEFAULTS["<key>"])`
+- Writes `DC_TYPE_DEFAULTS[dc_type][key]` → `st.session_state[f"_dcdefault_{key}"]` for all 7 fields
 - Affected fields: `pue`, `capacity_factor`, `peak_avg_ratio`, `load_step_pct`, `avail_req`, `spinning_res_pct`, `load_ramp_req`
-- `DC_TYPE_DEFAULTS` imported from `core.project_manager` (no local copy)
+
+**Step 2 — Pre-render transfer block** (runs just before Load Profile expander on every render):
+```python
+for field, default in _LP_FIELD_DEFAULTS.items():
+    dckey = f"_dcdefault_{field}"
+    if dckey in st.session_state:
+        st.session_state[field] = st.session_state.pop(dckey)  # force DC default
+    elif field not in st.session_state:
+        st.session_state[field] = default  # seed on first run
+```
+
+**Widget pattern:** All 7 Load Profile widgets use `key=field` only — NO `value=` parameter. Streamlit reads from `st.session_state[field]` automatically.
+
+**Why two steps?** Streamlit rule: callbacks cannot write to a widget's `key=` if that widget also specifies `value=` in the same render. The pre-render transfer happens in the script body (before the widget renders), which is safe. Pop'ing `_dcdefault_*` after transfer prevents stale values from persisting across reruns.
+
+`DC_TYPE_DEFAULTS` imported from `core.project_manager` (no local copy in streamlit_app.py)
 
 #### LEVEL 2 — Standard (expanders)
 - 📋 **Project Info** (collapsed) — project name, client, contacts, country, state/province, county, grid frequency. Stored via `key=` to `_project_name`, `_client_name`, etc.
@@ -343,6 +359,18 @@ All sidebar widgets use `value=INPUT_DEFAULTS[...]` directly — no `_stored_*` 
   power transformers, protective relays. Topology: SWGR-A + SWGR-B + 52T5 bus-tie.
   Step-up transformers captured in binomial fleet model, NOT in this factor.
 - **Tests:** 48/48 pass.
+
+### P48 — Fix DC Type auto-fill: spinning reserve (and all 7 fields) not updating (2026-04-04)
+- **Bug:** Switching DC Type did not update spinning_res_pct (showed 20% for Colocation, expected 10%). All 7 Load Profile fields were affected.
+- **Root cause:** Two distinct Streamlit bugs triggered by the P47 `_dcdefault_*` pattern:
+  1. Widgets WITHOUT `key=` — Streamlit ignores `value=` after first render (uses internal positional state)
+  2. `spinning_res_pct` WITH `key=` AND `value=` — Streamlit uses `st.session_state["spinning_res_pct"]` (old value) and ignores the `value=` expression
+- **Fix:** Two-step pattern replacing `value=st.session_state.get("_dcdefault_*", ...)`:
+  1. `_on_dc_type_change()` callback unchanged — still writes to `_dcdefault_*` keys
+  2. New **pre-render transfer block** (before Load Profile expander): transfers `_dcdefault_*` → `st.session_state[field]` via `pop()`; seeds from INPUT_DEFAULTS on first run
+  3. All 7 Load Profile widgets changed to `key=field` only (no `value=` parameter)
+- **Verified:** Simulation confirms all 7 Colocation values match `DC_TYPE_DEFAULTS["Colocation"]` exactly
+- py_compile OK
 
 ### P47 — Sidebar progressive disclosure: Quick / Standard / Advanced (2026-04-04)
 - **LEVEL 1 (Quick Sizing, always visible):** Data Center Type, IT Load, Generator Types + Model, Region — the 4 most-used fields exposed without opening any expander

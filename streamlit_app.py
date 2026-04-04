@@ -3822,15 +3822,63 @@ def render_proposal_tab(r):
         except Exception as e:
             st.error(f"Error generating PDF: {e}")
 
-    # Word Proposal (placeholder for P41B)
+    # Word Proposal — P41B
     with col_docx:
         st.markdown("**Customer Proposal (Word)**")
-        st.info(
-            "Word proposal generation coming soon. "
-            "The document will include all mandatory appendices (Definitions, ESC, CVA) "
-            f"plus {len(selected_exhibits)} selected exhibit(s)."
-        )
-        # P41B will replace this st.info with actual Word generation
+
+        project_info = {
+            "project_name": st.session_state.get("_project_name", "Untitled Project"),
+            "client_name": st.session_state.get("_client_name", ""),
+            "contact_name": st.session_state.get("_contact_name", ""),
+            "contact_email": st.session_state.get("_contact_email", ""),
+            "contact_phone": st.session_state.get("_contact_phone", ""),
+            "country": st.session_state.get("_country", ""),
+            "state_province": st.session_state.get("_state_province", ""),
+            "county_district": st.session_state.get("_county_district", ""),
+        }
+
+        # Get sizing PDF bytes if Sizing Report exhibit is selected
+        sizing_pdf = None
+        if include_sizing_report:
+            try:
+                pdf_data_sr = r.model_dump()
+                gen_data_sr = GENERATOR_LIBRARY.get(r.selected_gen, {})
+                pdf_data_sr["gen_data"] = gen_data_sr
+                emissions_sr = r.emissions or {}
+                co2_tpy_sr = emissions_sr.get("co2_tpy", 0.0)
+                nox_tpy_sr = emissions_sr.get("nox_tpy", 0.0)
+                co_tpy_sr = emissions_sr.get("co_tpy", 0.0)
+                _T_TO_LB_HR_SR = 2204.62 / 8760.0
+                pdf_data_sr["co2_ton_yr"] = round(co2_tpy_sr, 1)
+                pdf_data_sr["nox_lb_hr"] = round(nox_tpy_sr * _T_TO_LB_HR_SR, 2)
+                pdf_data_sr["co_lb_hr"] = round(co_tpy_sr * _T_TO_LB_HR_SR, 2)
+                pdf_data_sr["n_pods"] = getattr(r, "n_pods", None)
+                pdf_data_sr["n_per_pod"] = getattr(r, "n_per_pod", None)
+                sizing_pdf = generate_comprehensive_pdf(pdf_data_sr)
+            except Exception:
+                sizing_pdf = None
+
+        try:
+            docx_bytes = generate_proposal_docx(
+                sizing_result=r.model_dump(),
+                gen_data=GENERATOR_LIBRARY.get(r.selected_gen, {}),
+                project_info=project_info,
+                selected_exhibits=selected_exhibits,
+                sizing_pdf_bytes=sizing_pdf,
+            )
+
+            proj_name = project_info.get("project_name", "Project") or "Project"
+            safe_name = proj_name.replace(" ", "_")[:30]
+
+            st.download_button(
+                label=":page_facing_up: Download Proposal (.docx)",
+                data=docx_bytes,
+                file_name=f"CAT_Proposal_{safe_name}_{r.selected_gen}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                type="primary",
+            )
+        except Exception as e:
+            st.error(f"Error generating proposal: {e}")
 
 
 # =============================================================================

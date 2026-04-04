@@ -17,7 +17,7 @@ core/                  ← Calculation engine — DO NOT TOUCH without authoriza
   engine.py            ← Derating, LCOE, availability, emissions, pod fleet optimizer, SR calculation
   generator_library.py ← 10 CAT generator models with full specs (incl. prime_power_kw, mtbf, mttr)
   pdf_report.py        ← ReportLab PDF generation (executive + comprehensive)
-  project_manager.py   ← INPUT_DEFAULTS (105 keys incl. CAPEX BOS adders), TEMPLATES, COUNTRIES, HELP_TEXTS, project_to_json(), project_from_json()
+  project_manager.py   ← INPUT_DEFAULTS (105 keys incl. CAPEX BOS adders), DC_TYPE_DEFAULTS (7 DC types × 7 fields), TEMPLATES, COUNTRIES, HELP_TEXTS, project_to_json(), project_from_json()
   proposal_defaults.py ← Default values, dropdown options for proposal form (PROPOSAL_DEFAULTS, INCOTERM_OPTIONS, etc.)
   proposal_generator.py← DOCX proposal generation with Caterpillar branding, uses python-docx
 
@@ -324,6 +324,15 @@ All sidebar widgets use `value=INPUT_DEFAULTS[...]` directly — no `_stored_*` 
   power transformers, protective relays. Topology: SWGR-A + SWGR-B + 52T5 bus-tie.
   Step-up transformers captured in binomial fleet model, NOT in this factor.
 - **Tests:** 48/48 pass.
+
+### P46 — Add DC_TYPE_DEFAULTS to core/project_manager.py (2026-04-04)
+- Added `DC_TYPE_DEFAULTS` dict to `core/project_manager.py` immediately after `INPUT_DEFAULTS`
+- 7 DC types × 7 fields: `pue`, `capacity_factor`, `peak_avg_ratio`, `load_step_pct`, `avail_req`, `spinning_res_pct`, `load_ramp_req`
+- Keys match `DC_TYPES` list in `streamlit_app.py` exactly (verified — zero missing, zero extra)
+- Canonical home for progressive disclosure auto-fill logic; `streamlit_app.py` will import from here in P47
+- Updated module docstring to reflect 105 keys + `DC_TYPE_DEFAULTS`
+- Existing `DC_TYPE_DEFAULTS` in `streamlit_app.py` (lines 71–135) will be replaced by the import in P47
+- Tests: 41/43 proposal tests pass (2 pre-existing P26 failures unrelated)
 
 ### P45 — Remove legacy Proposal Doc tab (2026-04-04)
 - Removed `ENABLE_PROPOSAL_GEN` env flag, `render_docx_proposal_tab()`, `_build_proposal_info_from_session()`, sidebar "📄 Proposal Information" expander (15 widgets), `:memo: Proposal Doc` tab label and routing block

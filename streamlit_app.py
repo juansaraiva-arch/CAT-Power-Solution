@@ -40,7 +40,6 @@ from core.project_manager import (
 from security_config import check_auth
 
 import os
-ENABLE_PROPOSAL_GEN = os.environ.get("ENABLE_PROPOSAL_GEN", "true").lower() == "true"
 
 # =============================================================================
 # PAGE CONFIG
@@ -1244,97 +1243,6 @@ def render_sidebar():
     )
 
     # ── Proposal Information (commercial fields for DOCX generation) ──
-    if ENABLE_PROPOSAL_GEN:
-        with st.sidebar.expander("📄 Proposal Information", expanded=False):
-            st.markdown("**Cover & Identity**")
-            st.text_input("CAT Division",
-                key="prop_cat_division",
-                value=st.session_state.get("prop_cat_division", PROPOSAL_DEFAULTS["cat_division"]))
-            st.selectbox("Proposal Type",
-                options=PROPOSAL_TYPE_OPTIONS,
-                key="prop_proposal_type",
-                index=PROPOSAL_TYPE_OPTIONS.index(
-                    st.session_state.get("prop_proposal_type", PROPOSAL_DEFAULTS["proposal_type"])))
-            st.text_input("Document Version",
-                key="prop_doc_version",
-                value=st.session_state.get("prop_doc_version", PROPOSAL_DEFAULTS["doc_version"]))
-            st.text_input("BDM Name",
-                key="prop_bdm_name",
-                value=st.session_state.get("prop_bdm_name", PROPOSAL_DEFAULTS["bdm_name"]))
-            st.text_input("BDM Email",
-                key="prop_bdm_email",
-                value=st.session_state.get("prop_bdm_email", PROPOSAL_DEFAULTS["bdm_email"]))
-
-            st.markdown("**Commercial**")
-            st.text_input("Authorized CAT Dealer",
-                key="prop_dealer_name",
-                value=st.session_state.get("prop_dealer_name", PROPOSAL_DEFAULTS["dealer_name"]))
-            st.selectbox("Incoterm",
-                options=INCOTERM_OPTIONS,
-                key="prop_incoterm",
-                index=INCOTERM_OPTIONS.index(
-                    st.session_state.get("prop_incoterm", PROPOSAL_DEFAULTS["incoterm"])))
-            st.selectbox("Delivery Destination",
-                options=DELIVERY_DESTINATION_OPTIONS,
-                key="prop_delivery_destination",
-                index=DELIVERY_DESTINATION_OPTIONS.index(
-                    st.session_state.get("prop_delivery_destination",
-                                         PROPOSAL_DEFAULTS["delivery_destination"])))
-            st.text_input("Estimated Delivery",
-                placeholder="e.g. Q3 2026 (~18 months ARO)",
-                key="prop_delivery_date_est",
-                value=st.session_state.get("prop_delivery_date_est",
-                                            PROPOSAL_DEFAULTS["delivery_date_est"]))
-            st.text_input("Proposal Validity",
-                key="prop_proposal_validity",
-                value=st.session_state.get("prop_proposal_validity",
-                                            PROPOSAL_DEFAULTS["proposal_validity"]))
-
-            st.markdown("**Payment Terms (%)**")
-            col1, col2 = st.columns(2)
-            with col1:
-                st.number_input("Down", 0, 100, key="prop_payment_down",
-                    value=int(st.session_state.get("prop_payment_down",
-                                                    PROPOSAL_DEFAULTS["payment_pct_down"])))
-                st.number_input("At SOL", 0, 100, key="prop_payment_sol",
-                    value=int(st.session_state.get("prop_payment_sol",
-                                                    PROPOSAL_DEFAULTS["payment_pct_sol"])))
-            with col2:
-                st.number_input("30 days PO", 0, 100, key="prop_payment_30d",
-                    value=int(st.session_state.get("prop_payment_30d",
-                                                    PROPOSAL_DEFAULTS["payment_pct_30d"])))
-                st.number_input("At RTS", 0, 100, key="prop_payment_rts",
-                    value=int(st.session_state.get("prop_payment_rts",
-                                                    PROPOSAL_DEFAULTS["payment_pct_rts"])))
-
-            st.markdown("**Offer Scope**")
-            st.checkbox("Genset", key="prop_offer_genset",
-                value=st.session_state.get("prop_offer_genset",
-                                            PROPOSAL_DEFAULTS["offer_type_genset"]))
-            st.checkbox("Switchgear", key="prop_offer_switchgear",
-                value=st.session_state.get("prop_offer_switchgear",
-                                            PROPOSAL_DEFAULTS["offer_type_switchgear"]))
-            st.checkbox("Solutions", key="prop_offer_solutions",
-                value=st.session_state.get("prop_offer_solutions",
-                                            PROPOSAL_DEFAULTS["offer_type_solutions"]))
-            st.checkbox("Hybrid", key="prop_offer_hybrid",
-                value=st.session_state.get("prop_offer_hybrid",
-                                            PROPOSAL_DEFAULTS["offer_type_hybrid"]))
-
-            st.markdown("**Post-sale Services**")
-            st.checkbox("Include CVA overview in proposal",
-                key="prop_include_cva",
-                value=st.session_state.get("prop_include_cva", PROPOSAL_DEFAULTS["include_cva"]))
-            st.checkbox("Include ESC overview in proposal",
-                key="prop_include_esc",
-                value=st.session_state.get("prop_include_esc", PROPOSAL_DEFAULTS["include_esc"]))
-
-            st.markdown("**Notes / Clarifications**")
-            st.text_area("Proposal notes (§5)",
-                key="prop_notes",
-                height=80,
-                value=st.session_state.get("prop_notes", PROPOSAL_DEFAULTS["proposal_notes"]))
-
     return inputs_dict, benchmark_price
 
 
@@ -3931,134 +3839,6 @@ def render_landing_page():
     st.dataframe(pd.DataFrame(lib_data), use_container_width=True, hide_index=True)
 
 
-def _build_proposal_info_from_session() -> dict:
-    """Collect proposal commercial fields from session state into a dict."""
-    return {
-        "cat_division":          st.session_state.get("prop_cat_division",
-                                     PROPOSAL_DEFAULTS["cat_division"]),
-        "proposal_type":         st.session_state.get("prop_proposal_type",
-                                     PROPOSAL_DEFAULTS["proposal_type"]),
-        "doc_version":           st.session_state.get("prop_doc_version",
-                                     PROPOSAL_DEFAULTS["doc_version"]),
-        "bdm_name":              st.session_state.get("prop_bdm_name",
-                                     PROPOSAL_DEFAULTS["bdm_name"]),
-        "bdm_email":             st.session_state.get("prop_bdm_email",
-                                     PROPOSAL_DEFAULTS["bdm_email"]),
-        "dealer_name":           st.session_state.get("prop_dealer_name",
-                                     PROPOSAL_DEFAULTS["dealer_name"]),
-        "incoterm":              st.session_state.get("prop_incoterm",
-                                     PROPOSAL_DEFAULTS["incoterm"]),
-        "delivery_destination":  st.session_state.get("prop_delivery_destination",
-                                     PROPOSAL_DEFAULTS["delivery_destination"]),
-        "delivery_date_est":     st.session_state.get("prop_delivery_date_est",
-                                     PROPOSAL_DEFAULTS["delivery_date_est"]),
-        "proposal_validity":     st.session_state.get("prop_proposal_validity",
-                                     PROPOSAL_DEFAULTS["proposal_validity"]),
-        "payment_pct_down":      st.session_state.get("prop_payment_down",
-                                     PROPOSAL_DEFAULTS["payment_pct_down"]),
-        "payment_pct_30d":       st.session_state.get("prop_payment_30d",
-                                     PROPOSAL_DEFAULTS["payment_pct_30d"]),
-        "payment_pct_sol":       st.session_state.get("prop_payment_sol",
-                                     PROPOSAL_DEFAULTS["payment_pct_sol"]),
-        "payment_pct_rts":       st.session_state.get("prop_payment_rts",
-                                     PROPOSAL_DEFAULTS["payment_pct_rts"]),
-        "offer_type_genset":     st.session_state.get("prop_offer_genset",
-                                     PROPOSAL_DEFAULTS["offer_type_genset"]),
-        "offer_type_switchgear": st.session_state.get("prop_offer_switchgear",
-                                     PROPOSAL_DEFAULTS["offer_type_switchgear"]),
-        "offer_type_solutions":  st.session_state.get("prop_offer_solutions",
-                                     PROPOSAL_DEFAULTS["offer_type_solutions"]),
-        "offer_type_hybrid":     st.session_state.get("prop_offer_hybrid",
-                                     PROPOSAL_DEFAULTS["offer_type_hybrid"]),
-        "include_cva":           st.session_state.get("prop_include_cva",
-                                     PROPOSAL_DEFAULTS["include_cva"]),
-        "include_esc":           st.session_state.get("prop_include_esc",
-                                     PROPOSAL_DEFAULTS["include_esc"]),
-        "additional_options":    PROPOSAL_DEFAULTS["additional_options"],
-        "proposal_notes":        st.session_state.get("prop_notes",
-                                     PROPOSAL_DEFAULTS["proposal_notes"]),
-    }
-
-
-def render_docx_proposal_tab(r):
-    """Render the DOCX Proposal Document generation tab (ENABLE_PROPOSAL_GEN)."""
-    st.subheader("Customer Proposal Document")
-    st.markdown(
-        "Generate a formatted Word (.docx) proposal for this project. "
-        "Complete the **📄 Proposal Information** fields in the sidebar before generating."
-    )
-
-    proposal_info = _build_proposal_info_from_session()
-
-    # Validation warnings
-    warnings = []
-    if not proposal_info["bdm_name"]:
-        warnings.append("BDM Name is empty — will appear blank on cover page.")
-    if not proposal_info["dealer_name"]:
-        warnings.append("Authorized CAT Dealer name is empty — required for pricing section.")
-    if not proposal_info["delivery_date_est"]:
-        warnings.append("Estimated delivery date is empty.")
-    pct_total = (
-        proposal_info["payment_pct_down"] +
-        proposal_info["payment_pct_30d"] +
-        proposal_info["payment_pct_sol"] +
-        proposal_info["payment_pct_rts"]
-    )
-    if pct_total != 100:
-        warnings.append(f"Payment terms total {pct_total}% — should sum to 100%.")
-
-    if warnings:
-        with st.expander(f"⚠️ {len(warnings)} field(s) incomplete", expanded=True):
-            for w in warnings:
-                st.warning(w)
-
-    # Preview summary
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Project", st.session_state.get("_project_name", "—"))
-        st.metric("Client", st.session_state.get("_client_name", "—"))
-    with col2:
-        st.metric("Generator", r.selected_gen)
-        st.metric("Proposal Type", proposal_info["proposal_type"])
-    with col3:
-        st.metric("Division", proposal_info["cat_division"])
-        st.metric("Version", proposal_info["doc_version"])
-
-    st.divider()
-
-    if st.button("📄 Generate Proposal Document", type="primary", use_container_width=True):
-        ss_ = st.session_state
-        header_info = {
-            "project_name":   ss_.get("_project_name",   "Unnamed Project"),
-            "client_name":    ss_.get("_client_name",    ""),
-            "contact_name":   ss_.get("_contact_name",   ""),
-            "contact_email":  ss_.get("_contact_email",  ""),
-            "contact_phone":  ss_.get("_contact_phone",  ""),
-            "country":        ss_.get("_country",        ""),
-            "state_province": ss_.get("_state_province", ""),
-        }
-        try:
-            with st.spinner("Generating proposal document..."):
-                docx_bytes = _generate_proposal_docx_legacy(
-                    sizing_result=r,
-                    header_info=header_info,
-                    proposal_info=proposal_info,
-                )
-            project_slug = header_info["project_name"].replace(" ", "_")[:30]
-            version_slug = proposal_info["doc_version"].replace(" ", "").replace(".", "")
-            filename = f"CAT_Proposal_{project_slug}_{version_slug}.docx"
-            st.success("✅ Proposal document ready.")
-            st.download_button(
-                label="⬇️ Download Proposal (.docx)",
-                data=docx_bytes,
-                file_name=filename,
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                use_container_width=True,
-            )
-        except Exception as e:
-            st.error(f"Proposal generation failed: {e}")
-            import traceback
-            st.code(traceback.format_exc())
 
 
 # =============================================================================
@@ -4144,8 +3924,6 @@ def main():
     tab_labels.append(":loud_sound: Noise")
     if show_lng:
         tab_labels.append(":fuelpump: LNG Logistics")
-    if ENABLE_PROPOSAL_GEN:
-        tab_labels.append(":memo: Proposal Doc")
     tab_labels.append(":page_facing_up: Proposal")
 
     tabs = st.tabs(tab_labels)
@@ -4224,12 +4002,6 @@ def main():
     if show_lng:
         with tabs[tab_idx]:
             render_lng_tab(r)
-        tab_idx += 1
-
-    # Tab: Proposal Doc (conditional on feature flag)
-    if ENABLE_PROPOSAL_GEN:
-        with tabs[tab_idx]:
-            render_docx_proposal_tab(r)
         tab_idx += 1
 
     # Tab: Proposal

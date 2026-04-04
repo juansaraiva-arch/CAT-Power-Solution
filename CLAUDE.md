@@ -65,7 +65,7 @@ frontend/              ← React source (Vite + TypeScript + shadcn/ui)
 
 ## Streamlit App (Demo)
 - **Live URL:** https://cat-power-solution.streamlit.app
-- **Main file:** `streamlit_app.py` — single-file app with wizard + results dashboard
+- **Main file:** `streamlit_app.py` — single-file app with sidebar-only inputs + results dashboard
 - **Python on Streamlit Cloud:** 3.13 (cannot be changed; `.python-version` is ignored)
 - **Dependencies:** `requirements.txt` — only Streamlit-specific deps (no FastAPI, asyncpg, etc.)
 - **API deps separate:** `requirements-api.txt` — for FastAPI server
@@ -83,11 +83,12 @@ Sidebar-only architecture. All inputs in sidebar with Basic (expanded) and Advan
 
 ### Proposal Generation (Tab 📄 Proposal)
 After sizing completes, users can generate a professional DOCX proposal:
-- **Tab location:** 6th tab in results dashboard ("📄 Proposal")
-- **Form fields:** BDM info, dealer, incoterm, delivery, payment terms, offer types, notes
+- **Tab location:** Last tab in results dashboard ("📄 Proposal") — single tab, no legacy "Proposal Doc" tab
+- **Exhibit checkboxes:** 3 mandatory (A=Definitions, B=ESC, C=CVA) + 6 optional (Datasheets, Warranty, Conceptual Layout, Scope of Supply, Sizing Report PDF, Additional Docs); auto-lettered D/E/F...
+- **Form fields:** BDM info, dealer, incoterm, delivery, payment terms, offer types, notes — all inside the Proposal tab (no sidebar expander; `ENABLE_PROPOSAL_GEN` flag removed by P45)
 - **Defaults:** `core/proposal_defaults.py` (PROPOSAL_DEFAULTS dict)
-- **Generator:** `core/proposal_generator.py` → `generate_proposal_docx()`
-- **Output:** Branded .docx with Caterpillar logo, 7 sections + 7 appendices
+- **Generator:** `core/proposal_generator.py` → `generate_proposal_docx(sizing_result, gen_data, project_info, selected_exhibits, sizing_pdf_bytes, output_path)`
+- **Output:** Branded .docx with Caterpillar logo, cover page, sections 1–6 + dynamic exhibits
 - **Logo:** `assets/logo_caterpillar.png` (official Caterpillar wordmark)
 
 ### Session State Keys (post-P35)
@@ -284,6 +285,21 @@ All sidebar widgets use `value=INPUT_DEFAULTS[...]` directly — no `_stored_*` 
   Step-up transformers captured in binomial fleet model, NOT in this factor.
 - **Tests:** 48/48 pass.
 
+### P45 — Remove legacy Proposal Doc tab (2026-04-04)
+- Removed `ENABLE_PROPOSAL_GEN` env flag, `render_docx_proposal_tab()`, `_build_proposal_info_from_session()`, sidebar "📄 Proposal Information" expander (15 widgets), `:memo: Proposal Doc` tab label and routing block
+- **−228 lines** from `streamlit_app.py`
+- Single **📄 Proposal** tab (P41A/B exhibit checkboxes + `generate_proposal_docx()`) is now the only proposal UI
+- Legacy `_generate_proposal_docx_legacy()` remains in `core/proposal_generator.py` for backward compat
+
+### P43 — Fix output_path parameter in generate_proposal_docx (2026-04-04)
+- Added `output_path: str = None` to `generate_proposal_docx()` signature (line 1130)
+- Root cause: function body referenced `output_path` at serialize step but parameter was missing from signature — `NameError` on any call that reached the `if output_path:` block
+- Legacy `_generate_proposal_docx_legacy()` already had the parameter; new function was missing it
+
+### P42 — Fix generate_proposal_docx signature (2026-04-03)
+- Added `gen_data` as explicit keyword parameter (was consumed via `**kwargs` causing silent failures)
+- Ensures `generate_proposal_docx(sizing_result, gen_data=gen_data, ...)` call from `render_proposal_tab()` passes generator specs correctly
+
 ### P41B — Word proposal generator implemented (2026-04-03)
 - New `generate_proposal_docx(sizing_result, gen_data, project_info, selected_exhibits, sizing_pdf_bytes=None)` in `core/proposal_generator.py`
 - Generates .docx with cover page, TOC, sections 1–6 (filled from sizing results + project info), and dynamic appendices
@@ -297,8 +313,8 @@ All sidebar widgets use `value=INPUT_DEFAULTS[...]` directly — no `_stored_*` 
 
 ### P41A — Proposal tab with exhibit selection checkboxes (2026-04-03)
 - PDF Report tab renamed to **Proposal** tab (`render_pdf_tab` → `render_proposal_tab`)
-- Old DOCX proposal function renamed to `render_docx_proposal_tab` (still behind `ENABLE_PROPOSAL_GEN`)
-- New `render_proposal_tab()` shows: mandatory appendices (A=Definitions, B=ESC, C=CVA), 6 optional exhibit checkboxes (Datasheets, Warranty, Conceptual Layout, Scope of Supply, Sizing Report PDF, Additional Docs), dynamic appendix lettering D/E/F..., live appendices preview, PDF download (identical to old render_pdf_tab), Word placeholder for P41B
+- Old DOCX proposal function renamed to `render_docx_proposal_tab` behind `ENABLE_PROPOSAL_GEN` flag (**later removed by P45**)
+- New `render_proposal_tab()` shows: mandatory appendices (A=Definitions, B=ESC, C=CVA), 6 optional exhibit checkboxes (Datasheets, Warranty, Conceptual Layout, Scope of Supply, Sizing Report PDF, Additional Docs), dynamic appendix lettering D/E/F..., live appendices preview, PDF download (identical to old render_pdf_tab), Word download via P41B
 - `_proposal_exhibits` and `_proposal_mandatory` stored in session state for P41B
 
 ### P40 — SR shortfall advisory below Design Validation Scorecard (2026-04-03)
@@ -307,6 +323,16 @@ All sidebar widgets use `value=INPUT_DEFAULTS[...]` directly — no `_stored_*` 
 - When SR passes with thin margin (<20%): shows `st.info` with margin percentage
 - Added SR pass/fail summary in `render_electrical_tab()` after the SR detail table: `st.error` on deficit, `st.success` with margin MW when satisfied
 - No changes to scorecard tile rendering, `core/`, or `api/`
+
+### P39 — Hotfix: confirm spinning_res_pct widget→inputs_dict connection (2026-04-03)
+- Verified `spinning_res_pct` widget in Advanced > Load Dynamics correctly writes to `inputs_dict` after P38 restore
+- Added stable `key="spinning_res_pct"` session state key to prevent value loss on rerun
+- No logic changes — confirmation + defensive key stabilization only
+
+### P38 — Hotfix: restore spinning_res_pct input in Advanced (2026-04-03)
+- `spinning_res_pct` slider was lost during P37 sidebar reorganization (not included in new Advanced expander)
+- Restored to **Advanced → Load Dynamics** flat section
+- Field was still used in `inputs_dict` and pipeline; only the UI widget was missing
 
 ### P37 — Reorganize sidebar Basic + Advanced (2026-04-03)
 - Restructured `render_sidebar()` from 13 flat expanders → 6 expanders: Project Info, Load Profile, Generator & BESS, Site Conditions, Economics, Advanced

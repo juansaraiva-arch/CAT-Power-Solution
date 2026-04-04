@@ -360,6 +360,49 @@ All sidebar widgets use `value=INPUT_DEFAULTS[...]` directly — no `_stored_*` 
   Step-up transformers captured in binomial fleet model, NOT in this factor.
 - **Tests:** 48/48 pass.
 
+## P49 — Dead code cleanup + initial DC Type defaults alignment (2026-04-04)
+
+### OBJETIVO 1: Initial DC Type defaults fix
+**Bug fixed:** On first load with "AI Factory (Training)" selected, Load Profile widgets initialized
+from INPUT_DEFAULTS (CF=0.90, PAR=1.15) instead of DC_TYPE_DEFAULTS["AI Factory (Training)"]
+(CF=0.95, PAR=1.10). The _on_dc_type_change callback only fires on user interaction, not on first render.
+
+**Fix:** Added a one-time initialization block in render_sidebar() BEFORE the Pre-render transfer block:
+```python
+if "_dc_type_initialized" not in st.session_state:
+    _initial_dc = INPUT_DEFAULTS.get("dc_type", "AI Factory (Training)")
+    _dc_init_defaults = DC_TYPE_DEFAULTS.get(_initial_dc, {})
+    for _key, _val in _dc_init_defaults.items():
+        if _key not in st.session_state:
+            st.session_state[_key] = float(_val)
+    st.session_state["_dc_type_initialized"] = True
+```
+This block runs exactly once per session (guarded by _dc_type_initialized flag).
+The subsequent Pre-render transfer block (P48) handles DC type changes normally.
+
+### OBJETIVO 2: Dead code cleanup
+**Wizard code audit (streamlit_app.py):** All wizard code was already eliminated in P35. Confirmed zero occurrences of:
+- WIZARD_STEPS, init_wizard_state, render_wizard, render_wizard_step_*, render_wizard_navigation
+- build_inputs_from_wizard, render_load_preview
+- _wiz_* keys, _wizard_step, _wizard_complete, _wizard_running, _wizard_just_completed
+- Wizard CSS (display:none sidebar blocks)
+- Wizard mode logic in main()
+- _stored_* keys (only _stored_bess_autonomy_min survives — intentional)
+
+**INPUT_DEFAULTS zombie key audit (core/project_manager.py):**
+- `max_maintenance_units` → **KEPT** — used in core/engine.py as function parameter (9 occurrences in pod fleet optimizer)
+- `selected_fleet_config_maint` → **REMOVED** — confirmed NOT used in any other Python file; only referenced in CLAUDE.md documentation
+- `bess_strategy` → **KEPT** — actively used in api/schemas/sizing.py (SizingInput field) and api/services/sizing_pipeline.py (business logic)
+
+### Stats
+- Lines added to streamlit_app.py: +12 (DC Type init block)
+- Lines removed from core/project_manager.py: -1 (selected_fleet_config_maint key)
+- Docstring updated: 105 keys → 104 keys in project_manager.py
+- streamlit_app.py final line count: 3996 lines
+- core/project_manager.py final line count: 510 lines
+- py_compile: OK for both files
+- Commit: refactor(P49): dead code cleanup + initial DC Type defaults alignment
+
 ### P48 — Fix DC Type auto-fill: all 7 Load Profile fields force-updated on DC Type change (2026-04-04)
 - **Bug:** Switching DC Type did not update Load Profile fields (e.g. spinning_res_pct showed 20% for Colocation, expected 10%). All 7 fields affected.
 - **Root cause:** Two distinct Streamlit pitfalls triggered by the P47 `_dcdefault_*` pattern:

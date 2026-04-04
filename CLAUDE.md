@@ -403,6 +403,17 @@ The subsequent Pre-render transfer block (P48) handles DC type changes normally.
 - py_compile: OK for both files
 - Commit: refactor(P49): dead code cleanup + initial DC Type defaults alignment
 
+### P51 — Full-state JSON project save/load (2026-04-04)
+- **Save block** now serializes ~75 fields (was 8): Quick Sizing, Load Profile, Gen & BESS, Site Conditions, Economics + CAPEX adders, all Advanced sub-sections (Electrical, Fuel, Generator Overrides, BESS Costs, Emissions & Noise, CHP, Phasing, Infrastructure, Footprint), and Project Info
+- **Load block** performs full widget restoration then calls `st.rerun()`:
+  - **Keyed widgets** (`key="X"`): write directly to `st.session_state["X"]` — Streamlit picks up value automatically on next render
+  - **Non-keyed widgets**: write to `st.session_state["_restore_X"]`; each widget pops `_restore_X` as its `value=` default on the next render (fires once, Streamlit's own state takes over thereafter)
+- **Unit-aware fields** (site_temp, site_alt, distances, max_area): saved in SI units in JSON; pop pattern runs `_to_display_*()` conversion for correct initial display in current unit system
+- **CAPEX % fields** (bos_pct etc.): stored as fractions in JSON (0.17); pop pattern multiplies ×100 for display widget, then /100 restores the fraction
+- **DC Type callback** is NOT triggered by the programmatic write to `_dc_type_select` during load; the pre-render block finds no `_dcdefault_*` keys and does not overwrite loaded LP field values — no `_skip_dc_defaults` flag needed
+- Unit System radio uses `st.session_state.get("_unit_sys", "Metric")` for its index (no key= on the widget, just explicit session state read)
+- py_compile OK
+
 ### P48 — Fix DC Type auto-fill: all 7 Load Profile fields force-updated on DC Type change (2026-04-04)
 - **Bug:** Switching DC Type did not update Load Profile fields (e.g. spinning_res_pct showed 20% for Colocation, expected 10%). All 7 fields affected.
 - **Root cause:** Two distinct Streamlit pitfalls triggered by the P47 `_dcdefault_*` pattern:
